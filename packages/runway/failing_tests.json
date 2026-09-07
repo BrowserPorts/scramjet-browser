@@ -114,7 +114,6 @@
 		"originisolation-cross-site-frame-access",
 		"platform-error-stack-urls",
 		"platform-indexeddb-databases",
-		"platform-navigator-serviceworker",
 		"platform-objecturl-revoke",
 		"platform-resource-timing-no-proxy-internals",
 		"pmwrap-delete",

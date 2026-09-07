@@ -2,13 +2,10 @@ import { css, type Component } from "dreamland/core";
 import { controller, getTransport } from "..";
 import {
 	AVAILABLE_TRANSPORTS,
+	applyDemoSettings,
 	type AvailableTransports,
 	demoSettingsDefaults,
 	demoSettingsStore,
-	normalizeHomeUrl,
-	normalizeMaxRequests,
-	normalizeTransport,
-	normalizeWispUrl,
 } from "../store";
 
 const SettingsView: Component<
@@ -42,30 +39,24 @@ const SettingsView: Component<
 		this.status = "Applying settings...";
 
 		try {
-			const nextWispUrl = normalizeWispUrl(this.wispUrlInput);
-			const nextTransport = normalizeTransport(this.transportInput);
-			const nextHomeUrl = normalizeHomeUrl(this.homeUrlInput);
-			const nextMaxRequests = normalizeMaxRequests(this.maxRequestsInput);
-			const wispChanged = nextWispUrl !== demoSettingsStore.wispUrl;
-			const transportChanged = nextTransport !== demoSettingsStore.transport;
+			const applied = applyDemoSettings({
+				wispUrl: this.wispUrlInput,
+				transport: this.transportInput,
+				homeUrl: this.homeUrlInput,
+				maxRequests: this.maxRequestsInput,
+			});
 
-			demoSettingsStore.wispUrl = nextWispUrl;
-			demoSettingsStore.transport = nextTransport;
-			demoSettingsStore.homeUrl = nextHomeUrl;
-			demoSettingsStore.maxRequests = nextMaxRequests;
+			this.wispUrlInput = applied.wispUrl;
+			this.transportInput = applied.transport;
+			this.homeUrlInput = applied.homeUrl;
+			this.maxRequestsInput = String(applied.maxRequests);
 
-			this.wispUrlInput = nextWispUrl;
-			this.transportInput = nextTransport;
-			this.homeUrlInput = nextHomeUrl;
-			this.maxRequestsInput = String(nextMaxRequests);
-
-			if (wispChanged || transportChanged) {
+			if (applied.transportChanged) {
 				controller.setTransport(getTransport());
 			}
-			this.status =
-				wispChanged || transportChanged
-					? "Settings saved. Transport updated for new requests."
-					: "Settings saved.";
+			this.status = applied.transportChanged
+				? "Settings saved. Transport updated for new requests."
+				: "Settings saved.";
 		} catch (error) {
 			this.status = "";
 			this.error =
@@ -176,10 +167,10 @@ const SettingsView: Component<
 			</div>
 
 			{use(this.error).map((error) =>
-				error ? <div class="message error">{error}</div> : null
+				error ? <div class="message error">{error}</div> : null,
 			)}
 			{use(this.status).map((status) =>
-				status ? <div class="message status">{status}</div> : null
+				status ? <div class="message status">{status}</div> : null,
 			)}
 		</div>
 	);

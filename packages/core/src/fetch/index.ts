@@ -1,23 +1,32 @@
 import {
 	BareCompatibleClient,
-	BareResponse,
-	ProxyTransport,
-	BareRequestInit,
+	type BareRequestInit,
+	type BareResponse,
+	type ProxyTransport,
 } from "@mercuryworkshop/proxy-transports";
 
-import { type URLMeta } from "@rewriters/url";
-import { type ScramjetRequestMode } from "./parse";
-import { ScramjetHeaders } from "@/shared/headers";
-import { HtmlRewriterHooks, ScramjetContext } from "@/shared";
-import { Tap, TapInstance } from "@/Tap";
-import { doHandleFetch } from "./fetch";
-import { _URL, _Map } from "@/shared/snapshot";
+import type { URLMeta } from "@rewriters/url";
+import type { ScramjetRequestMode } from "./parse";
+
+export { QP } from "./parse";
+export { REWRITTEN_HEADER } from "./util";
+
+import type {
+	HtmlRewriterHooks,
+	ScramjetContext,
+	ScriptRewriterHooks,
+} from "@/shared";
+import type { ScramjetHeaders } from "@/shared/headers";
+import { _Map, type _URL } from "@/shared/snapshot";
+import { Tap, type TapInstance } from "@/Tap";
+import type { ScramjetDestination } from "@/types";
+import { doHandleFetch, doHandleServiceWorkerResponse } from "./fetch";
 
 export interface ScramjetFetchRequest {
 	rawUrl: URL;
 	rawReferrer: string | null;
 	// use parsed.destination instead
-	rawDestination: RequestDestination;
+	rawDestination: ScramjetDestination;
 	mode: RequestMode;
 	referrer: string;
 	method: string;
@@ -30,6 +39,10 @@ export interface ScramjetFetchRequest {
 
 	/** The service worker FetchEvent.clientId that originated this request. */
 	clientId: string;
+	/** Existing client that initiated a navigation, when the platform supplies one. */
+	sourceClientId?: string;
+	/** Client created by a navigation, before its response document executes. */
+	resultingClientId?: string;
 }
 
 export interface ScramjetFetchParsed {
@@ -56,13 +69,17 @@ export interface ScramjetFetchParsed {
 	isIframe?: boolean;
 
 	// request.destination, but is overridden by $dest
-	destination: RequestDestination;
+	destination: ScramjetDestination;
 
 	meta: URLMeta;
 	isModule: boolean;
 	isFakeDataURL: boolean;
 	referrerPolicy?: string;
 	trackedClient?: ScramjetFetchTrackedClient;
+
+	// scope an emulated service worker realm is registered for, only set on
+	// requests for a serviceworker destination script
+	swScope?: string;
 }
 
 export interface ScramjetFetchResponse {
@@ -79,7 +96,7 @@ export type CookieSyncEntry = {
 
 export type CookieSyncOptions = {
 	clear?: boolean;
-	destination?: RequestDestination;
+	destination?: ScramjetDestination;
 };
 
 export type FetchHandlerInit = {
@@ -89,7 +106,7 @@ export type FetchHandlerInit = {
 
 	sendSetCookie: (
 		cookies: CookieSyncEntry[],
-		options?: CookieSyncOptions
+		options?: CookieSyncOptions,
 	) => Promise<void>;
 	fetchDataUrl(dataUrl: string): Promise<BareResponse>;
 	fetchBlobUrl(blobUrl: string): Promise<BareResponse>;
@@ -110,11 +127,17 @@ export class ScramjetFetchHandler extends EventTarget {
 	public crossOriginIsolated: boolean = false;
 	public context: ScramjetContext;
 
-	public trackedClients = new _Map<string, ScramjetFetchTrackedClient>();
+	// annotated because the wrapped type can't be named from the emitted d.ts,
+	// which drops this whole module from the public types
+	public trackedClients: Map<string, ScramjetFetchTrackedClient> = new _Map<
+		string,
+		ScramjetFetchTrackedClient
+	>();
 
 	public hooks: {
 		rewriter: {
 			html: TapInstance<HtmlRewriterHooks>;
+			script: TapInstance<ScriptRewriterHooks>;
 		};
 		fetch: TapInstance<FetchHooks>;
 	};
@@ -123,7 +146,7 @@ export class ScramjetFetchHandler extends EventTarget {
 	public fetchBlobUrl: (blobUrl: string) => Promise<Response>;
 	public sendSetCookie: (
 		cookies: CookieSyncEntry[],
-		options?: CookieSyncOptions
+		options?: CookieSyncOptions,
 	) => Promise<void>;
 
 	constructor(init: FetchHandlerInit) {
@@ -137,6 +160,7 @@ export class ScramjetFetchHandler extends EventTarget {
 		this.hooks = {
 			rewriter: {
 				html: Tap.create<HtmlRewriterHooks>(),
+				script: Tap.create<ScriptRewriterHooks>(),
 			},
 			fetch: Tap.create<FetchHooks>(),
 		};
@@ -146,9 +170,16 @@ export class ScramjetFetchHandler extends EventTarget {
 	}
 
 	async handleFetch(
-		request: ScramjetFetchRequest
+		request: ScramjetFetchRequest,
 	): Promise<ScramjetFetchResponse> {
 		return doHandleFetch(this, request);
+	}
+
+	async handleServiceWorkerResponse(
+		request: ScramjetFetchRequest,
+		response: BareResponse,
+	): Promise<ScramjetFetchResponse> {
+		return doHandleServiceWorkerResponse(this, request, response);
 	}
 }
 export type FetchHooks = {
@@ -189,6 +220,41 @@ export type FetchHooks = {
 		};
 		props: {
 			response: ScramjetFetchResponse;
+		};
+	};
+	/**
+	 * Dispatched when the pipeline rejects without producing a response, so an
+	 * embedder can report the failed load. The rejection is rethrown after the
+	 * hook runs; a tap here never turns a failure into a success.
+	 */
+	error: {
+		context: {
+			request: ScramjetFetchRequest;
+			parsed: ScramjetFetchParsed;
+		};
+		props: {
+			error: Error;
+		};
+	};
+	/**
+	 * Dispatched with the rewritten body of a "worker" or "sharedworker"
+	 * destination script before it is returned. `body` is the rewritten worker
+	 * script (inject scripts plus the rewritten author source), `source` is the
+	 * decoded author source, and `inject` is the inject-script prelude alone. A
+	 * tap replaces the body only by setting `replacement`; a tap rejection
+	 * rejects the fetch (there is no fall-through to the rewritten body).
+	 */
+	worker: {
+		context: {
+			request: ScramjetFetchRequest;
+			parsed: ScramjetFetchParsed;
+		};
+		props: {
+			body: string;
+			contentType: string;
+			inject: string;
+			source: string;
+			replacement?: string;
 		};
 	};
 };

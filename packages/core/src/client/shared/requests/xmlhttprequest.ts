@@ -1,4 +1,5 @@
-import { getFlag, ScramjetContext } from "@/shared";
+import { ScramjetContext } from "@/shared";
+import { providers } from "@/shared/providers";
 import { rewriteUrl, unrewriteUrl, URLMeta } from "@rewriters/url";
 import { ScramjetClient } from "@client/index";
 
@@ -30,7 +31,7 @@ export default function (client: ScramjetClient, self: Self) {
 			const args = ctx.this[ARGS];
 			if (!args || args[2]) return;
 
-			if (!client.getFlag("syncxhr")) {
+			if (!client.flagEnabled("syncxhr")) {
 				console.warn("ignoring request - sync xhr disabled in flags");
 
 				return ctx.return(undefined);
@@ -156,8 +157,7 @@ export default function (client: ScramjetClient, self: Self) {
 }
 
 export function unrewriteLinkHeader(header: string, context: ScramjetContext) {
-	return header.replace(
-		/<([^>]+)>/gi,
-		(_match, p1) => `<${unrewriteUrl(p1, context)}>`
+	return providers().rewriteXhrLinkHeaders(header, (url) =>
+		unrewriteUrl(url, context)
 	);
 }

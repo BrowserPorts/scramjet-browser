@@ -1,5 +1,6 @@
 import { Object_entries, Object_keys, _URL, Error } from "@/shared/snapshot";
 import { unrewriteUrl, URLMeta } from "@rewriters/url";
+import { ScramjetDestination } from "@/types";
 import {
 	ScramjetFetchHandler,
 	ScramjetFetchParsed,
@@ -21,6 +22,7 @@ export const QP = {
 	fetchSite: "$fs",
 	crossSiteRedirect: "$csr",
 	fakeDataURL: "$fakedataurl",
+	swScope: "$swscope",
 } as const;
 
 export type QueryParamKey = keyof typeof QP;
@@ -65,10 +67,29 @@ export function parseRequest(
 
 	const hadExtraParams = Object_keys(extras).length > 0;
 
-	if (!_URL.canParse(unrewriteUrl(strippedUrl, handler.context))) {
+	let decodedUrl = unrewriteUrl(strippedUrl, handler.context);
+	if (
+		!_URL.canParse(decodedUrl) &&
+		strippedUrl.href.startsWith(handler.context.prefix.href)
+	) {
+		const rawBase =
+			request.rawClientUrl ||
+			(request.rawReferrer ? new _URL(request.rawReferrer) : undefined);
+		const decodedBase = rawBase
+			? unrewriteUrl(rawBase, handler.context)
+			: undefined;
+		const relativePath = strippedUrl.href.slice(
+			handler.context.prefix.href.length
+		);
+		if (decodedBase && _URL.canParse(relativePath, decodedBase)) {
+			decodedUrl = new _URL(relativePath, decodedBase).href;
+		}
+	}
+
+	if (!_URL.canParse(decodedUrl)) {
 		throw new Error(`unable to parse rewritten url: ${strippedUrl.href}`);
 	}
-	const url = new _URL(unrewriteUrl(strippedUrl, handler.context));
+	const url = new _URL(decodedUrl);
 
 	if (url.origin === new _URL(request.rawUrl).origin) {
 		// uh oh!
@@ -111,7 +132,7 @@ export function parseRequest(
 		? params.mode
 		: undefined;
 	const destination =
-		(params.destination as RequestDestination | undefined) ||
+		(params.destination as ScramjetDestination | undefined) ||
 		request.rawDestination;
 
 	const meta: URLMeta = {
@@ -139,6 +160,7 @@ export function parseRequest(
 		destination,
 		isIframe: params.isIframe === "1",
 		isFakeDataURL: params.fakeDataURL === "1",
+		swScope: params.swScope || undefined,
 	};
 
 	if (request.rawClientUrl) {

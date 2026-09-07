@@ -1,6 +1,18 @@
-import { createStore } from "dreamland/core";
+import { createState, createStore } from "dreamland/core";
 
 export type AvailableTransports = "libcurl" | "epoxy";
+export type DemoTab = "browser" | "requests" | "playground" | "settings";
+
+export const DEMO_TABS: ReadonlyArray<{ value: DemoTab; label: string }> = [
+	{ value: "browser", label: "Browser" },
+	{ value: "requests", label: "Requests" },
+	{ value: "playground", label: "Playground" },
+	{ value: "settings", label: "Settings" },
+];
+
+export const demoUiStore = createState({
+	activeTab: "browser" as DemoTab,
+});
 
 export const AVAILABLE_TRANSPORTS: ReadonlyArray<{
 	value: AvailableTransports;
@@ -25,7 +37,7 @@ export const demoSettingsStore = createStore(
 		ident: "scramjet-demo-settings",
 		backing: "localstorage",
 		autosave: "auto",
-	}
+	},
 );
 
 export function normalizeWispUrl(value: string) {
@@ -90,3 +102,54 @@ export const demoSettingsDefaults = {
 	homeUrl: normalizeHomeUrl(DEFAULT_HOME_URL),
 	maxRequests: DEFAULT_MAX_REQUESTS,
 };
+
+export type DemoSettingsInput = {
+	wispUrl: string;
+	transport: string;
+	homeUrl: string;
+	maxRequests: string | number;
+};
+
+export type AppliedDemoSettings = {
+	wispUrl: string;
+	transport: AvailableTransports;
+	homeUrl: string;
+	maxRequests: number;
+	transportChanged: boolean;
+};
+
+export function applyDemoSettings(
+	input: DemoSettingsInput,
+): AppliedDemoSettings {
+	const nextWispUrl = normalizeWispUrl(input.wispUrl);
+	const nextTransport = normalizeTransport(input.transport);
+	const nextHomeUrl = normalizeHomeUrl(input.homeUrl);
+	const nextMaxRequests = normalizeMaxRequests(input.maxRequests);
+	const transportChanged =
+		nextWispUrl !== demoSettingsStore.wispUrl ||
+		nextTransport !== demoSettingsStore.transport;
+
+	demoSettingsStore.wispUrl = nextWispUrl;
+	demoSettingsStore.transport = nextTransport;
+	demoSettingsStore.homeUrl = nextHomeUrl;
+	demoSettingsStore.maxRequests = nextMaxRequests;
+
+	return {
+		wispUrl: nextWispUrl,
+		transport: nextTransport,
+		homeUrl: nextHomeUrl,
+		maxRequests: nextMaxRequests,
+		transportChanged,
+	};
+}
+
+export function applyDemoSettingsPartial(
+	partial: Partial<DemoSettingsInput>,
+): AppliedDemoSettings {
+	return applyDemoSettings({
+		wispUrl: partial.wispUrl ?? demoSettingsStore.wispUrl,
+		transport: partial.transport ?? demoSettingsStore.transport,
+		homeUrl: partial.homeUrl ?? demoSettingsStore.homeUrl,
+		maxRequests: partial.maxRequests ?? demoSettingsStore.maxRequests,
+	});
+}

@@ -19,8 +19,9 @@ import {
 	HtmlRewriterHooks,
 	ScramjetContext,
 	ScramjetHeaders,
+	ServiceWorkerHost,
 } from "@/shared";
-import { iswindow } from "./entry";
+import { isemulatedsw, isnativesw, iswindow } from "./entry";
 import { SingletonBox } from "./singletonbox";
 import { ScramjetConfig } from "@/types";
 import { Tap } from "@/Tap";
@@ -78,6 +79,9 @@ export type ScramjetClientInit = {
 	hookSubcontext: (self: Self, frame?: HTMLIFrameElement) => ScramjetClient;
 	initHeaders: RawHeaders;
 	history: TrackedHistoryState[];
+	// backs the emulated navigator.serviceWorker. absent means no emulation, and
+	// the api is left off the global entirely
+	serviceWorkerHost?: ServiceWorkerHost;
 };
 type NativeStore = {
 	store: Record<string, any>;
@@ -546,6 +550,8 @@ export class ScramjetClient {
 			if (
 				(key.startsWith("./dom/") && "window" in this.global) ||
 				(key.startsWith("./worker/") && "WorkerGlobalScope" in this.global) ||
+				(key.startsWith("./serviceworker/") && isemulatedsw) ||
+				(key.startsWith("./nativeserviceworker/") && isnativesw) ||
 				key.startsWith("./shared/")
 			) {
 				modules.push(module);

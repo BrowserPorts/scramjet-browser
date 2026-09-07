@@ -1,43 +1,53 @@
 import type {
-	RawHeaders,
 	ProxyTransport,
+	RawHeaders,
 	TransferrableResponse,
 } from "@mercuryworkshop/proxy-transports";
 
 import { RpcHelper } from "@mercuryworkshop/rpc";
+import {
+	CookieJar,
+	type CookieSyncOptions,
+	type NativeServiceWorkerGatewayMetadata,
+	SCRAMJETCLIENT,
+	ScramjetClient,
+	type ScramjetConfig,
+	type ScramjetContext,
+	type ScramjetSerializedStorageState,
+	ScramjetStorageJar,
+	type ScramjetStorageManager,
+	type ScramjetStorageMutation,
+	type ServiceWorkerHost,
+	type ServiceWorkerHostEvent,
+	type ServiceWorkerPageOps,
+	setWasm,
+	Tap,
+	type TrackedHistoryState,
+} from "@mercuryworkshop/scramjet";
 import type { Config } from ".";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
-	SerializedCookieSyncEntry,
 	ControllerToTransport,
+	SerializedCookieSyncEntry,
 	TransportToController,
 	WebSocketMessage,
 } from "./types";
-import {
-	CookieJar,
-	SCRAMJETCLIENT,
-	ScramjetClient,
-	setWasm,
-	Tap,
-	type CookieSyncOptions,
-	type ScramjetConfig,
-	type ScramjetContext,
-	type TrackedHistoryState,
-} from "@mercuryworkshop/scramjet";
 
 const MessagePort_postMessage = MessagePort.prototype.postMessage;
 const postMessage = (
 	port: MessagePort,
 	data: any,
-	transfer?: Transferable[]
+	transfer?: Transferable[],
 ) => {
 	MessagePort_postMessage.call(port, data, transfer as any);
 };
 
 class RemoteTransport implements ProxyTransport {
-	private readyResolve!: () => void;
-	private readyPromise: Promise<void> = new Promise((resolve) => {
+	private readyResolve!: (value: undefined) => unknown;
+	private readyReject!: (reason: unknown) => unknown;
+	private readyPromise: Promise<undefined> = new Promise((resolve, reject) => {
 		this.readyResolve = resolve;
+		this.readyReject = reject;
 	});
 
 	public ready = false;
@@ -46,18 +56,105 @@ class RemoteTransport implements ProxyTransport {
 		this.ready = true;
 	}
 
+	private swListeners = new Set<(event: ServiceWorkerHostEvent) => unknown>();
+	private swOps: ServiceWorkerPageOps | null = null;
+	private swAttachFailure: Error | null = null;
+
+	fail(error: Error): undefined {
+		this.readyReject(error);
+		return undefined;
+	}
+
+	// the emulated navigator.serviceWorker talks to the controller over this
+	// same channel
+	public serviceWorkerHost: ServiceWorkerHost = {
+		register: (options) => this.rpc.call("swRegister", options),
+		getRegistrations: (clientUrl) =>
+			this.rpc.call("swGetRegistrations", { clientUrl }),
+		getController: (clientUrl) =>
+			this.rpc.call("swGetController", { clientUrl }),
+		unregister: (id) => this.rpc.call("swUnregister", { id }),
+		update: (id) => this.rpc.call("swUpdate", { id }),
+		postMessage: (id, workerId, data, transfer, clientUrl) =>
+			this.rpc.call(
+				"swPostMessage",
+				{ id, workerId, data, ports: transfer as MessagePort[], clientUrl },
+				transfer,
+			),
+		subscribe: (listener) => {
+			this.swListeners.add(listener);
+
+			return () => this.swListeners.delete(listener);
+		},
+		serve: (ops) => {
+			this.swOps = ops;
+			this.swAttachFailure = null;
+			// only now is there a browsing context behind this channel that can run
+			// a realm's client operations
+			this.rpc
+				.call("swAttachClient", { clientUrl: ops.clientUrl() })
+				.catch((cause) => {
+					if (this.swOps !== ops) return;
+					this.swOps = null;
+					this.swAttachFailure =
+						cause instanceof Error ? cause : new Error(String(cause));
+				});
+
+			return () => {
+				if (this.swOps === ops) this.swOps = null;
+			};
+		},
+	};
+
+	private swOp<T>(run: (ops: ServiceWorkerPageOps) => Promise<T>): Promise<T> {
+		if (this.swAttachFailure !== null) {
+			return Promise.reject(this.swAttachFailure);
+		}
+		const ops = this.swOps;
+		if (!ops) {
+			return Promise.reject(
+				new Error("no service worker container is listening in this context"),
+			);
+		}
+
+		return run(ops);
+	}
+
 	private rpc: RpcHelper<ControllerToTransport, TransportToController>;
 	constructor(public port: MessagePort) {
 		this.rpc = new RpcHelper<ControllerToTransport, TransportToController>(
 			{
 				ready: async () => {
-					this.readyResolve();
+					this.readyResolve(undefined);
+				},
+				swEvent: async (event) => {
+					for (const listener of this.swListeners) {
+						try {
+							listener(event);
+						} catch (error) {
+							console.error("service worker event listener threw:", error);
+						}
+					}
+				},
+				swOpenWindow: async ({ url }) => [
+					await this.swOp((ops) => ops.openWindow(url)),
+					[],
+				],
+				swFocus: async () => {
+					await this.swOp((ops) => ops.focus());
+				},
+				swNavigate: async ({ url }) => [
+					await this.swOp((ops) => ops.navigate(url)),
+					[],
+				],
+				swShowNotification: async ({ title, options }) => {
+					await this.swOp((ops) => ops.showNotification(title, options));
 				},
 			},
 			"transport",
 			(data, transfer) => {
 				postMessage(port, data, transfer);
-			}
+			},
 		);
 		port.onmessageerror = (ev) => {
 			console.error("onmessageerror (this should never happen!)", ev);
@@ -71,13 +168,14 @@ class RemoteTransport implements ProxyTransport {
 		url: URL,
 		protocols: string[],
 		requestHeaders: RawHeaders,
-		onopen: (protocol: string, extensions: string) => void,
-		onmessage: (data: Blob | ArrayBuffer | string) => void,
-		onclose: (code: number, reason: string) => void,
-		onerror: (error: string) => void
+		onopen: (protocol: string, extensions: string) => unknown,
+		onmessage: (data: Blob | ArrayBuffer | string) => unknown,
+		onclose: (code: number, reason: string) => unknown,
+		onerror: (error: string) => unknown,
+		options: { proxy?: string | null } = {},
 	): [
-		(data: Blob | ArrayBuffer | string) => void,
-		(code: number, reason: string) => void,
+		(data: Blob | ArrayBuffer | string) => unknown,
+		(code: number, reason: string) => unknown,
 	] {
 		const channel = new MessageChannel();
 		const port = channel.port1;
@@ -90,8 +188,9 @@ class RemoteTransport implements ProxyTransport {
 					protocols,
 					requestHeaders,
 					port: channel.port2,
+					proxy: options.proxy,
 				},
-				[channel.port2]
+				[channel.port2],
 			)
 			.then((response) => {
 				console.log(response);
@@ -122,7 +221,7 @@ class RemoteTransport implements ProxyTransport {
 						type: "data",
 						data: data,
 					},
-					data instanceof ArrayBuffer ? [data] : []
+					data instanceof ArrayBuffer ? [data] : [],
 				);
 			},
 			(code) => {
@@ -134,25 +233,33 @@ class RemoteTransport implements ProxyTransport {
 		];
 	}
 
+	async nativeServiceWorkerRequest(
+		metadata: NativeServiceWorkerGatewayMetadata,
+	) {
+		return await this.rpc.call("nativeServiceWorkerRequest", metadata);
+	}
+
 	async request(
 		remote: URL,
 		method: string,
 		body: BodyInit | null,
 		headers: RawHeaders,
-		_signal: AbortSignal | undefined
+		_signal: AbortSignal | undefined,
+		options: { proxy?: string | null } = {},
 	): Promise<TransferrableResponse> {
 		return await this.rpc.call("request", {
 			remote: remote.href,
 			method,
 			body,
 			headers,
+			proxy: options.proxy,
 		});
 	}
 
 	async sendSetCookie(
 		cookies: Array<{ url: URL; cookie: string }>,
-		options: CookieSyncOptions = {}
-	): Promise<void> {
+		options: CookieSyncOptions = {},
+	): Promise<undefined> {
 		await this.rpc.call("sendSetCookie", {
 			cookies: cookies.map(({ url, cookie }) => ({
 				url: url.href,
@@ -160,23 +267,40 @@ class RemoteTransport implements ProxyTransport {
 			})),
 			options,
 		});
+		return undefined;
+	}
+
+	async sendStorageMutation(
+		mutations: ScramjetStorageMutation[],
+	): Promise<boolean> {
+		await this.rpc.call("sendStorageMutation", { mutations });
+		return true;
 	}
 }
 
-const sw = navigator.serviceWorker.controller;
+const rootServiceWorker = navigator.serviceWorker
+	.getRegistration(new URL("/", location.href).href)
+	.then(
+		(registration) =>
+			registration?.active ?? navigator.serviceWorker.controller,
+	);
 
 type Init = {
 	config: Config;
 	sjconfig: ScramjetConfig;
 	prefix: URL;
 	cookies: string;
+	storage?: ScramjetSerializedStorageState | null;
+	storagePartitionKey: string;
 	yieldGetInjectScripts: (
 		config: Config,
 		sjconfig: ScramjetConfig,
 		prefix: URL,
 		cookieJar: CookieJar,
+		storage: ScramjetStorageManager | undefined,
 		codecEncode: (input: string) => string,
-		codecDecode: (input: string) => string
+		codecDecode: (input: string) => string,
+		storagePartitionKey: string,
 	) => any;
 	codecEncode: (input: string) => string;
 	codecDecode: (input: string) => string;
@@ -196,7 +320,15 @@ export function load(init: Init) {
 	if (!("WASM" in self)) {
 		throw new Error("WASM not found in global scope!");
 	}
-	const wasm = Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0));
+	if (
+		typeof init.storagePartitionKey !== "string" ||
+		init.storagePartitionKey.length === 0
+	) {
+		throw new Error(
+			"Scramjet document injection requires its storage partition key",
+		);
+	}
+	const wasm = Uint8Array.from(atob(String(self.WASM)), (c) => c.charCodeAt(0));
 	delete (self as any).WASM;
 	setWasm(wasm);
 
@@ -204,38 +336,78 @@ export function load(init: Init) {
 }
 
 function createFrameId() {
-	return `${Array(8)
-		.fill(0)
-		.map(() => Math.floor(Math.random() * 36).toString(36))
-		.join("")}`;
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
 }
 
 class ExecutionContextWrapper {
 	client!: ScramjetClient;
 	cookieJar: CookieJar;
+	storage: ScramjetStorageJar | undefined;
 	transport: RemoteTransport;
-	private handleServiceWorkerCookieMessage: (event: MessageEvent) => void;
+	private handleServiceWorkerCookieMessage: (event: MessageEvent) => unknown;
 
 	constructor(
 		public global: typeof globalThis,
-		public init: Init
+		public init: Init,
 	) {
 		const channel = new MessageChannel();
 		this.transport = new RemoteTransport(channel.port1);
-		sw?.postMessage(
-			{
-				$sw$initRemoteTransport: {
-					port: channel.port2,
-					prefix: this.init.prefix.href,
-				},
-			},
-			[channel.port2]
-		);
+		rootServiceWorker
+			.then((worker) => {
+				if (worker === null) {
+					throw new Error(
+						"Scramjet transport requires the root service worker",
+					);
+				}
+				worker.postMessage(
+					{
+						$sw$initRemoteTransport: {
+							port: channel.port2,
+							prefix: this.init.prefix.href,
+						},
+					},
+					[channel.port2],
+				);
+			})
+			.catch((cause) => {
+				this.transport.fail(
+					cause instanceof Error ? cause : new Error(String(cause)),
+				);
+			});
 
 		this.cookieJar = new CookieJar();
 		this.cookieJar.load(this.init.cookies);
+		this.storage = this.init.storage
+			? new ScramjetStorageJar(this.init.storage, async (mutation) => {
+					return await this.transport.sendStorageMutation([mutation]);
+				})
+			: undefined;
 
 		this.handleServiceWorkerCookieMessage = (event: MessageEvent) => {
+			const nativeRequest = event.data?.$scramjet$nativeServiceWorker;
+			if (nativeRequest && typeof nativeRequest === "object") {
+				const port = event.ports[0];
+				if (!port) return;
+				this.transport
+					.nativeServiceWorkerRequest(
+						nativeRequest as NativeServiceWorkerGatewayMetadata,
+					)
+					.then((response) => {
+						postMessage(
+							port,
+							response,
+							response.body instanceof ArrayBuffer ? [response.body] : [],
+						);
+					})
+					.catch((error) => {
+						postMessage(port, { error: String(error?.message ?? error) });
+					});
+				return;
+			}
+
 			if (
 				!event.data?.$controller$setCookie ||
 				typeof event.data.$controller$setCookie !== "object"
@@ -271,18 +443,28 @@ class ExecutionContextWrapper {
 			}
 
 			if (typeof payload.id === "string") {
-				const targetSw = navigator.serviceWorker?.controller ?? sw;
-				targetSw?.postMessage({
-					$sw$setCookieDone: {
-						id: payload.id,
-					},
-				});
+				rootServiceWorker
+					.then((worker) => {
+						if (worker === null) {
+							throw new Error(
+								"Scramjet cookie acknowledgement requires the root service worker",
+							);
+						}
+						worker.postMessage({
+							$sw$setCookieDone: {
+								id: payload.id,
+							},
+						});
+					})
+					.catch((error) => {
+						console.error("Scramjet cookie acknowledgement failed:", error);
+					});
 			}
 		};
 
 		navigator.serviceWorker?.addEventListener(
 			"message",
-			this.handleServiceWorkerCookieMessage
+			this.handleServiceWorkerCookieMessage,
 		);
 
 		this.injectScramjet();
@@ -299,14 +481,16 @@ class ExecutionContextWrapper {
 			isTopLevel = false;
 			let currentwin = this.global.window;
 			while (currentwin.parent !== currentwin) {
-				const currentclient = currentwin[SCRAMJETCLIENT];
+				const currentclient = Reflect.get(currentwin, SCRAMJETCLIENT) as
+					| ScramjetClient
+					| undefined;
 				if (!currentclient) {
 					currentwin = currentwin.parent.window;
 					continue;
 				}
 				const currentFrame = currentclient.descriptors.get(
 					"window.frameElement",
-					currentwin
+					currentwin,
 				);
 				if (currentFrame && currentFrame[CONTROLLERFRAME]) {
 					controllerFrame = currentFrame[CONTROLLERFRAME];
@@ -319,14 +503,18 @@ class ExecutionContextWrapper {
 			config: this.init.sjconfig,
 			prefix: this.init.prefix,
 			cookieJar: this.cookieJar,
+			storage: this.storage,
+			storagePartitionKey: this.init.storagePartitionKey,
 			interface: {
 				getInjectScripts: this.init.yieldGetInjectScripts(
 					this.init.config,
 					this.init.sjconfig,
 					this.init.prefix,
 					this.cookieJar,
+					this.storage,
 					this.init.codecEncode,
-					this.init.codecDecode
+					this.init.codecDecode,
+					this.init.storagePartitionKey,
 				),
 				codecEncode: this.init.codecEncode,
 				codecDecode: this.init.codecDecode,
@@ -338,18 +526,31 @@ class ExecutionContextWrapper {
 			sendSetCookie: async (cookies, options) => {
 				await this.transport.sendSetCookie(cookies, options);
 			},
-			shouldBlockMessageEvent: () => {
-				return false;
+			shouldBlockMessageEvent: (event) => {
+				// the proxy's own worker shares navigator.serviceWorker with the
+				// emulated one, so its internal traffic must not reach the site
+				const data = event.data;
+				if (!data || typeof data !== "object") return false;
+
+				return (
+					"$controller$setCookie" in data ||
+					"$controller$swrevive" in data ||
+					"$scramjet$nativeServiceWorker" in data ||
+					"$sw$setCookieDone" in data ||
+					"$sw$initRemoteTransport" in data
+				);
 			},
 			hookSubcontext: (frameself) => {
 				const context = new ExecutionContextWrapper(frameself, {
 					...this.init,
 					cookies: this.cookieJar.dump(),
+					storage: this.storage?.dump() ?? null,
 				});
 				return context.client;
 			},
 			initHeaders: this.init.initHeaders,
 			history: this.init.history,
+			serviceWorkerHost: this.transport.serviceWorkerHost,
 		});
 		const frameInitContext = {
 			window: this.global.window,

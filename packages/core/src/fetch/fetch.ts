@@ -13,7 +13,12 @@ import {
 import { rewriteUrl, unrewriteBlob, unrewriteUrl } from "@rewriters/url";
 import { QP, parseRequest } from "./parse";
 import { ScramjetHeaders } from "@/shared";
-import { isDocument, isRedirect, normalizeContentType } from "./util";
+import {
+	isDocument,
+	isRedirect,
+	normalizeContentType,
+	REWRITTEN_HEADER,
+} from "./util";
 import { rewriteBody } from "./body";
 import { Tap } from "@/Tap";
 import {
@@ -22,14 +27,37 @@ import {
 	rewriteResponseHeaders,
 	worstFetchSite,
 } from "./headers";
-import { _URL } from "@/shared/snapshot";
+import { Error, _URL } from "@/shared/snapshot";
 
 export async function doHandleFetch(
 	handler: ScramjetFetchHandler,
 	request: ScramjetFetchRequest
 ): Promise<ScramjetFetchResponse> {
 	const parsed = parseRequest(request, handler);
+	try {
+		return await handleParsedFetch(handler, request, parsed);
+	} catch (thrown) {
+		// A load that produced no response is a failed load. Nothing downstream
+		// of this rejection can name the request any more -- the service worker's
+		// `route` catch only sees a message -- so the failure is dispatched here,
+		// on the same `parsed` identity every other fetch hook receives, and then
+		// rethrown unchanged.
+		const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+		const errorContext: typeof handler.hooks.fetch.error.context = {
+			request,
+			parsed,
+		};
+		const errorProps: typeof handler.hooks.fetch.error.props = { error };
+		await Tap.dispatch(handler.hooks.fetch.error, errorContext, errorProps);
+		throw error;
+	}
+}
 
+async function handleParsedFetch(
+	handler: ScramjetFetchHandler,
+	request: ScramjetFetchRequest,
+	parsed: ScramjetFetchParsed
+): Promise<ScramjetFetchResponse> {
 	if (isBlobOrDataUrl(parsed.url)) {
 		return handleBlobOrDataUrlFetch(handler, request, parsed);
 	}
@@ -62,13 +90,19 @@ export async function doHandleFetch(
 		}
 	}
 
-	const newheaders = rewriteRequestHeaders(request, handler, parsed);
+	const newheaders = await rewriteRequestHeaders(request, handler, parsed);
 
 	let responseBody: BodyType;
 	const response = await doNetworkFetch(handler, request, parsed, newheaders);
 
 	// set-cookie needs to take the raw headers. after this, we can flatten the headers into a ScramjetHeaders object
-	await handleCookies(handler, request, parsed, response.rawHeaders);
+	await handleCookies(
+		handler,
+		request,
+		parsed,
+		response.rawHeaders,
+		response.status
+	);
 
 	if (isDocument(parsed)) {
 		// for document.referer
@@ -155,6 +189,8 @@ export async function doHandleFetch(
 		// UTF-8 by the Response constructor. Normalize the Content-Type charset so
 		// the browser doesn't try to decode UTF-8 bytes with the original encoding.
 		normalizeContentType(parsed, responseHeaders);
+
+		responseHeaders.set(REWRITTEN_HEADER, "1");
 	}
 
 	const respcontext: typeof handler.hooks.fetch.response.context = {
@@ -173,6 +209,38 @@ export async function doHandleFetch(
 	await Tap.dispatch(handler.hooks.fetch.response, respcontext, respprops);
 
 	return respprops.response;
+}
+
+// an emulated service worker can respond with something it built itself, which
+// has never been near the rewriter. run it through the same tail end of the
+// pipeline a network response gets so the page receives equivalent content
+export async function doHandleServiceWorkerResponse(
+	handler: ScramjetFetchHandler,
+	request: ScramjetFetchRequest,
+	response: BareResponse
+): Promise<ScramjetFetchResponse> {
+	const parsed = parseRequest(request, handler);
+
+	const responseHeaders = await rewriteResponseHeaders(
+		handler,
+		request,
+		parsed,
+		response.rawHeaders
+	);
+
+	let responseBody: BodyType = response.body;
+	if (response.body && !isRedirect(response)) {
+		responseBody = await rewriteBody(handler, request, parsed, response);
+		normalizeContentType(parsed, responseHeaders);
+		responseHeaders.set(REWRITTEN_HEADER, "1");
+	}
+
+	return {
+		body: responseBody,
+		headers: responseHeaders,
+		status: response.status,
+		statusText: response.statusText,
+	};
 }
 
 export async function doNetworkFetch(
@@ -299,25 +367,46 @@ async function handleCookies(
 	handler: ScramjetFetchHandler,
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed,
-	rawHeaders: RawHeaders
+	rawHeaders: RawHeaders,
+	status: number
 ) {
-	const cookies = [];
+	const cookies: string[] = [];
 
 	for (const [key, value] of rawHeaders) {
 		if (key.toLowerCase() !== "set-cookie") continue;
 
-		handler.context.cookieJar.setCookies(value, parsed.url);
-		cookies.push({
-			url: parsed.url,
-			cookie: value,
-		});
+		cookies.push(value);
 	}
 
 	if (cookies.length === 0) {
 		return;
 	}
 
-	await handler.sendSetCookie(cookies, {
+	if (handler.context.cookieJar.setResponseCookies) {
+		await handler.context.cookieJar.setResponseCookies({
+			url: parsed.url,
+			cookies,
+			status,
+			method: request.method,
+			destination: parsed.destination,
+			mode: request.mode,
+			cache: request.cache,
+			rawReferrer: request.rawReferrer,
+			referrer: request.referrer,
+			rawClientUrl: request.rawClientUrl,
+			clientId: request.clientId,
+			crossSiteRedirect: parsed.crossSiteRedirect,
+		});
+	} else {
+		for (const cookie of cookies) {
+			await handler.context.cookieJar.setCookies(cookie, parsed.url, false);
+		}
+	}
+
+	await handler.sendSetCookie(cookies.map((cookie) => ({
+		url: parsed.url,
+		cookie,
+	})), {
 		destination: parsed.destination,
 	});
 }

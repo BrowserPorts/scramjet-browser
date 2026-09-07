@@ -6,6 +6,7 @@ import { defaultConfigDev } from "@mercuryworkshop/scramjet";
 import { Controller } from "@mercuryworkshop/scramjet-controller";
 import { HttpCachePlugin } from "@mercuryworkshop/scramjet-utils";
 import { demoSettingsStore } from "./store";
+import { installDemoWebMcp } from "./webmcp";
 
 let app = document.getElementById("app")!;
 
@@ -37,7 +38,7 @@ async function waitForControllerOrReady(timeoutMs = 10000): Promise<void> {
 		} as any);
 	});
 	const timeout = new Promise<void>((resolve) =>
-		setTimeout(resolve, timeoutMs)
+		setTimeout(resolve, timeoutMs),
 	);
 
 	// Wait for whichever happens first; on timeout we continue to avoid blocking the UI.
@@ -96,6 +97,7 @@ async function init() {
 		controller = new Controller({
 			serviceworker: readySw,
 			transport: getTransport(),
+			storagePartitionKey: "demo:default",
 			scramjetConfig: defaultConfigDev,
 		});
 		await controller.wait();
@@ -121,13 +123,15 @@ async function mount() {
 		let err = e as any;
 		app.replaceWith(
 			document.createTextNode(
-				`Error mounting: ${"message" in err ? err.message : err}`
-			)
+				`Error mounting: ${"message" in err ? err.message : err}`,
+			),
 		);
 		console.error(err);
 		throw e;
 	}
 }
 
-init().then(() => mount());
+init()
+	.then(() => mount())
+	.then(() => installDemoWebMcp());
 export { controller, cachePlugin };

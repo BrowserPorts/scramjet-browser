@@ -3,7 +3,7 @@ import type { ScramjetFlags } from "@mercuryworkshop/scramjet";
 import { defaultConfigDev } from "@mercuryworkshop/scramjet";
 import { cachePlugin, controller } from "..";
 
-const flagStore = createStore<ScramjetFlags>(
+export const flagStore = createStore<ScramjetFlags>(
 	{
 		...defaultConfigDev.flags,
 	},
@@ -15,7 +15,7 @@ const flagStore = createStore<ScramjetFlags>(
 );
 
 // Flag descriptions for better UX
-const flagDescriptions: Record<keyof ScramjetFlags, string> = {
+export const flagDescriptions: Record<keyof ScramjetFlags, string> = {
 	syncxhr: "Enable synchronous XMLHttpRequest support",
 	disableComputedWrap: "Skip deep js interception for better runtime speed",
 	cleanErrors: "prevent sites from noticing scramjet stack frames",

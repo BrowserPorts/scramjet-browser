@@ -1,34 +1,35 @@
-import { ElementType, Parser } from "htmlparser2";
-import { ChildNode, DomHandler, Element, Comment } from "domhandler";
-import render from "dom-serializer";
-import { URLMeta, rewriteUrl } from "@rewriters/url";
+import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
 import { rewriteJs } from "@rewriters/js";
-import { ScramjetContext } from "@/shared";
+import { rewriteUrl, type URLMeta } from "@rewriters/url";
+import render from "dom-serializer";
+import { type ChildNode, Comment, DomHandler, Element } from "domhandler";
+import { ElementType, Parser } from "htmlparser2";
+import type { TrackedHistoryState } from "@/fetch";
+import type { ScramjetContext } from "@/shared";
 import { htmlRules } from "@/shared/htmlRules";
-import { parseDeclarativeRefresh } from "@/shared/refresh";
-import { bytesToBase64 } from "@/shared/util";
-import { Tap } from "@/Tap";
-import { RawHeaders } from "@mercuryworkshop/proxy-transports";
-import { TrackedHistoryState } from "@/fetch";
-import {
-	Performance_now,
-	atob,
-	Object_entries,
-	JSON_parse,
-	JSON_stringify,
-	TextEncoder_encode,
-	Array_from,
-	String_fromCodePoint,
-	btoa,
-	_URL,
-} from "@/shared/snapshot";
-import { flagEnabled } from "..";
 import {
 	getScriptBlockTypeString,
 	isModuleScriptType,
 	isScriptType,
 } from "@/shared/mime";
+import { providers } from "@/shared/providers";
+import { parseDeclarativeRefresh } from "@/shared/refresh";
+import {
+	_URL,
+	Array_from,
+	atob,
+	btoa,
+	JSON_parse,
+	JSON_stringify,
+	Object_entries,
+	Performance_now,
+	String_fromCodePoint,
+	TextEncoder_encode,
+} from "@/shared/snapshot";
+import { bytesToBase64 } from "@/shared/util";
+import { Tap } from "@/Tap";
+import { flagEnabled } from "..";
 
 export type ForeignContext = "svg" | "math" | "html";
 
@@ -43,6 +44,12 @@ export type HtmlContext = {
 	apisource?: string;
 	// response headers for worker originating documents
 	headers?: RawHeaders;
+	// service-worker navigation identity used by browser-process frame precommit
+	clientId?: string;
+	sourceClientId?: string;
+	resultingClientId?: string;
+	documentDestination?: "document" | "iframe";
+	parentFrameName?: string;
 	foreignContext?: ForeignContext;
 	history?: TrackedHistoryState[];
 };
@@ -74,7 +81,7 @@ export class IncrementalHtmlRewriter {
 	constructor(
 		private readonly context: ScramjetContext,
 		private readonly meta: URLMeta,
-		private readonly htmlcontext: HtmlContext
+		private readonly htmlcontext: HtmlContext,
 	) {
 		this.handler = new DomHandler(undefined, undefined, (element) => {
 			this.completedElements.add(element);
@@ -143,7 +150,7 @@ export class IncrementalHtmlRewriter {
 				node,
 				this.context,
 				this.meta,
-				this.htmlcontext
+				this.htmlcontext,
 			);
 			this.rewrittenNodes.set(node, rewritten);
 		}
@@ -156,7 +163,7 @@ function rewriteHtmlInner(
 	html: string | ChildNode,
 	context: ScramjetContext,
 	meta: URLMeta,
-	htmlcontext: HtmlContext
+	htmlcontext: HtmlContext,
 ) {
 	if (typeof html !== "string") {
 		html = serializeHtmlNode(html);
@@ -177,7 +184,7 @@ function rewriteHtmlInner(
 			htmlcontext,
 			origHtml: html,
 		},
-		undefined
+		undefined,
 	);
 	traverseParsedHtml(handler.root, context, meta);
 
@@ -243,12 +250,12 @@ function rewriteHtmlInner(
 			meta,
 			handler,
 			htmlcontext,
-			script
+			script,
 		);
 
 		if (isQuirky) {
 			dbg.warn(
-				`detected quirky document structure parsing @ ${meta.origin.href}!`
+				`detected quirky document structure parsing @ ${meta.origin.href}!`,
 			);
 			// there's weird stuff going on with the document that could result in page scripts being loaded before our inject scripts
 			// so inject them at position 0
@@ -272,7 +279,7 @@ function rewriteHtmlInner(
 			htmlcontext,
 			origHtml: html,
 		},
-		props
+		props,
 	);
 
 	if (props.setRawHtml !== undefined) {
@@ -286,7 +293,7 @@ export function rewriteHtml(
 	html: string,
 	context: ScramjetContext,
 	meta: URLMeta,
-	htmlcontext: HtmlContext
+	htmlcontext: HtmlContext,
 ) {
 	const before = Performance_now();
 	const ret = rewriteHtmlInner(html, context, meta, htmlcontext);
@@ -346,7 +353,7 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 function traverseParsedHtml(
 	node: any,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
 ) {
 	if (node.name === "base" && node.attribs.href !== undefined) {
 		meta.base = new _URL(node.attribs.href, meta.origin);
@@ -379,7 +386,7 @@ function traverseParsedHtml(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
-					meta
+					meta,
 				);
 			}
 		}
@@ -420,13 +427,13 @@ function traverseParsedHtml(
 			"type" in node.attribs ? node.attribs.type : undefined,
 			"language" in node.attribs ? node.attribs.language : undefined,
 			"type" in node.attribs,
-			"language" in node.attribs
+			"language" in node.attribs,
 		);
 		if (isScriptType(scriptBlockType)) {
 			let js = node.children[0].data;
 			const module = isModuleScriptType(scriptBlockType);
 			node.attribs["scramjet-attr-script-source-src"] = bytesToBase64(
-				TextEncoder_encode(js)
+				TextEncoder_encode(js),
 			);
 			const htmlcomment = /<!--[\s\S]*?-->/g;
 			js = js.replace(htmlcomment, "");
@@ -435,7 +442,7 @@ function traverseParsedHtml(
 				"(inline script element)",
 				context,
 				meta,
-				module
+				module,
 			);
 		}
 	}
@@ -463,7 +470,7 @@ function traverseParsedHtml(
 			node.childNodes[childNode] = traverseParsedHtml(
 				node.childNodes[childNode],
 				context,
-				meta
+				meta,
 			);
 		}
 	}
@@ -474,23 +481,11 @@ function traverseParsedHtml(
 export function rewriteSrcset(
 	srcset: string,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
 ) {
-	const sources = srcset.split(/ .*,/).map((src) => src.trim());
-	const rewrittenSources = sources.map((source) => {
-		// Split into URLs and descriptors (if any)
-		// e.g. url0, url1 1.5x, url2 2x
-		const [url, ...descriptors] = source.split(/\s+/);
-
-		// Rewrite the URLs and keep the descriptors (if any)
-		const rewrittenUrl = rewriteUrl(url.trim(), context, meta);
-
-		return descriptors.length > 0
-			? `${rewrittenUrl} ${descriptors.join(" ")}`
-			: rewrittenUrl;
-	});
-
-	return rewrittenSources.join(", ");
+	return providers().rewriteSrcsetUrls(srcset, (url) =>
+		rewriteUrl(url, context, meta),
+	);
 }
 
 // function base64ToBytes(base64) {

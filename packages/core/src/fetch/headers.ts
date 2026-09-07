@@ -5,6 +5,7 @@ import {
 	unrewriteUrl,
 	URLMeta,
 } from "@/shared";
+import { providers } from "@/shared/providers";
 import {
 	ScramjetFetchHandler,
 	ScramjetFetchParsed,
@@ -53,9 +54,9 @@ function rewriteLinkHeader(
 	context: ScramjetContext,
 	meta: URLMeta
 ) {
-	return link.replace(/<([^>]+)>/gi, (_match, p1) => {
-		return `<${rewriteUrl(p1, context, meta)}>`;
-	});
+	return providers().rewriteLinkHeaderUrls(link, (url) =>
+		rewriteUrl(url, context, meta)
+	);
 }
 
 export async function rewriteResponseHeaders(
@@ -101,6 +102,7 @@ export async function rewriteResponseHeaders(
 			"iframe",
 			"worker",
 			"sharedworker",
+			"serviceworker",
 			"style",
 			"script",
 		].includes(parsed.destination)
@@ -116,11 +118,11 @@ export async function rewriteResponseHeaders(
 	return headers;
 }
 
-export function rewriteRequestHeaders(
+export async function rewriteRequestHeaders(
 	request: ScramjetFetchRequest,
 	handler: ScramjetFetchHandler,
 	parsed: ScramjetFetchParsed
-): ScramjetHeaders {
+): Promise<ScramjetHeaders> {
 	const headers = request.initialHeaders.clone();
 
 	// avoid leaking the scramjet referer
@@ -152,11 +154,27 @@ export function rewriteRequestHeaders(
 	}
 
 	const sameSiteContext = computeSameSiteContext(request, parsed, originUrl);
-	const cookies = handler.context.cookieJar.getCookies(
-		parsed.url,
-		false,
-		sameSiteContext
-	);
+	const cookieContext = {
+		url: parsed.url,
+		fromJs: false,
+		sameSiteContext,
+		method: request.method,
+		destination: parsed.destination,
+		mode: request.mode,
+		cache: request.cache,
+		rawReferrer: request.rawReferrer,
+		referrer: request.referrer,
+		rawClientUrl: request.rawClientUrl,
+		clientId: request.clientId,
+		crossSiteRedirect: parsed.crossSiteRedirect,
+	};
+	const cookies = handler.context.cookieJar.getRequestCookieHeader
+		? await handler.context.cookieJar.getRequestCookieHeader(cookieContext)
+		: handler.context.cookieJar.getCookies(
+				parsed.url,
+				false,
+				sameSiteContext
+			);
 
 	if (cookies.length) {
 		headers.set("Cookie", cookies);

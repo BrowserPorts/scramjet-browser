@@ -13,9 +13,9 @@ import { rewriteJs } from "@rewriters/js";
 import { unrewriteUrl } from "@rewriters/url";
 import { SCRAMJETCLIENT } from "@/symbols";
 import { ScramjetClient } from "@client/index";
+import { providers } from "@/shared/providers";
 import {
 	getScriptBlockTypeString,
-	isHtmlMimeType,
 	isModuleScriptType,
 	isScriptType,
 } from "@/shared/mime";
@@ -528,6 +528,25 @@ export default function (client: ScramjetClient, self: typeof window) {
 		}
 		return text;
 	};
+	const rewritesInsertedText = (element: Node) =>
+		client.box.instanceof(element, "HTMLStyleElement") ||
+		client.box.instanceof(element, "HTMLScriptElement");
+	const rewriteInsertedTextNode = (parent: Node, node: Node) => {
+		if (!rewritesInsertedText(parent)) return;
+		if (client.box.instanceof(node, "Text")) {
+			const text = client.descriptors.get("Node.prototype.textContent", node);
+			client.descriptors.set(
+				"Node.prototype.textContent",
+				node,
+				rewriteTextForElement(parent as Element, String(text))
+			);
+			return;
+		}
+		if (!client.box.instanceof(node, "DocumentFragment")) return;
+		for (const child of Array.from(node.childNodes)) {
+			rewriteInsertedTextNode(parent, child);
+		}
+	};
 
 	client.Trap(
 		["Node.prototype.textContent", "HTMLScriptElement.prototype.textContent"],
@@ -607,40 +626,39 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 	});
 
-	// TODO: this needs to be done for all insert methods
-	// client.Proxy(["Element.prototype.appendChild", "Element.prototype.append"], {
-	// 	apply(ctx) {
-	// 		if (ctx.this instanceof self.HTMLStyleElement) {
-	// 			for (const node of ctx.args) {
-	// 				if (node instanceof self.Text) {
-	// 					node.data = rewriteCss(
-	// 						ctx.args[0].data,
-	// 						client.context,
-	// 						client.meta
-	// 					);
-	// 				}
-	// 			}
-	// 		} else if (ctx.this instanceof self.HTMLScriptElement) {
-	// 			for (const node of ctx.args) {
-	// 				if (node instanceof self.Text) {
-	// 					const newval: string = rewriteJs(
-	// 						node.data,
-	// 						"(anonymous script element)",
-	// 						client.context,
-	// 						client.meta
-	// 					) as string;
-	// 					client.natives.call(
-	// 						"Element.prototype.setAttribute",
-	// 						ctx.this,
-	// 						"scramjet-attr-script-source-src",
-	// 						bytesToBase64(encoder.encode(newval))
-	// 					);
-	// 					node.data = newval;
-	// 				}
-	// 			}
-	// 		}
-	// 	},
-	// });
+	client.Proxy(
+		[
+			"Node.prototype.appendChild",
+			"Node.prototype.insertBefore",
+			"Node.prototype.replaceChild",
+		],
+		{
+			apply(ctx) {
+				if (ctx.args[0]) rewriteInsertedTextNode(ctx.this, ctx.args[0]);
+			},
+		}
+	);
+
+	client.Proxy(
+		[
+			"Element.prototype.append",
+			"Element.prototype.prepend",
+			"Element.prototype.replaceChildren",
+		],
+		{
+			apply(ctx) {
+				if (!rewritesInsertedText(ctx.this)) return;
+				for (let i = 0; i < ctx.args.length; i++) {
+					const value = ctx.args[i];
+					if (typeof value === "string") {
+						ctx.args[i] = rewriteTextForElement(ctx.this, value);
+					} else if (value) {
+						rewriteInsertedTextNode(ctx.this, value);
+					}
+				}
+			},
+		}
+	);
 
 	client.Proxy("Audio", {
 		construct(ctx) {
@@ -779,7 +797,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 			const html = String(ctx.args[0]);
 			const mime = String(ctx.args[1]);
 			// TODO: what do we do if it's xml/svg?
-			if (!isHtmlMimeType(mime)) return;
+			if (!providers().contentTypeIsHtml(mime)) return;
 			ctx.args[0] = rewriteHtml(html, client.context, client.meta, {
 				loadScripts: false,
 				inline: true,

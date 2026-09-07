@@ -1,6 +1,7 @@
 import { ScramjetContext } from "@/shared";
 import { rewriteJs } from "@rewriters/js";
 import { QP } from "@/fetch/parse";
+import { ScramjetDestination } from "@/types";
 
 import {
 	TextEncoder_encode,
@@ -26,7 +27,8 @@ export type RewriteUrlOptions = {
 	isIframe?: string;
 	mode?: string;
 	credentials?: string;
-	destination?: RequestDestination;
+	destination?: ScramjetDestination;
+	swScope?: string;
 };
 
 export type URLMeta = {
@@ -189,11 +191,15 @@ export function rewriteUrl(
 			paramsInit.set(QP.credentials, options.credentials);
 		if (options?.destination)
 			paramsInit.set(QP.destination, options.destination);
+		if (options?.swScope) paramsInit.set(QP.swScope, options.swScope);
 
 		// specific tracking for sec-fetch-site
 		// don't send for the top level controller calling it in go()
 		if (meta.origin.origin !== context.prefix.origin) {
-			paramsInit.set(QP.initiatorOrigin, meta.origin.origin);
+			paramsInit.set(
+				QP.initiatorOrigin,
+				options?.isModule ? realUrl.origin : meta.origin.origin
+			);
 		}
 
 		let paramstring = "";

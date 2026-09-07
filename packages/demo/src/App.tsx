@@ -1,112 +1,82 @@
-import { css, createDelegate, type Component } from "dreamland/core";
-import type { Frame } from "@mercuryworkshop/scramjet-controller";
+import { css, type Component } from "dreamland/core";
 import FlagEditor from "./components/FlagEditor";
+import WebMcpStatus from "./components/WebMcpStatus";
 import BrowserView from "./pages/BrowserView";
 import RequestViewer from "./pages/RequestViewer";
 import PlaygroundView from "./pages/Playground";
 import SettingsView from "./pages/SettingsPage";
 import { Omnibox } from "./pages/BrowserView";
 import { requestsState } from "./pages/RequestViewer";
+import { demoUiStore, type DemoTab } from "./store";
 
-const App: Component<
-	{},
-	{},
-	{
-		activeTab: "browser" | "requests" | "playground" | "settings";
-	}
-> = function (cx) {
-	this.activeTab ??= "browser";
+const App: Component = function () {
+	const tabClass = (id: DemoTab) =>
+		use(demoUiStore.activeTab).map(
+			(tab) => `tab-button ${tab === id ? "active" : ""}`,
+		);
+	const panelClass = (id: DemoTab, extra: string) =>
+		use(demoUiStore.activeTab).map(
+			(tab) => `tab-panel ${extra} ${tab === id ? "active" : ""}`,
+		);
+	const isTab = (id: DemoTab) =>
+		use(demoUiStore.activeTab).map((tab) => tab === id);
+
 	return (
 		<div>
 			<div class="top-bar">
 				<div class="tab-bar">
 					<button
-						class={use(this.activeTab).map(
-							(tab) => `tab-button ${tab === "browser" ? "active" : ""}`
-						)}
+						class={tabClass("browser")}
 						on:click={() => {
-							this.activeTab = "browser";
+							demoUiStore.activeTab = "browser";
 						}}
 					>
 						Browser
 					</button>
 					<button
-						class={use(this.activeTab).map(
-							(tab) => `tab-button ${tab === "requests" ? "active" : ""}`
-						)}
+						class={tabClass("requests")}
 						on:click={() => {
-							this.activeTab = "requests";
+							demoUiStore.activeTab = "requests";
 						}}
 					>
 						Requests{" "}
 						{use(requestsState.requests).map((requests) =>
-							requests.length ? `(${requests.length})` : ""
+							requests.length ? `(${requests.length})` : "",
 						)}
 					</button>
 					<button
-						class={use(this.activeTab).map(
-							(tab) => `tab-button ${tab === "playground" ? "active" : ""}`
-						)}
+						class={tabClass("playground")}
 						on:click={() => {
-							this.activeTab = "playground";
+							demoUiStore.activeTab = "playground";
 						}}
 					>
 						Playground
 					</button>
 					<button
-						class={use(this.activeTab).map(
-							(tab) => `tab-button ${tab === "settings" ? "active" : ""}`
-						)}
+						class={tabClass("settings")}
 						on:click={() => {
-							this.activeTab = "settings";
+							demoUiStore.activeTab = "settings";
 						}}
 					>
 						Settings
 					</button>
-					{use(this.activeTab)
-						.map((tab) => tab === "browser")
-						.andThen(<Omnibox />)}
+					{isTab("browser").andThen(<Omnibox />)}
 				</div>
 				<div class="top-actions">
+					<WebMcpStatus />
 					<FlagEditor inline={true} />
 				</div>
 			</div>
-			<div
-				class={use(this.activeTab).map(
-					(tab) =>
-						`tab-panel browser-panel ${tab === "browser" ? "active" : ""}`
-				)}
-			>
-				<BrowserView
-					active={use(this.activeTab).map((tab) => tab === "browser")}
-				/>
+			<div class={panelClass("browser", "browser-panel")}>
+				<BrowserView active={isTab("browser")} />
 			</div>
-			<div
-				class={use(this.activeTab).map(
-					(tab) =>
-						`tab-panel requests-panel ${tab === "requests" ? "active" : ""}`
-				)}
-			>
-				<RequestViewer
-					active={use(this.activeTab).map((tab) => tab === "requests")}
-				/>
+			<div class={panelClass("requests", "requests-panel")}>
+				<RequestViewer active={isTab("requests")} />
 			</div>
-			<div
-				class={use(this.activeTab).map(
-					(tab) =>
-						`tab-panel playground-panel ${tab === "playground" ? "active" : ""}`
-				)}
-			>
-				<PlaygroundView
-					active={use(this.activeTab).map((tab) => tab === "playground")}
-				/>
+			<div class={panelClass("playground", "playground-panel")}>
+				<PlaygroundView active={isTab("playground")} />
 			</div>
-			<div
-				class={use(this.activeTab).map(
-					(tab) =>
-						`tab-panel settings-tab ${tab === "settings" ? "active" : ""}`
-				)}
-			>
+			<div class={panelClass("settings", "settings-tab")}>
 				<SettingsView />
 			</div>
 		</div>
@@ -188,6 +158,7 @@ App.style = css`
 	.top-actions {
 		display: flex;
 		align-items: center;
+		gap: 0.45em;
 		margin-left: auto;
 		padding: 0 0.35em;
 		min-height: 28px;

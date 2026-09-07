@@ -1,6 +1,7 @@
 import { ScramjetClient } from "@client/index";
 import { unrewriteLinkHeader } from "./xmlhttprequest";
 import { String } from "@/shared/snapshot";
+import { REWRITTEN_HEADER } from "@/fetch/util";
 
 /**
  * Capture the page's intended `init.mode` / `init.credentials` and forward
@@ -54,7 +55,10 @@ export default function (client: ScramjetClient) {
 			const newHeaders = new Headers();
 
 			for (const [key, value] of headers.entries()) {
-				if (key.toLowerCase() === "link") {
+				const lower = key.toLowerCase();
+				if (lower === REWRITTEN_HEADER) {
+					continue;
+				} else if (lower === "link") {
 					newHeaders.append(key, unrewriteLinkHeader(value, client.context));
 				} else {
 					newHeaders.append(key, value);

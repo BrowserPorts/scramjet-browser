@@ -26,13 +26,18 @@ export const Object_getOwnPropertySymbols =
 export const Object_defineProperty = globalThis.Object.defineProperty;
 export const Object_defineProperties = globalThis.Object.defineProperties;
 export const Object_setPrototypeOf = globalThis.Object.setPrototypeOf;
+export const Object_getPrototypeOf = globalThis.Object.getPrototypeOf;
 
 export const Reflect_get = globalThis.Reflect.get;
 export const Reflect_set = globalThis.Reflect.set;
+export const Reflect_getOwnPropertyDescriptor =
+	globalThis.Reflect.getOwnPropertyDescriptor;
+export const Reflect_defineProperty = globalThis.Reflect.defineProperty;
 export const Reflect_has = globalThis.Reflect.has;
 export const Reflect_ownKeys = globalThis.Reflect.ownKeys;
 export const Reflect_construct = globalThis.Reflect.construct;
 export const Reflect_apply = globalThis.Reflect.apply;
+export const Reflect_deleteProperty = globalThis.Reflect.deleteProperty;
 
 export const Array_from = globalThis.Array.from;
 export const Array_isArray = globalThis.Array.isArray;
@@ -75,6 +80,8 @@ export const Promise_allSettled = globalThis.Promise.allSettled.bind(
 	globalThis.Promise
 );
 export const Promise_any = globalThis.Promise.any.bind(globalThis.Promise);
+export const _Promise = makeWrap(globalThis.Promise);
+export type _Promise<T> = Wrapped<Promise<T>>;
 
 export const Symbol_for = globalThis.Symbol.for;
 
@@ -202,8 +209,12 @@ export const _WeakMap = makeWrap(globalThis.WeakMap);
 export type _WeakMap<K extends object, V extends object> = Wrapped<
 	WeakMap<K, V>
 >;
-export const _Uint8Array = makeWrap(globalThis.Uint8Array);
-export type _Uint8Array = Wrapped<Uint8Array>;
+// the overload set on Uint8ArrayConstructor doesn't survive the inference
+// WrappedConstructor does, so state the type instead of deriving it
+export const _Uint8Array = makeWrap(
+	globalThis.Uint8Array
+) as unknown as Uint8ArrayConstructor;
+export type _Uint8Array = Uint8Array;
 export const _TextDecoder = makeWrap(globalThis.TextDecoder);
 export type _TextDecoder = Wrapped<TextDecoder>;
 export const _TextEncoder = makeWrap(globalThis.TextEncoder);

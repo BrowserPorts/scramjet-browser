@@ -75,6 +75,7 @@
 				controller = new Controller({
 					serviceworker: sw,
 					transport,
+					storagePartitionKey: "runway:harness",
 				});
 				window.__runwayController = controller;
 
