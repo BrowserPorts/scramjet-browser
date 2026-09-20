@@ -146,12 +146,16 @@ records which materials exist, which are in git, and which have been checked.
   `packages/runway/build.mjs` copies that tracked file into the packaged asset as
   `dist/assets/libcurl/LICENSE.GPL-3.0`, beside the LGPL text, and fails the build
   if it is missing — so a packed Runway tarball carries both texts regardless of
-  what the built artifact happens to contain. **Not yet in the archive:** the
-  artifact currently built in `vendor/libcurl.js/dist` and the `source.tar.gz`
-  beside it were assembled before the text was retained, and the Runway build
-  copies that archive as one opaque file rather than updating it, so the
-  corresponding source inside it still lacks the text. Putting it there is a
-  packaging step only — the existing archive can be repackaged with the file added,
-  with no libcurl, mbedTLS or wrapper recompilation and no change to any shipped
-  `.js` or `.wasm` — see `vendor/libcurl.js/BUILD-RECIPE.md`. Retaining and
-  shipping the text records the materials; it is not a compliance certification.
+  what the built artifact happens to contain. The artifact itself is not in git, so
+  the text also has to reach the two places only packaging can put it: beside the
+  artifact as `dist/LICENSE.GPL-3.0`, and inside the corresponding source as
+  `source/LICENSE.GPL-3.0`. `vendor/libcurl.js/BUILD-RECIPE.md` carries the exact
+  `tar` commands for both, including for a `dist/` packaged before the text was
+  retained. They need no libcurl, Mbed-TLS or wrapper recompilation and leave
+  `index.js`, `index.mjs` and the embedded WebAssembly untouched; every file already
+  in the archive keeps its exact content, mode and position. The archive's own bytes
+  do change — a repacked gzip stream and the `source/` directory entry's mtime
+  differ — so member lists and per-file hashes are what to compare, not archive
+  hashes. That section also records where this has been applied and where it has
+  not. Retaining and shipping the text records the materials; it is not a compliance
+  certification.

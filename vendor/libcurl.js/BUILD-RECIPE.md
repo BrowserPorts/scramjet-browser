@@ -239,23 +239,139 @@ Two destinations, and only one of them is automatic:
   `licenses/` holds the native components'). It reads the tracked file, so this
   does not depend on the built artifact carrying one, and the build fails if that
   file is absent.
-- **The corresponding source archive — a packaging step, not done here.**
-  `source.tar.gz` is assembled when the artifact is packaged and is copied around
-  as one opaque file afterwards; nothing in the Runway build opens it. Add this
-  text at the archive's root as `source/LICENSE.GPL-3.0`, beside `BUILD.md`, and
-  record it in `SOURCES.md`.
+- **The artifact and its source archive — packaging, done with the commands
+  below.** `dist/` is not in git, so each build produces its own; a `dist/` packaged
+  before this text was retained does not contain it. The Runway build does not fix
+  that: it copies `source.tar.gz` as one opaque file and never opens it.
 
-  **This does not require compiling anything.** The existing archive can be
-  unpacked, given the licence file, and repackaged as-is: no emsdk, no libcurl or
-  mbedTLS rebuild, no wrapper rebuild, and no change to any `.js` or `.wasm`
-  output. Only the archive's own member list changes.
+A fresh build should place the text in `dist/` directly. For a `dist/` that already
+exists, the same result is reached without recompiling anything — no emsdk, no
+libcurl, Mbed-TLS or wrapper rebuild, and no change to `index.js`, `index.mjs` or
+the embedded WebAssembly.
 
-**Truthfully, right now:** the artifact already built in `dist/` does not contain
-`LICENSE.GPL-3.0`, and neither does the `source.tar.gz` beside it — both were
-assembled before the text was retained. The packaged Runway asset does contain it,
-because the build copies the tracked file. The Runway build does not update the
-archive, and nothing here edits a built artifact, so the archive stays without it
-until someone repackages it.
+What is preserved is the **content** of every file already in the archive, byte for
+byte, along with each member's mode and order. What changes is the member list, the
+`source/` directory entry's mtime, and — because gzip is not reproducible here — the
+archive bytes as a whole.
+
+Run it as one `bash` block. Any failure in validation, extraction or archive
+creation leaves the existing `dist/source.tar.gz` exactly as it was: the new archive
+is built at a staging path of our own inside `dist/` and only replaces the original
+by rename, as the last step that can fail. The two steps after that rename — copying
+the adjacent `dist/LICENSE.GPL-3.0` and editing `dist/SOURCES.md` — are separate and
+are not covered by it, so if one of them fails the archive is already updated and
+the other has to be finished by hand. This is a single-operator packaging step, not
+a concurrent-safe transaction:
+
+```sh
+bash -euo pipefail -c '
+cd vendor/libcurl.js                       # fail closed if run from elsewhere
+root=$PWD
+archive=$root/dist/source.tar.gz
+licence=$root/LICENSE.GPL-3.0
+staged=$root/dist/source.tar.gz.new        # ours, adjacent, never a live path
+test -f "$archive" && test -f "$licence"
+
+# Refuse any leftover at the staging path, including a dangling symlink, which
+# test -e does not see. Checked before the trap is armed, so something we did not
+# create is never removed.
+if test -e "$staged" || test -L "$staged"; then
+	echo "refusing: $staged already exists; inspect and remove it yourself" >&2
+	exit 1
+fi
+
+work=$(mktemp -d)
+trap "rm -rf -- \"$work\"; rm -f -- \"$staged\"" EXIT   # only these two
+
+# Listings run as their own commands and are saved first, so a tar failure aborts
+# here. Never put tar in the condition of an if: its exit status is then ignored.
+tar -tzf "$archive" > "$work/names.txt"
+tar -tvzf "$archive" > "$work/types.txt"
+
+# Names: one source/ root, nothing else, and a conservative character set. A
+# line-oriented listing cannot represent a newline in a name, so anything outside
+# this set is rejected rather than interpreted.
+#
+# Every search below is written `|| test "$?" -eq 1`, never `|| true`: grep exits 1
+# for "no match" but 2 for a read error, and only 1 may be tolerated.
+LC_ALL=C grep -vE "^source/([A-Za-z0-9._@+-]+/)*[A-Za-z0-9._@+-]*$" \
+	"$work/names.txt" > "$work/bad-names.txt" || test "$?" -eq 1
+LC_ALL=C grep -E "(^|/)\.\.(/|$)" "$work/names.txt" \
+	>> "$work/bad-names.txt" || test "$?" -eq 1
+if test -s "$work/bad-names.txt"; then
+	echo "refusing: unexpected member name" >&2; cat "$work/bad-names.txt" >&2; exit 1
+fi
+
+# Types: regular files and directories only, from the saved listing.
+LC_ALL=C grep -vE "^[-d]" "$work/types.txt" > "$work/bad-types.txt" || test "$?" -eq 1
+if test -s "$work/bad-types.txt"; then
+	echo "refusing: link, device or other special entry" >&2
+	cat "$work/bad-types.txt" >&2; exit 1
+fi
+
+# Expected layout: exactly one anchor to insert beside, and not already licensed.
+# Each count is its own checked assignment, so a grep error cannot read as a count.
+anchors=$(LC_ALL=C grep -cx "source/BUILD\.md" "$work/names.txt") || test "$?" -eq 1
+licences=$(LC_ALL=C grep -cx "source/LICENSE\.GPL-3\.0" "$work/names.txt") \
+	|| test "$?" -eq 1
+test "$anchors" -eq 1
+if test "$licences" -ne 0; then
+	echo "archive already carries source/LICENSE.GPL-3.0; nothing to do" >&2; exit 1
+fi
+
+tar -xzpf "$archive" -C "$work"
+install -m 644 "$licence" "$work/source/LICENSE.GPL-3.0"
+cmp -s "$licence" "$work/source/LICENSE.GPL-3.0"
+
+# Original order, new name beside BUILD.md, inserted exactly once.
+awk "{ print } \$0 == \"source/BUILD.md\" { print \"source/LICENSE.GPL-3.0\" }" \
+	"$work/names.txt" > "$work/order.txt"
+test "$(wc -l < "$work/order.txt")" -eq "$(( $(wc -l < "$work/names.txt") + 1 ))"
+
+( cd "$work" && tar -czf "$staged" --no-recursion \
+	--uid 0 --gid 0 --uname "" --gname "" -T order.txt )
+
+# Validate the staged archive before it can replace anything.
+tar -tzf "$staged" > "$work/new-names.txt"
+diff "$work/order.txt" "$work/new-names.txt"
+mkdir "$work/check"
+tar -xzpf "$staged" -C "$work/check" source/LICENSE.GPL-3.0
+cmp -s "$licence" "$work/check/source/LICENSE.GPL-3.0"
+
+mv -f -- "$staged" "$archive"               # atomic rename, last step
+cp -- "$licence" "$root/dist/LICENSE.GPL-3.0"
+'
+```
+
+Then add `LICENSE.GPL-3.0` to the licence table in `dist/SOURCES.md` and list
+`source/LICENSE.GPL-3.0` among its corresponding-source contents.
+
+Flags are bsdtar 3.5.3 (libarchive), the `tar` on macOS; `--uid`/`--gid` keep the
+uid/gid 0 the existing members carry. GNU tar spells that `--owner=0 --group=0
+--numeric-owner`, which has not been exercised here. `touch -r` the `source/`
+directory from an untouched extraction before packing if you want that entry's mtime
+to match the previous archive too.
+
+The archive is **not** reproducible byte for byte: this gzip stream sets no `FNAME`
+flag but does carry a non-zero `MTIME` in its header, so repacking identical
+contents still yields a different `source.tar.gz` hash. Compare member lists and
+per-file hashes, not archive hashes.
+
+### Where this has and has not been applied
+
+The `dist/` artifact used for development here has been updated by the commands
+above: its `source.tar.gz` carries `source/LICENSE.GPL-3.0`, the text sits beside it
+as `dist/LICENSE.GPL-3.0`, and `dist/SOURCES.md` records both. `index.js`,
+`index.mjs`, `index.d.ts` and the eight texts in `licenses/` were not touched.
+
+Not done, and not to be assumed:
+
+- `packages/runway/dist` was **not** rebuilt afterwards, so a Runway asset built
+  before this still carries the pre-licence `source.tar.gz`. Re-run the Runway build
+  to refresh it.
+- No `pnpm pack`, `npm pack` or installed-consumer check has been run against the
+  licence-bearing archive. Earlier packaging and `check-package` evidence in this
+  repository refers to the **pre-licence** artifact and says nothing about this one.
 
 ## Status
 
