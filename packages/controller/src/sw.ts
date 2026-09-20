@@ -355,6 +355,36 @@ addEventListener("message", (e) => {
 	}
 });
 
+/*
+ * `Clear-Site-Data` is excluded when a guest response is handed to the browser.
+ *
+ * An ordinary response already loses it upstream, in core's `SEC_HEADERS` strip
+ * (`core/src/fetch/headers.ts`). But a reply can arrive here without having gone
+ * through that strip: the emulated service worker intercept branch, a response
+ * hook replacement, and the error hook's `setResponse` replacement each hand back
+ * headers of their own. This is the one boundary every guest reply shares, so the
+ * invariant is enforced here and holds no matter which header backend produced
+ * the reply.
+ *
+ * This is delivery-only, and deliberately not a policy: the serialized reply's
+ * own metadata is left as it was, and nothing here decides who may clear a
+ * guest's storage.
+ *
+ * The limit is worth stating plainly. This governs only the headers Scramjet
+ * itself hands to the browser on a synthetic response. It cannot undo a
+ * `Clear-Site-Data` delivered as a real physical HTTP header -- by then the
+ * browser may already have processed an eligible header, and nothing here can
+ * reach that.
+ */
+const DELIVERY_EXCLUDED_HEADERS = new Set(["clear-site-data"]);
+
+function deliverableHeaders(headers: RawHeaders): RawHeaders {
+	// a new array: the reply's own headers keep their contents
+	return headers.filter(
+		([name]) => !DELIVERY_EXCLUDED_HEADERS.has(name.toLowerCase()),
+	);
+}
+
 export function shouldRoute(event: FetchEvent): boolean {
 	const url = new URL(event.request.url);
 	if (url.origin !== location.origin) return false;
@@ -421,7 +451,7 @@ export async function route(event: FetchEvent): Promise<Response> {
 		return new Response(response.body, {
 			status: response.status,
 			statusText: response.statusText,
-			headers: response.headers,
+			headers: deliverableHeaders(response.headers),
 		});
 	} catch (e) {
 		console.error("Service Worker error:", e);
