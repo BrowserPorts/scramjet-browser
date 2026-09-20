@@ -36,7 +36,8 @@
 	"files": [
 		"dist",
 		"examples/plugins",
-		"expectations.json"
+		"expectations.json",
+		"CONSUMER_GUIDE.md"
 	],
 	"scripts": {
 		"build": "node build.mjs",
