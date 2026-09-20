@@ -2,9 +2,10 @@
 
 ## What this is
 
-The source for the **optional** libcurl transport, vendored so a scoped per-session
-CA trust option can be added. It is not part of the default SDK bundle and is not
-imported statically by any shipped package.
+The source for the **optional** libcurl transport, vendored so the transport can
+be built from maintained source with our fixes (`0002`, `0003`, `0004`) rather
+than consumed as a published binary. It is not part of the default SDK bundle and
+is not imported statically by any shipped package.
 
 ## Exact provenance
 
@@ -33,10 +34,17 @@ several exist in unrelated projects and were deliberately not copied.
 - scoped CA trust (historically patch `0001`) — **not vendored in this
   repository**, not applied, not built, and not used by any artifact here. The
   patch file is deliberately absent; only the description below is kept.
-- `patches/0002-null-body-304-and-header-callback-settlement.patch` — the 304
-  fix below. Applies to pristine `upstream/` on its own (`git apply -p1`),
-  independently of 0001.
-- `LICENSE` — upstream license text, verbatim.
+- `patches/0002-null-body-304-and-header-callback-settlement.patch` — the 304 and
+  settlement fix below. Applies to pristine `upstream/` on its own
+  (`git apply -p1`).
+- `patches/0003-head-requests-set-curlopt-nobody.patch` — the HEAD transfer fix
+  below; independent of the other two.
+- `patches/0004-head-responses-have-a-null-body.patch` — the HEAD null-body fix
+  below; applies on top of `0002`.
+- All three, in that order, are the patches applied to the built artifact, and
+  the only ones.
+- `LICENSE` — upstream license text, verbatim (LGPLv3, byte-identical to
+  `upstream/LICENSE`).
 
 ## Scoped per-session CA trust — historically patch 0001 (NOT vendored, NOT applied, NOT built)
 
@@ -126,6 +134,12 @@ and from its own `dist/assets/libcurl` once packed and installed. The
 `--libcurl-dist` override still works, and Runway no longer depends on the
 published `@mercuryworkshop/libcurl-transport` at all.
 
+`dist/` is a **build output and is gitignored** — it is not tracked here, so a
+fresh clone has this source, the patches and the recipe but no artifact, and the
+Runway build fails until one is produced or supplied. The licence texts,
+`SOURCES.md`, `BUILD.md` and `source.tar.gz` that accompany the artifact live in
+that same untracked directory.
+
 This is a local default, not a release. Nothing has been published, and other
 packages in this repository that depend on the registry build (bootstrap, demo)
 are untouched and still get the unfixed 0.7.4 behaviour.
@@ -133,8 +147,13 @@ are untouched and still get the unfixed 0.7.4 behaviour.
 An earlier packet produced the same fixes by transforming the published bundle
 instead of building it. That utility has been removed now that the source build
 exists; its output and logs are retained outside the repository as history.
+
 ## Rebuild
 
-`BUILD-RECIPE.md` holds the executed commands, pinned inputs and toolchain. The
-transport installed in `node_modules` is still the unpatched published 0.7.4 —
-the source-built artifact is used only via `--libcurl-dist`.
+`BUILD-RECIPE.md` holds the executed commands, pinned inputs and toolchain.
+
+The copy installed in `node_modules` is still the unpatched published 0.7.4, and
+the packages that depend on the registry build keep using it. Runway itself does
+not: it resolves the source-built artifact from `dist/` (or from
+`dist/assets/libcurl` when installed) by default, and `--libcurl-dist` only
+redirects which artifact it uses.

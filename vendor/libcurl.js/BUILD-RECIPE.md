@@ -121,14 +121,15 @@ CA bundle, **pinned before the build rather than fetched during it**:
 `tools/gen_cert.py` was run against this exact file as a check: it produces a
 631699-byte `cacert.h`.
 
-These dependency licences must be added to `THIRD_PARTY.md` before any built
-artifact is used beyond local verification.
+These dependency licences and revisions **are** recorded in `THIRD_PARTY.md`, and
+their texts are written beside the built artifact in `dist/licenses/`. That is a
+provenance record, not a compliance certification.
 
 ## Toolchain
 
 | item | state |
 | --- | --- |
-| emscripten | **3.1.6** — the version this build used and the one whose glue matches the published 0.7.4. Installed standalone under the workspace; the shared emsdk (5.0.7) was not activated or modified, and no shell profile was written |
+| emscripten | **3.1.6** — the version this build used and the one whose glue matches the published 0.7.4. Installed standalone under the workspace; the shared emsdk (5.0.7) was not activated or modified, and no shell profile was written. On darwin/arm64 `emsdk install 3.1.6` first tried `wasm-binaries-arm64.tar.xz`, got a 404, and succeeded on the `.tbz2` for the same SDK hash; expect that retry in the log rather than a failure |
 | python | task-owned venv with `Jinja2 3.1.6` and `MarkupSafe 3.0.3`; no system packages installed |
 | host | darwin/arm64. Upstream documents Linux as the only supported build OS, so `prepare-build-tree.sh` carries the portability rewrites (`nproc`, GNU `sed -i`, `wget`, `realpath`, zlib's archiver). No Linux host was used; `limactl` is installed with no instance, and Parallels is present, if a Linux builder is ever preferred |
 | disk | not monitored continuously during the build. Free space was read at a few points and stayed at 24-26 GiB against the ~20 GiB floor; treat the floor as a pre-stage check, not a measured guarantee |
@@ -171,6 +172,10 @@ The last two differ, which is what shows the wasm is compiled here rather than
 copied from the published bundle. A rebuild is not expected to reproduce these
 byte for byte; emscripten output is not pinned to be reproducible.
 
+The artifact in `dist/index.js` is that build's output: its sha256 is the
+`wrapper dist/index.js` value above, re-read from the file rather than taken from
+the build log.
+
 
 Built on darwin/arm64 with a task-owned emsdk. Two findings worth keeping:
 
@@ -198,14 +203,20 @@ wasm objects ("not a mach-o") — `AR=emar ARFLAGS=rc` fixes it.
 
 ## Where the built artifact goes
 
-`dist/` in this directory holds the reviewed build, with its licences and
-`SOURCES.md`. It is the source of truth:
+`dist/` in this directory holds the reviewed build, with its licences,
+`SOURCES.md`, `BUILD.md` and `source.tar.gz`. It is the source of truth for the
+artifact:
 
 - running Runway from this repository resolves it directly at
   `vendor/libcurl.js/dist`
 - `packages/runway/build.mjs` copies it to `packages/runway/dist/assets/libcurl`,
   so `pnpm pack` carries it and an installed consumer resolves it
   package-relatively
+
+`dist/` is **gitignored**: it exists only where a build has been run. A fresh
+clone carries this recipe, the pristine source and the patches, but no artifact
+and no `source.tar.gz`/`licenses/` — those are produced by the build — so the
+commands above must be run before Runway can build or pack.
 
 Rebuild with the commands above and copy the wrapper's `dist/` over
 `vendor/libcurl.js/dist`, keeping the licence files and refreshing `SOURCES.md`.

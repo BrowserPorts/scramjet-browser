@@ -36,7 +36,7 @@ is a compliance guarantee.
 | upstream commit | `a641cdd857356db6b8ed46c5341cc8f85c4190ba` |
 | upstream | https://github.com/ading2210/libcurl.js |
 | license | **LGPL-3.0-or-later** |
-| license text | `vendor/libcurl.js/LICENSE` |
+| license text | `vendor/libcurl.js/LICENSE` — upstream's LGPLv3 text verbatim, byte-identical to `upstream/LICENSE` |
 | vendored source | `vendor/libcurl.js/upstream/` (pristine) |
 | local modifications | `patches/0002-…`, `patches/0003-…`, `patches/0004-…` — all three applied in the local source build. A scoped CA-trust patch (historically `0001`) is **not vendored here, not applied and not built**; see `PROVENANCE.md` |
 | provenance | `vendor/libcurl.js/PROVENANCE.md` |
@@ -54,7 +54,7 @@ in the build workspace.
 | component | commit | licence |
 | --- | --- | --- |
 | curl (`ading2210/curl`, branch `8.17.0-patched`) | `a15072369578a37ce314ea4d8b06f30c2762ebcc` | curl (MIT-like) |
-| *(licence texts for the six below ship in `packages/runway/dist/assets/libcurl/licenses/`)* | | |
+| *(licence texts for the six below — plus `wisp_client` and the CA bundle — are written beside the built artifact in `vendor/libcurl.js/dist/licenses/` and copied to `packages/runway/dist/assets/libcurl/licenses/`; both are build outputs, not tracked in git)* | | |
 | Mbed-TLS | `e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df` | Apache-2.0 OR GPL-2.0-or-later |
 | zlib | `51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf` | zlib |
 | nghttp2 | `534b74b72524e962c18c7146470914632ca7eb2d` | MIT |
@@ -84,27 +84,57 @@ legal compliance certification.
 linked by `client/build.sh` (`-lcjson -lbrotlidec -lbrotlicommon`) and cJSON is
 used directly by `client/libcurl/http.c`.
 
-**Not yet satisfied.** The LGPL source-offer and relink obligations are only
-fully met once the artifact is actually built and the exact fetched revisions and
-licences of the six components above are captured alongside it. Until that build
-runs, this file records intent and the audit performed on the build scripts, not
-a discharged obligation. The pinned revisions must be recorded at build time.
+**Build status.** The artifact was built from this source on 2026-09-20, and the
+exact revisions of every fetched component are recorded: in the table above, in
+`vendor/libcurl.js/prepare-build-tree.sh`, which pins them, and in the `BUILD.md`
+that the build writes beside the artifact. An earlier version of this file said
+no artifact had been built and that the fetched revisions were not captured —
+both statements are obsolete, and the six commits above are the ones the executed
+build consumed.
 
-### LGPL obligations: status
+### Source, licence and relink materials: what exists, and where
 
-- **Optional and dynamically imported.** The transport is not linked into the
-  default bundle; consumers opt in, and the import is dynamic. This keeps the
-  copyleft boundary at the optional component.
-- **Source offer, partial.** The shim source for the version used is in this
-  repository at `vendor/libcurl.js/upstream/` at the exact upstream commit
-  above, with the patch applied to it. This is NOT yet the complete
-  corresponding source: the six components in the table are fetched at build
-  time and their exact revisions are not captured here. The offer is only
-  dischargeable once a build records them.
-- **Modifications are identified.** Every local change is carried as a separate
-  patch file rather than folded into the upstream bytes, and is listed in
-  `PROVENANCE.md`.
-- **Relinking, pending.** The artifact is produced by upstream's own
-  `client/build.sh` and the invocation is recorded in the packet report, but no
-  artifact has been built yet, so relink instructions are untested.
-- **License text** is distributed verbatim at `vendor/libcurl.js/LICENSE`.
+Nothing in this section is a legal conclusion or a compliance guarantee. It
+records which materials exist, which are in git, and which have been checked.
+
+- **Optional, and not in the default bundle.** Neither libcurl.js nor the AGPL
+  wrapper is linked into the default SDK bundle. No Runway module imports the
+  transport statically, only the scramjet harness page loads it, and the bare
+  lane never does. Runway resolves the local artifact by default for its own
+  runs, and `--libcurl-dist` overrides that. Other packages here (bootstrap,
+  demo) still consume the published 2.0.5 from the registry.
+- **In git: the source, not the binary.** This repository tracks the pristine
+  upstream tree (`vendor/libcurl.js/upstream/`), its per-file `upstream.sha256`
+  manifest, the three patches, `prepare-build-tree.sh`, `BUILD-RECIPE.md` and the
+  LGPL text. It does **not** track the built artifact: `vendor/libcurl.js/dist/`
+  is gitignored, so a fresh clone carries the materials to rebuild but no binary,
+  and no `source.tar.gz` or `licenses/` tree — those are build outputs.
+- **Beside the built artifact: the corresponding source.** The local build
+  carries `source.tar.gz` (pristine `upstream/`, `upstream.sha256`, the three
+  patches, `prepare-build-tree.sh`, the wrapper source at its pinned commit, the
+  exact `cacert.pem`, `licenses/` and `BUILD.md`), the two artifact licence
+  texts, and the native licence texts unpacked in `licenses/`. A packed Runway
+  tarball was inspected and contained all of it under `dist/assets/libcurl/`.
+- **Modifications are identified.** Every local change is a separate patch file
+  rather than a folded-in edit to the upstream bytes: `0002`, `0003` and `0004` —
+  **three** patches, all applied to the built artifact and each described in
+  `PROVENANCE.md`. The scoped CA-trust patch (historically `0001`) is not
+  vendored here, not applied and in no artifact, and `prepare-build-tree.sh`
+  refuses to stage a tree containing its content.
+- **Rebuild and relink materials, partly exercised.** `prepare-build-tree.sh`
+  reproduces the staged build tree from the shipped corresponding source: it was
+  run against the archive extracted from a packed tarball and against an
+  installed consumer's copy, applying the three patches and pinning all six
+  dependency revisions, without invoking a compiler. The compile and bundle steps
+  were executed once, from this repository, and produced the artifact in use;
+  they have **not** been re-executed from the shipped archive. Emscripten output
+  is not pinned to be reproducible, so a rebuild is not expected to be
+  byte-identical.
+- **Licence texts.** `vendor/libcurl.js/LICENSE` is upstream's LGPL-3.0 text
+  verbatim — byte-identical to `upstream/LICENSE`, sha256
+  `a5681bf9b05db14d86776930017c647ad9e6e56ff6bbcfdf21e5848288dfaf1b` — and the
+  same bytes ship beside the artifact as
+  `LICENSE.libcurl.js-LGPL-3.0-or-later`. The wrapper's AGPL-3.0 text ships as
+  `LICENSE.wrapper-AGPL-3.0-only`. LGPL-3.0 is written as a supplement to
+  GPL-3.0 and the GPL-3.0 text itself is in neither tree; that is recorded here,
+  not resolved.
