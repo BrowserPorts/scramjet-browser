@@ -10,6 +10,7 @@ export function rewriteWorkers(
   context: ScramjetContext,
   meta: URLMeta,
   isModule: boolean,
+  nativeServiceWorker = false,
 ) {
   const script = (script: string) => {
     if (isModule) {
@@ -19,14 +20,22 @@ export function rewriteWorkers(
   };
   const b64 = (script: string) =>
     `data:text/javascript;charset=utf-8;base64,${base64Encode(script)}`;
-  let str = context.interface.getWorkerInjectScripts(meta, isModule, script);
+  let str = context.interface.getWorkerInjectScripts(
+    meta,
+    isModule,
+    script,
+    nativeServiceWorker,
+  );
 
   let rewritten = rewriteJs(js, url, context, meta, isModule);
   if (typeof rewritten !== "string") {
     rewritten = TextDecoder_decode(rewritten);
   }
 
-  if (flagEnabled("encapsulateWorkers", context, meta.origin)) {
+  if (
+    !nativeServiceWorker &&
+    flagEnabled("encapsulateWorkers", context, meta.origin)
+  ) {
     // TODO: check if there's already a sourceURL/sourcemap before appending another?
     rewritten += `//# sourceURL=${url}`;
     str += script(b64(rewritten as string));

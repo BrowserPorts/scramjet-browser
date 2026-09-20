@@ -4,6 +4,7 @@
 import { ScramjetClient } from "@client/index";
 import { QP } from "@/fetch/parse";
 import { String, String_startsWith, _RegExp, _URL } from "@/shared/snapshot";
+import { isJavascriptMimeType } from "@/shared/mime";
 
 const ESCAPED_SLASH = new _RegExp("%2f|%5c", "i");
 const SOURCE_PARAM = "$source";
@@ -23,6 +24,15 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export default function (client: ScramjetClient, self: Window) {
+  const installer = client.init.installServiceWorkerClient ?? (
+    client.init.serviceWorkerClientName
+      ? ScramjetClient.getServiceWorkerClientInstaller(client.init.serviceWorkerClientName)
+      : undefined
+  );
+  if (installer) {
+    installer(client, self);
+    return;
+  }
   const loaderPath = client.context.interface.nativeServiceWorkerPath;
   if (!loaderPath) return;
 
@@ -45,14 +55,30 @@ export default function (client: ScramjetClient, self: Window) {
     "ServiceWorkerContainer.prototype.getRegistrations"
   ] as ServiceWorkerContainer["getRegistrations"];
 
-  let readyResolve: ((registration: ServiceWorkerRegistration) => void) | null =
-    null;
+  let readyResolve:
+    | ((registration: ServiceWorkerRegistration) => unknown)
+    | null = null;
   const ready = new NativePromise<ServiceWorkerRegistration>((resolve) => {
     readyResolve = resolve;
   });
 
   function registerError(message: string) {
     return new TypeError(`Failed to register a ServiceWorker: ${message}`);
+  }
+
+  function securityError(message: string) {
+    return new DOMException(
+      `Failed to register a ServiceWorker: ${message}`,
+      "SecurityError",
+    );
+  }
+
+  function resolveReady(registration: ServiceWorkerRegistration) {
+    const scope = virtualScopeOf(registration);
+    if (scope && client.url.href.startsWith(scope) && registration.active) {
+      readyResolve?.(registration);
+      readyResolve = null;
+    }
   }
 
   function virtualScopeOf(
@@ -65,7 +91,8 @@ export default function (client: ScramjetClient, self: Window) {
     if (!String_startsWith(nativeScope, client.context.prefix.href))
       return null;
     try {
-      return client.unrewriteUrl(nativeScope);
+      const scope = client.unrewriteUrl(nativeScope);
+      return new _URL(scope).origin === client.url.origin ? scope : null;
     } catch {
       return null;
     }
@@ -92,9 +119,9 @@ export default function (client: ScramjetClient, self: Window) {
     if (registration.active) return registration;
     const worker = registration.installing || registration.waiting;
     if (!worker) return registration;
-    await new NativePromise<void>((resolve, reject) => {
+    await new NativePromise<undefined>((resolve, reject) => {
       worker.addEventListener("statechange", () => {
-        if (worker.state === "activated") resolve();
+        if (worker.state === "activated") resolve(undefined);
         else if (worker.state === "redundant") {
           reject(
             new TypeError(
@@ -110,13 +137,43 @@ export default function (client: ScramjetClient, self: Window) {
   client.Proxy("ServiceWorkerContainer.prototype.register", {
     apply(ctx) {
       if (ctx.this !== container) return;
-      const raw = String(ctx.args[0]);
-      const options = (ctx.args[1] ?? {}) as RegistrationOptions;
       ctx.return(
         (async () => {
-          const scriptURL = new _URL(raw, client.url.href);
+          if (!ctx.args.length) throw registerError("A scriptURL is required.");
+          const raw = String(ctx.args[0]);
+          const dictionary = ctx.args[1];
+          if (
+            dictionary != null &&
+            typeof dictionary !== "object" &&
+            typeof dictionary !== "function"
+          ) {
+            throw new TypeError("RegistrationOptions must be a dictionary");
+          }
+          const options: RegistrationOptions = {};
+          if (dictionary?.scope !== undefined)
+            options.scope = String(dictionary.scope);
+          options.type =
+            dictionary?.type === undefined
+              ? "classic"
+              : (String(dictionary.type) as WorkerType);
+          options.updateViaCache =
+            dictionary?.updateViaCache === undefined
+              ? "imports"
+              : (String(
+                  dictionary.updateViaCache,
+                ) as ServiceWorkerUpdateViaCache);
+          if (
+            !["classic", "module"].includes(options.type) ||
+            !["imports", "all", "none"].includes(options.updateViaCache)
+          ) {
+            throw new TypeError("Invalid service worker registration option");
+          }
+          const scriptURL = new _URL(raw, client.meta.base.href);
+          scriptURL.hash = "";
+          if (!["http:", "https:"].includes(scriptURL.protocol))
+            throw registerError("Unsupported script URL scheme.");
           if (scriptURL.origin !== client.url.origin) {
-            throw registerError(
+            throw securityError(
               `The origin of the provided scriptURL ('${scriptURL.origin}') does not match the current origin ('${client.url.origin}').`,
             );
           }
@@ -127,11 +184,15 @@ export default function (client: ScramjetClient, self: Window) {
           }
 
           const defaultScope = new _URL("./", scriptURL);
-          const scope = options.scope
-            ? new _URL(String(options.scope), client.url.href)
-            : defaultScope;
+          const scope =
+            options.scope !== undefined
+              ? new _URL(options.scope, client.meta.base.href)
+              : defaultScope;
+          scope.hash = "";
+          if (!["http:", "https:"].includes(scope.protocol))
+            throw registerError("Unsupported scope URL scheme.");
           if (scope.origin !== client.url.origin) {
-            throw registerError(
+            throw securityError(
               `The origin of the provided scope ('${scope.origin}') does not match the current origin ('${client.url.origin}').`,
             );
           }
@@ -147,7 +208,8 @@ export default function (client: ScramjetClient, self: Window) {
             swScope: scope.href,
           });
           const response = await nativeFetch.call(self, transformedURL, {
-            credentials: "include",
+            credentials: "same-origin",
+            redirect: "error",
             cache: options.updateViaCache === "none" ? "no-store" : "default",
           });
           if (!response.ok) {
@@ -156,12 +218,21 @@ export default function (client: ScramjetClient, self: Window) {
             );
           }
 
+          if (
+            !isJavascriptMimeType(response.headers.get("Content-Type") ?? "")
+          ) {
+            throw securityError("The script has an unsupported MIME type.");
+          }
+
           const allowedHeader = response.headers.get("Service-Worker-Allowed");
           const maxScope = allowedHeader
             ? new _URL(allowedHeader, scriptURL)
             : defaultScope;
-          if (!String_startsWith(scope.pathname, maxScope.pathname)) {
-            throw registerError(
+          if (
+            maxScope.origin !== scriptURL.origin ||
+            !String_startsWith(scope.pathname, maxScope.pathname)
+          ) {
+            throw securityError(
               `The path of the provided scope ('${scope.pathname}') is not under the max scope allowed ('${maxScope.pathname}').`,
             );
           }
@@ -184,10 +255,7 @@ export default function (client: ScramjetClient, self: Window) {
               updateViaCache: options.updateViaCache,
             },
           );
-          void waitForActive(registration).then((active) => {
-            readyResolve?.(active);
-            readyResolve = null;
-          });
+          waitForActive(registration).then(resolveReady, () => {});
           return registration;
         })(),
       );
@@ -221,24 +289,30 @@ export default function (client: ScramjetClient, self: Window) {
   client.Proxy("ServiceWorkerContainer.prototype.getRegistration", {
     apply(ctx) {
       if (ctx.this !== container) return;
-      const target = new _URL(
-        ctx.args[0] === undefined ? client.url.href : String(ctx.args[0]),
-        client.url.href,
-      );
-      if (target.origin !== client.url.origin) {
-        ctx.return(
-          NativePromise.reject(
-            new TypeError(
+      ctx.return(
+        (async () => {
+          const target = new _URL(
+            ctx.args[0] === undefined ? client.url.href : String(ctx.args[0]),
+            client.meta.base.href,
+          );
+          if (target.origin !== client.url.origin) {
+            throw new DOMException(
               "The documentURL origin does not match the current origin.",
-            ),
-          ),
-        );
-        return;
-      }
-      const nativeTarget =
-        client.context.prefix.href +
-        client.context.interface.codecEncode(target.href);
-      ctx.return(nativeGetRegistration.call(container, nativeTarget));
+              "SecurityError",
+            );
+          }
+          const nativeTarget =
+            client.context.prefix.href +
+            client.context.interface.codecEncode(target.href);
+          const registration = await nativeGetRegistration.call(
+            container,
+            nativeTarget,
+          );
+          return registration && virtualScopeOf(registration)
+            ? registration
+            : undefined;
+        })(),
+      );
     },
   });
 
@@ -293,14 +367,16 @@ export default function (client: ScramjetClient, self: Window) {
     },
   });
 
-  // Resolve ready for a registration restored by the browser before this page loaded.
-  void nativeGetRegistrations.call(container).then((items) => {
-    const registration = items.find(
-      (item) => virtualScopeOf(item) !== null && item.active,
-    );
-    if (registration && readyResolve) {
-      readyResolve(registration);
-      readyResolve = null;
-    }
-  });
+  // Match this document; an active registration elsewhere must not resolve ready.
+  const nativeTarget =
+    client.context.prefix.href +
+    client.context.interface.codecEncode(client.url.href);
+  nativeGetRegistration
+    .call(container, nativeTarget)
+    .then((registration) => {
+      if (registration && virtualScopeOf(registration)) {
+        return waitForActive(registration).then(resolveReady, () => {});
+      }
+    })
+    .catch(() => {});
 }

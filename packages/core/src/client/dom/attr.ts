@@ -6,6 +6,8 @@ import {
 	Reflect_get,
 	Reflect_has,
 	Reflect_ownKeys,
+	Symbol_iterator,
+	String_startsWith,
 } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient) {
@@ -15,6 +17,35 @@ export default function (client: ScramjetClient) {
 			const proxy = new Proxy(map, {
 				get(target, prop, _receiver) {
 					const value = Reflect_get(target, prop);
+					if (prop === Symbol_iterator && typeof value === "function") {
+						return new Proxy(value, {
+							apply(target, that, args) {
+								if (that !== proxy) return Reflect_apply(target, that, args);
+								const iterator = Reflect_apply(target, map, args) as Iterator<Attr>;
+								const next = Reflect_get(iterator, "next");
+
+								return (function* () {
+									while (true) {
+										const result = Reflect_apply(
+											next,
+											iterator,
+											[],
+										) as IteratorResult<Attr>;
+										if (Reflect_get(result, "done")) return;
+
+										const attribute = Reflect_get(result, "value");
+										const name = Reflect_get(attribute, "name");
+										if (
+											typeof name === "string" &&
+											!String_startsWith(name, "scramjet-attr-")
+										) {
+											yield attribute;
+										}
+									}
+								})();
+							},
+						});
+					}
 
 					if (prop === "length") {
 						return Object_keys(proxy).length;
@@ -26,6 +57,15 @@ export default function (client: ScramjetClient) {
 					if (prop === "getNamedItemNS") {
 						return (namespace: string, name: string) =>
 							proxy[`${namespace}:${name}`];
+					}
+					if (prop === "item" && typeof value === "function") {
+						return new Proxy(value, {
+							apply(target, that, args) {
+								if (that !== proxy) return Reflect_apply(target, that, args);
+								const position = Object_keys(proxy)[args[0] >>> 0];
+								return position === undefined ? null : Reflect_get(map, position);
+							},
+						});
 					}
 
 					if (prop in NamedNodeMap.prototype && typeof value === "function") {

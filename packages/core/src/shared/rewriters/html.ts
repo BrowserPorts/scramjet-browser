@@ -22,7 +22,9 @@ import {
 	btoa,
 	JSON_parse,
 	JSON_stringify,
+	Object_defineProperty,
 	Object_entries,
+	Object_setPrototypeOf,
 	Performance_now,
 	String_fromCodePoint,
 	TextEncoder_encode,
@@ -38,6 +40,36 @@ export type HtmlContext = {
 	loadScripts: boolean;
 	// did the document come from the service worker, or from document.write/innerHTML?
 	inline: boolean;
+	/**
+	 * True when this markup is parsed as a FRAGMENT rather than as a document.
+	 *
+	 * A `<base>` in fragment markup selects nothing, so the base already in force
+	 * stays. Distinct from `inline`, which only says the markup did not come from
+	 * the service worker — `document.write` is inline yet really is parsed into the
+	 * document.
+	 *
+	 * BASE_SELECTION_BACKLOG — known gap, deliberately not modelled here.
+	 * `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`setHTMLUnsafe` on a CONNECTED
+	 * target can genuinely change the document's base (`head.innerHTML` replacing
+	 * the old base is the clear case). Deciding that needs the post-operation tree
+	 * order of every `base[href]`, which is circular here: the markup's own bases
+	 * are only enumerable after this function parses them, and ordering a
+	 * not-yet-inserted subtree against surviving document bases means modelling the
+	 * document a second time. A previous attempt keyed on `isConnected` was both
+	 * wrong (a connected `<template>`'s `innerHTML` writes inert `content`, and a
+	 * shadow root is not the document tree) and inert (the seeding below already
+	 * spent the selection whenever the document had a base). It was removed rather
+	 * than left claiming support. Connected-insertion base selection is unresolved.
+	 */
+	fragment?: boolean;
+	/**
+	 * True when this markup becomes an INDEPENDENT new document.
+	 *
+	 * `DOMParser.parseFromString` and `Document.parseHTMLUnsafe` build a document of
+	 * their own, so they inherit no base selection from the document that called
+	 * them — their own markup makes it.
+	 */
+	newDocument?: boolean;
 	// for worker originating documents, the source URL, otherwise the url of the page that triggered the rewrite
 	source: string;
 	// for api originating documents, the name of the api that triggered the rewrite
@@ -170,6 +202,31 @@ function rewriteHtmlInner(
 	}
 
 	const handler = new DomHandler((err, dom) => dom);
+	/*
+	 * Whether each `<base href>` sits in foreign content, recorded while parsing.
+	 *
+	 * Only the parser knows this. `isInForeignContext()` already accounts for
+	 * SVG/MathML and for every HTML integration point the installed (patched)
+	 * htmlparser2 handles — `foreignObject`, `desc`, `title`, `mi`/`mo`/`mn`/`ms`/
+	 * `mtext`, `annotation-xml` — using the SVG-adjusted casing it applies itself.
+	 * A tag-name list here would have to restate all of that and would drift.
+	 *
+	 * Read inside `onopentag`, which the parser fires AFTER pushing the element's own
+	 * foreign-context transition (`Parser.onopentagname`). `base` is never an
+	 * integration element and never `svg`/`math`, so it pushes nothing and the flag
+	 * still describes the context the base actually sits in.
+	 *
+	 * `<template>` is not a namespace question — it is ordinary HTML to the parser —
+	 * so its inert contents are excluded structurally during the walk instead.
+	 */
+	const baseInForeignContext: boolean[] = [];
+	const handlerOnOpenTag = handler.onopentag.bind(handler);
+	handler.onopentag = (name: string, attribs: { [key: string]: string }) => {
+		if (name === "base" && attribs.href !== undefined) {
+			baseInForeignContext.push(parser.isInForeignContext());
+		}
+		handlerOnOpenTag(name, attribs);
+	};
 	const parser = new Parser(handler, {
 		startingForeignContext: htmlcontext.foreignContext,
 	});
@@ -186,7 +243,34 @@ function rewriteHtmlInner(
 		},
 		undefined,
 	);
-	traverseParsedHtml(handler.root, context, meta);
+	traverseParsedHtml(
+		handler.root,
+		context,
+		meta,
+		{
+			base: meta.base,
+			/*
+			 * Whether the selection is already spent before this markup is walked.
+			 *
+			 * - A fragment's markup cannot select: it is parsed detached, or the base
+			 *   already in force is outside what this operation replaces.
+			 * - A continuing document (service-worker body, `document.write`) inherits
+			 *   the selection the document already made — `baseIsSelected`, not
+			 *   `baseIsDeclared`, so an existing FIRST base that failed to parse still
+			 *   blocks a later one rather than letting it take over.
+			 * - An independent new document (DOMParser, `parseHTMLUnsafe`) inherits
+			 *   nothing: its own markup makes the selection.
+			 */
+			selected:
+				htmlcontext.fragment === true ||
+				(htmlcontext.newDocument !== true &&
+					(meta.baseIsSelected ?? meta.baseIsDeclared) === true),
+			declared: meta.baseIsDeclared === true,
+			foreign: baseInForeignContext,
+			seen: 0,
+		},
+		false
+	);
 
 	let htmlRoot: Element | undefined;
 	let headElement: Element | undefined;
@@ -350,14 +434,76 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 
 // i need to add the attributes in during rewriting
 
+/**
+ * The base in force while walking the markup, in document order.
+ *
+ * Carried rather than written onto `meta`: the client passes its own live meta,
+ * whose `base` is a getter with no setter, so the previous `meta.base = …` threw a
+ * TypeError for any declared `<base href>` in client-rewritten markup.
+ */
+type BaseState = {
+	base: _URL;
+	/**
+	 * A `base[href]` has been encountered and has consumed the selection.
+	 *
+	 * Separate from {@link BaseState.declared} on purpose: HTML selects the FIRST
+	 * base with an href whether or not it parses. An unparseable first base keeps
+	 * the fallback base *and* stops a later base from taking over.
+	 */
+	selected: boolean;
+	/** The selected base parsed, so it is what resolution should use. */
+	declared: boolean;
+	/** Per-`base[href]` foreign-content flags, in document order, from the parser. */
+	readonly foreign: readonly boolean[];
+	/** How many `base[href]` elements the walk has passed, in document order. */
+	seen: number;
+};
+
+/** `meta` with the in-force base applied, without touching the caller's object. */
+function withBase(meta: URLMeta, state: BaseState): URLMeta {
+	if (!state.declared) return meta;
+	// Delegating overlay, so the remaining fields stay lazy — reading
+	// `topFrameName` eagerly throws in a worker.
+	const overlay = Object_setPrototypeOf({}, meta) as URLMeta;
+	Object_defineProperty(overlay, "base", { value: state.base, enumerable: true });
+	Object_defineProperty(overlay, "baseIsDeclared", { value: true, enumerable: true });
+	return overlay;
+}
+
 function traverseParsedHtml(
 	node: any,
 	context: ScramjetContext,
-	meta: URLMeta,
+	callerMeta: URLMeta,
+	state: BaseState,
+	inTemplate: boolean,
 ) {
-	if (node.name === "base" && node.attribs.href !== undefined) {
-		meta.base = new _URL(node.attribs.href, meta.origin);
+	// HTML selects the FIRST `<base>` with an `href` content attribute, in tree
+	// order — not the last, and not merely the first `<base>`: a preceding
+	// `<base target=_blank>` carries no href and does not select, while an empty
+	// href does select rather than deferring to a later element.
+	//
+	// Applied from here onward, in document order, which is what the parser does:
+	// a resource referenced before the base still resolves against the document.
+	if (node.name === "base" && node.attribs && node.attribs.href !== undefined) {
+		const ordinal = state.seen;
+		state.seen += 1;
+		// Eligible when the parser did not see it in foreign content and it is not
+		// inert template content. The first eligible one selects, in document order.
+		if (!state.selected && inTemplate === false && state.foreign[ordinal] !== true) {
+			// Selection is consumed HERE, before the parse: the eligible base is the
+			// selected one whether or not its value parses, so an invalid base keeps
+			// the fallback base and still blocks every later one.
+			state.selected = true;
+			try {
+				state.base = new _URL(node.attribs.href, callerMeta.origin);
+				state.declared = true;
+			} catch {
+				// Unparseable href: HTML keeps the fallback base, and this is not a
+				// declared base for resolution purposes.
+			}
+		}
 	}
+	const meta = withBase(callerMeta, state);
 
 	if (node.attribs) {
 		for (const rule of htmlRules) {
@@ -470,7 +616,9 @@ function traverseParsedHtml(
 			node.childNodes[childNode] = traverseParsedHtml(
 				node.childNodes[childNode],
 				context,
-				meta,
+				callerMeta,
+				state,
+				inTemplate || node.name === "template",
 			);
 		}
 	}

@@ -9,6 +9,7 @@ export type NativeServiceWorkerRequest = {
   rawReferrer: string | null;
   destination: RequestDestination | "serviceworker";
   mode: RequestMode;
+  credentials?: RequestCredentials;
   referrer: string;
   method: string;
   cache: RequestCache;

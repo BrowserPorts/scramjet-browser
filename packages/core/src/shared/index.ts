@@ -46,6 +46,7 @@ export type ScramjetInterface = {
     meta: URLMeta,
     isModule: boolean,
     script: (src: string) => string,
+    nativeServiceWorker?: boolean,
   ): string;
   getWorkerFinalizeScript?(): string;
   nativeServiceWorkerPath?: string;

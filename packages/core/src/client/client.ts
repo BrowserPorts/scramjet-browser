@@ -82,7 +82,19 @@ export type ScramjetClientInit = {
 	// backs the emulated navigator.serviceWorker. absent means no emulation, and
 	// the api is left off the global entirely
 	serviceWorkerHost?: ServiceWorkerHost;
+	installServiceWorkerClient?: (client: ScramjetClient, scope: Window) => undefined;
+	serviceWorkerClientName?: string;
 };
+/**
+ * `window.frameElement` is typed `Element`, because any embedding element can be
+ * one, but the embedding elements that carry a name (`iframe`, `frame`,
+ * `object`) are the only ones the frame-name lookups below care about — and a
+ * Scramjet frame is always an iframe. Type-level narrowing only: the runtime
+ * read is the same descriptor call, and a nameless element still takes the
+ * "no frame name" path.
+ */
+type NamedFrameElement = Element & { name?: string };
+
 type NativeStore = {
 	store: Record<string, any>;
 	construct: <T extends string>(
@@ -197,6 +209,30 @@ function findBox(global: Window, seen: Window[]): SingletonBox | null {
 }
 
 export class ScramjetClient {
+	private static serviceWorkerClientInstallers = new Map<
+		string,
+		NonNullable<ScramjetClientInit["installServiceWorkerClient"]>
+	>();
+
+	static registerServiceWorkerClientInstaller(
+		name: string,
+		installer: NonNullable<ScramjetClientInit["installServiceWorkerClient"]>,
+	): undefined {
+		if (!name || typeof installer !== "function")
+			throw new TypeError("Invalid service worker client installer");
+		const existing = this.serviceWorkerClientInstallers.get(name);
+		if (existing && existing !== installer)
+			throw new Error(`Service worker client installer ${name} is already registered`);
+		this.serviceWorkerClientInstallers.set(name, installer);
+		return undefined;
+	}
+
+	static getServiceWorkerClientInstaller(name: string) {
+		const installer = this.serviceWorkerClientInstallers.get(name);
+		if (!installer)
+			throw new Error(`Service worker client installer ${name} did not load`);
+		return installer;
+	}
 	locationProxy: any;
 	indirectEval: any;
 	serviceWorker: ServiceWorkerContainer;
@@ -355,29 +391,62 @@ export class ScramjetClient {
 		};
 		// eslint-disable-next-line @typescript-eslint/no-this-alias
 		const client = this;
+		/**
+		 * The document base, and whether the document declared it.
+		 *
+		 * One selection serving both, from one selector. HTML takes the FIRST `<base>`
+		 * that has an `href` content attribute, in tree order — so `base[href]`, not
+		 * `base`: a preceding `<base target=_blank>` carries no href and must not
+		 * select, and an empty `href` does select rather than deferring to a later
+		 * element. `declared` means that selected base is what resolution actually
+		 * uses, not merely that some attribute was present.
+		 */
+		const declaredBase = (): {
+			url: _URL;
+			declared: boolean;
+			/** A `base[href]` exists, even if its value does not parse. */
+			selected: boolean;
+		} => {
+			const fallback = { url: client.url, declared: false, selected: false };
+			if (!iswindow) return fallback;
+			const base = client.natives.call(
+				"Document.prototype.querySelector",
+				client.global.document,
+				"base[href]"
+			);
+			if (!base) return fallback;
+			// The selection is spent from here on: this element is the document's
+			// chosen base whether or not its href is usable.
+			const spent = { url: client.url, declared: false, selected: true };
+			let url = base.getAttribute("href");
+			if (!url) return spent;
+			const frag = url.indexOf("#");
+			url = url.substring(0, frag === -1 ? undefined : frag);
+			if (!url) return spent;
+			try {
+				return {
+					url: new _URL(url, client.url.origin),
+					declared: true,
+					selected: true,
+				};
+			} catch {
+				// Unparseable base: HTML falls back to the document URL, and this is not
+				// a declared base for resolution purposes — but it still selected.
+				return spent;
+			}
+		};
 		this.meta = {
 			get origin() {
 				return client.url;
 			},
+			get baseIsDeclared() {
+				return declaredBase().declared;
+			},
+			get baseIsSelected() {
+				return declaredBase().selected;
+			},
 			get base() {
-				if (iswindow) {
-					const base = client.natives.call(
-						"Document.prototype.querySelector",
-						client.global.document,
-						"base"
-					);
-					if (base) {
-						let url = base.getAttribute("href");
-						if (!url) return client.url;
-						const frag = url.indexOf("#");
-						url = url.substring(0, frag === -1 ? undefined : frag);
-						if (!url) return client.url;
-
-						return new _URL(url, client.url.origin);
-					}
-				}
-
-				return client.url;
+				return declaredBase().url;
 			},
 			// TODO: very bad assumptions made here, window.parent never throws
 			get topFrameName() {
@@ -409,7 +478,7 @@ export class ScramjetClient {
 				const frame = curclient.descriptors.get(
 					"window.frameElement",
 					currentWin
-				);
+				) as NamedFrameElement;
 				if (!frame) {
 					// we're inside an iframe, but the top frame is scramjet-controlled and top level, so we can't get a top frame name
 					// or we're cross-origin and frameElement doesn't exist. that's a TODO because this won't work
@@ -448,7 +517,7 @@ export class ScramjetClient {
 						const frame = parentClient.descriptors.get(
 							"window.frameElement",
 							parentWin
-						);
+						) as NamedFrameElement;
 
 						if (!frame) {
 							// parent is scramjet controlled and top-level. there is no parent frame name
@@ -471,7 +540,7 @@ export class ScramjetClient {
 						const frame = client.descriptors.get(
 							"window.frameElement",
 							client.global
-						);
+						) as NamedFrameElement;
 						if (!frame.name) {
 							// the parent frame is not scramjet-controlled, so we can't get a parent frame name
 							dbg.error(
@@ -573,6 +642,10 @@ export class ScramjetClient {
 	}
 
 	get url(): _URL {
+		if (isnativesw) {
+			const script = new _URL(this.global.location.href).searchParams.get("$script");
+			if (script) return new _URL(script);
+		}
 		return new _URL(this.unrewriteUrl(this.global.location.href));
 	}
 

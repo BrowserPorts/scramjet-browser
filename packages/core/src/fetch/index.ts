@@ -23,10 +23,13 @@ import type { ScramjetDestination } from "@/types";
 import { doHandleFetch, doHandleServiceWorkerResponse } from "./fetch";
 
 export interface ScramjetFetchRequest {
+	/** Return original script bytes to an executor that owns script compilation. */
+	readScriptSource?: boolean;
 	rawUrl: URL;
 	rawReferrer: string | null;
 	// use parsed.destination instead
 	rawDestination: ScramjetDestination;
+	rawCredentials?: RequestCredentials;
 	mode: RequestMode;
 	referrer: string;
 	method: string;
@@ -59,6 +62,8 @@ export interface ScramjetFetchParsed {
 	// specifically for tracking Sec-Fetch-Site, don't use for anything else, it will diverge from clientUrl in some cases
 	fetchInitiatorOrigin?: string;
 
+	fetchCredentials?: "include" | "omit" | "same-origin";
+
 	// was the request made with credentials=include?
 	fetchCredentialsInclude?: boolean;
 
@@ -80,6 +85,13 @@ export interface ScramjetFetchParsed {
 	// scope an emulated service worker realm is registered for, only set on
 	// requests for a serviceworker destination script
 	swScope?: string;
+	/** `WorkerOptions.name` stamped by the client Worker constructor seam. */
+	workerName?: string;
+	/**
+	 * Construct-time transport correlation for host-engine
+	 * `Worker.prototype.terminate` → `DedicatedWorkerHost` destruction.
+	 */
+	workerCorrelation?: string;
 }
 
 export interface ScramjetFetchResponse {
@@ -99,6 +111,25 @@ export type CookieSyncOptions = {
 	destination?: ScramjetDestination;
 };
 
+/**
+ * The part of the original request a non-HTTP scheme fetch can faithfully carry.
+ *
+ * `data:` and `blob:` are served by delegating to the platform's own fetch, so
+ * the method has to travel with the URL: it is not cosmetic for these schemes.
+ * A `HEAD` of a `data:` URL yields an EMPTY body, and every non-`GET` method on
+ * a `blob:` URL is a network error. Dropping it silently turned both into an
+ * ordinary `GET`.
+ *
+ * Deliberately just the method. There is no abort signal on this boundary to
+ * forward -- the request crosses a structured-clone RPC, which cannot carry one
+ * -- and the request body is not included: the `data:` scheme fetch ignores it,
+ * and a non-`GET` `blob:` fetch fails before a body would be read, so sending it
+ * would consume or duplicate the stream for no observable effect.
+ */
+export type SchemeFetchInit = {
+	method: string;
+};
+
 export type FetchHandlerInit = {
 	transport: ProxyTransport;
 	context: ScramjetContext;
@@ -108,8 +139,14 @@ export type FetchHandlerInit = {
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions,
 	) => Promise<void>;
-	fetchDataUrl(dataUrl: string): Promise<BareResponse>;
-	fetchBlobUrl(blobUrl: string): Promise<BareResponse>;
+	fetchDataUrl(
+		dataUrl: string,
+		init: SchemeFetchInit,
+	): Promise<BareResponse>;
+	fetchBlobUrl(
+		blobUrl: string,
+		init: SchemeFetchInit,
+	): Promise<BareResponse>;
 };
 
 export type TrackedHistoryState = {
@@ -142,8 +179,14 @@ export class ScramjetFetchHandler extends EventTarget {
 		fetch: TapInstance<FetchHooks>;
 	};
 
-	public fetchDataUrl: (dataUrl: string) => Promise<Response>;
-	public fetchBlobUrl: (blobUrl: string) => Promise<Response>;
+	public fetchDataUrl: (
+		dataUrl: string,
+		init: SchemeFetchInit,
+	) => Promise<Response>;
+	public fetchBlobUrl: (
+		blobUrl: string,
+		init: SchemeFetchInit,
+	) => Promise<Response>;
 	public sendSetCookie: (
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions,

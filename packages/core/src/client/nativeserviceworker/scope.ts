@@ -14,18 +14,29 @@ export default function (
 	client: ScramjetClient,
 	self: ServiceWorkerGlobalScope,
 ) {
-	const virtualScript = new URL(self.location.href).searchParams.get("$script");
-	if (virtualScript) {
-		Object.defineProperty(client, "url", {
-			get: () => new URL(virtualScript),
-			configurable: true,
-		});
-	}
 	const virtualOrigin = swrealmscope ? new URL(swrealmscope).origin : null;
 	const handled = new WeakSet<FetchEvent>();
 	const nativeRespondWith = client.natives.store[
 		"FetchEvent.prototype.respondWith"
 	] as FetchEvent["respondWith"];
+	const nativeMatchAll = client.natives.store["Clients.prototype.matchAll"] as Clients["matchAll"];
+	const nativeGet = client.natives.store["Clients.prototype.get"] as Clients["get"];
+	const rawClientUrl = (target: Client) => client.descriptors.get("Client.prototype.url", target) as string;
+	const belongsToOrigin = (target: Client) => {
+		const raw = rawClientUrl(target);
+		if (!raw.startsWith(client.context.prefix.href)) return false;
+		return new URL(client.unrewriteUrl(raw)).origin === virtualOrigin;
+	};
+	client.Proxy("Clients.prototype.matchAll", {
+		apply(ctx) {
+			ctx.return(nativeMatchAll.apply(ctx.this, ctx.args).then((items) => items.filter(belongsToOrigin)));
+		},
+	});
+	client.Proxy("Clients.prototype.get", {
+		apply(ctx) {
+			ctx.return(nativeGet.apply(ctx.this, ctx.args).then((target) => target && belongsToOrigin(target) ? target : undefined));
+		},
+	});
 
 	async function serializeRequest(
 		event: FetchEvent,
@@ -35,7 +46,10 @@ export default function (
 		const sourceClientId = event.clientId;
 		const resultingClientId = event.resultingClientId;
 		const id = sourceClientId || resultingClientId;
-		if (id) rawClientUrl = (await self.clients.get(id))?.url;
+		if (id) {
+			const target = await nativeGet.call(self.clients, id);
+			if (target) rawClientUrl = client.descriptors.get("Client.prototype.url", target) as string;
+		}
 
 		let body: ArrayBuffer | null = null;
 		if (request.method !== "GET" && request.method !== "HEAD") {
@@ -56,6 +70,7 @@ export default function (
 			rawReferrer: rawReferrer || null,
 			destination: request.destination,
 			mode: request.mode,
+			credentials: request.credentials,
 			referrer: rawReferrer,
 			method: request.method,
 			cache: request.cache,
@@ -72,11 +87,11 @@ export default function (
 		metadata: NativeServiceWorkerGatewayMetadata,
 	): Promise<Response> {
 		const channel = new MessageChannel();
-		const clients = await self.clients.matchAll({
+		const clients = await nativeMatchAll.call(self.clients, {
 			type: "window",
 			includeUncontrolled: true,
 		});
-		const target = clients[0];
+		const target = clients.find(belongsToOrigin);
 		if (!target)
 			throw new TypeError(
 				"No Scramjet client is available for this service worker",
@@ -97,7 +112,7 @@ export default function (
 		});
 
 		target.postMessage({ [INTERNAL_MESSAGE]: metadata }, [channel.port2]);
-		const result = await response;
+		const result = await response.finally(() => channel.port1.close());
 		return new Response(result.body, {
 			status: result.status,
 			statusText: result.statusText,
@@ -145,13 +160,17 @@ export default function (
 				"Failed to execute 'respondWith': value is not a Response",
 			);
 		}
+		if (resolved.bodyUsed || resolved.body?.locked) {
+			throw new TypeError("The response body is already used or locked");
+		}
+		if (resolved.type === "error") return Response.error();
 		const body =
 			resolved.status === 101 ||
 			resolved.status === 204 ||
 			resolved.status === 205 ||
 			resolved.status === 304
 				? null
-				: await resolved.clone().arrayBuffer();
+				: await resolved.arrayBuffer();
 
 		return callPage({
 			kind: "response",
@@ -190,6 +209,12 @@ export default function (
 		get(ctx) {
 			if (ctx.this === self.registration && swrealmscope) return swrealmscope;
 			return client.unrewriteUrl(ctx.get() as string);
+		},
+	});
+	client.Trap("ServiceWorker.prototype.scriptURL", {
+		get(ctx) {
+			const raw = ctx.get() as string;
+			return new URL(raw).searchParams.get("$script") ?? raw;
 		},
 	});
 	client.Trap("Client.prototype.url", {

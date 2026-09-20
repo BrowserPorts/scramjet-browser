@@ -448,6 +448,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 						loadScripts: false,
 						inline: true,
 						source: client.url.href,
+						// Parsed as a fragment: a `<base>` in this markup does not select, so the
+						// base already in force stays. Connected insertions that really would
+						// change the document's base are a known gap — see BASE_SELECTION_BACKLOG.
+						fragment: true,
 						apisource: "set Element.prototype.innerHTML",
 						foreignContext: foreignContextForElement(client, ctx.this),
 					});
@@ -584,6 +588,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 					loadScripts: false,
 					inline: true,
 					source: client.url.href,
+					// Parsed as a fragment: a `<base>` in this markup does not select, so the
+					// base already in force stays. Connected insertions that really would
+					// change the document's base are a known gap — see BASE_SELECTION_BACKLOG.
+					fragment: true,
 					apisource: "set Element.prototype.outerHTML",
 					foreignContext: insideForeignContext(client, ctx.this),
 				})
@@ -601,6 +609,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 				loadScripts: false,
 				inline: true,
 				source: client.url.href,
+				// Parsed as a fragment: a `<base>` in this markup does not select, so the
+				// base already in force stays. Connected insertions that really would
+				// change the document's base are a known gap — see BASE_SELECTION_BACKLOG.
+				fragment: true,
 				apisource: "set Element.prototype.setHTMLUnsafe",
 				foreignContext: foreignContextForElement(client, ctx.this),
 			});
@@ -620,6 +632,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 				loadScripts: false,
 				inline: true,
 				source: client.url.href,
+				// Parsed as a fragment: a `<base>` in this markup does not select, so the
+				// base already in force stays. Connected insertions that really would
+				// change the document's base are a known gap — see BASE_SELECTION_BACKLOG.
+				fragment: true,
 				apisource: "set Element.prototype.insertAdjacentHTML",
 				foreignContext: foreignContextForElement(client, ctx.this),
 			});
@@ -802,6 +818,9 @@ export default function (client: ScramjetClient, self: typeof window) {
 				loadScripts: false,
 				inline: true,
 				source: client.url.href,
+				// Builds a document of its own: it inherits no base selection from the
+				// document that called it.
+				newDocument: true,
 				apisource: "DOMParser.prototype.parseFromString",
 			});
 		},

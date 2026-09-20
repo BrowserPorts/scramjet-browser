@@ -30,6 +30,12 @@ export async function rewriteBody(
 	parsed: ScramjetFetchParsed,
 	response: BareResponse,
 ): Promise<BodyType> {
+	if (request.readScriptSource) {
+		if (parsed.destination !== "serviceworker" && parsed.destination !== "script") {
+			throw new TypeError("Script source requests require a script destination");
+		}
+		return response.arrayBuffer();
+	}
 	switch (parsed.destination) {
 		case "iframe":
 		case "document": {
@@ -148,6 +154,7 @@ export async function rewriteBody(
 				handler.context,
 				parsed.meta,
 				parsed.isModule,
+				true,
 			);
 		case "sharedworker":
 		case "worker": {

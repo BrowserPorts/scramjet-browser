@@ -57,12 +57,12 @@ export const Performance_now = performance.now.bind(performance);
 
 export const btoa = globalThis.btoa;
 export const atob = globalThis.atob;
-export const URL_createObjectURL = globalThis.URL.createObjectURL.bind(
-	globalThis.URL
-);
-export const URL_revokeObjectURL = globalThis.URL.revokeObjectURL.bind(
-	globalThis.URL
-);
+const createObjectURL = globalThis.URL.createObjectURL;
+const revokeObjectURL = globalThis.URL.revokeObjectURL;
+export const URL_createObjectURL: typeof URL.createObjectURL = (object) =>
+	Reflect_apply(createObjectURL, globalThis.URL, [object]);
+export const URL_revokeObjectURL: typeof URL.revokeObjectURL = (url) =>
+	Reflect_apply(revokeObjectURL, globalThis.URL, [url]);
 
 export const Error = globalThis.Error;
 export const Math_random = globalThis.Math.random;
@@ -84,6 +84,7 @@ export const _Promise = makeWrap(globalThis.Promise);
 export type _Promise<T> = Wrapped<Promise<T>>;
 
 export const Symbol_for = globalThis.Symbol.for;
+export const Symbol_iterator = globalThis.Symbol.iterator;
 
 declare const WrappedBrand: unique symbol;
 
@@ -91,20 +92,26 @@ type WrappedInstance<T> = T extends object ? Wrapped<T> : T;
 
 type ConstructorPrototype<T> = T extends { prototype: infer P } ? P : never;
 
+// `Map` is structurally assignable to `WeakMap` and `Set` to `WeakSet` — the
+// weak types are a strict subset of the members — so the strong collections have
+// to be tested first. Testing `WeakSet` first matched `Set` too and instantiated
+// `new _Set(["a"])` as `WeakSet<string & object>`, i.e. `WeakSet<never>`, which
+// is why the collection snapshots needed casts at their use sites and reported
+// `.has(string)` as an error.
 type InstantiatePrototype<P, Params extends unknown[]> = Params extends [
 	infer A,
 	infer B,
 ]
-	? P extends WeakMap<any, any>
-		? WeakMap<A & WeakKey, B>
-		: P extends Map<any, any>
-			? Map<A, B>
+	? P extends Map<any, any>
+		? Map<A, B>
+		: P extends WeakMap<any, any>
+			? WeakMap<A & WeakKey, B>
 			: P
 	: Params extends [infer A]
-		? P extends WeakSet<any>
-			? WeakSet<A & object>
-			: P extends Set<any>
-				? Set<A>
+		? P extends Set<any>
+			? Set<A>
+			: P extends WeakSet<any>
+				? WeakSet<A & object>
 				: P
 		: P;
 
@@ -139,20 +146,25 @@ type WrappedConstructor<T> =
 						new <K extends WeakKey, V>(...args: Args) => Wrapped<WeakMap<K, V>>
 					>
 				: never
-			: ConstructorPrototype<T> extends WeakSet<any>
-				? T extends { new <U extends object>(...args: infer Args): any }
+			// `Set` before `WeakSet`, for the same reason `Map` comes before `WeakMap`
+			// above: `Set`'s prototype satisfies `WeakSet`'s members, so the weak
+			// branch matched `Set` as well and typed `_Set` as a `WeakSet`
+			// constructor — which is why `new _Set([...])` produced `WeakSet<object>`
+			// and its `.has(string)` calls did not type-check.
+			: ConstructorPrototype<T> extends Set<any>
+				? T extends { new <U>(...args: infer Args): any }
 					? WrappedCtor<
 							T,
-							[object],
-							new <U extends object>(...args: Args) => Wrapped<WeakSet<U>>
+							[unknown],
+							new <U>(...args: Args) => Wrapped<Set<U>>
 						>
 					: never
-				: ConstructorPrototype<T> extends Set<any>
-					? T extends { new <U>(...args: infer Args): any }
+				: ConstructorPrototype<T> extends WeakSet<any>
+					? T extends { new <U extends object>(...args: infer Args): any }
 						? WrappedCtor<
 								T,
-								[unknown],
-								new <U>(...args: Args) => Wrapped<Set<U>>
+								[object],
+								new <U extends object>(...args: Args) => Wrapped<WeakSet<U>>
 							>
 						: never
 					: T extends { new <K, V>(...args: infer Args): any }

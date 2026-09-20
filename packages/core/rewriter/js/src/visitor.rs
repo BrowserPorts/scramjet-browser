@@ -5,8 +5,9 @@ use oxc::{
 	allocator::{Allocator, StringBuilder},
 	ast::ast::{
 		AssignmentExpression, AssignmentTarget, AssignmentTargetMaybeDefault,
-		AssignmentTargetProperty, AssignmentTargetPropertyIdentifier, BindingPattern,
-		BindingPatternKind, BindingProperty, CallExpression, ComputedMemberExpression,
+		AssignmentTargetProperty, AssignmentTargetPropertyIdentifier, BinaryExpression,
+		BinaryOperator, BindingPattern, BindingPatternKind, BindingProperty, CallExpression,
+		ComputedMemberExpression,
 		DebuggerStatement, ExportAllDeclaration, ExportNamedDeclaration, Expression, ForStatement,
 		ForStatementInit, ForStatementLeft, FormalParameter, FunctionBody, IdentifierReference,
 		ImportDeclaration, ImportExpression, MemberExpression, MetaProperty, NewExpression,
@@ -76,8 +77,12 @@ where
 	}
 
 	fn handle_computed_member_expression(&mut self, it: &ComputedMemberExpression<'data>) {
+		self.handle_computed_property(&it.expression, false);
+	}
+
+	fn handle_computed_property(&mut self, expression: &Expression<'data>, enclose: bool) {
 		if self.flags.disable_computed_wrap { return };
-		match &it.expression {
+		match expression {
 			Expression::NullLiteral(_)
 			| Expression::BigIntLiteral(_)
 			| Expression::NumericLiteral(_)
@@ -85,13 +90,17 @@ where
 			| Expression::BooleanLiteral(_) => {}
 			Expression::StringLiteral(lit) => {
 				if UNSAFE_GLOBALS.contains(&lit.value.as_str()) {
-					self.jschanges
-						.add(rewrite!(it.expression.span(), WrapProperty,));
+					self.jschanges.add(rewrite!(
+						expression.span(),
+						WrapProperty { enclose },
+					));
 				}
 			}
 			_ => {
-				self.jschanges
-					.add(rewrite!(it.expression.span(), WrapProperty,));
+				self.jschanges.add(rewrite!(
+					expression.span(),
+					WrapProperty { enclose },
+				));
 			}
 		}
 	}
@@ -173,7 +182,10 @@ where
 						
 						_ => {
 							// { ["location"]: x } = self;
-							self.jschanges.add(rewrite!(p.name.span(), WrapProperty));
+							self.jschanges.add(rewrite!(
+								p.name.span(),
+								WrapProperty { enclose: false },
+							));
 						}
 					}
 
@@ -329,7 +341,10 @@ where
 
 						_ => {
 							// const { ["location"]: x } = self;
-							self.jschanges.add(rewrite!(prop.key.span(), WrapProperty));
+							self.jschanges.add(rewrite!(
+								prop.key.span(),
+								WrapProperty { enclose: false },
+							));
 						}
 					}
 					self.recurse_binding_pattern(&prop.value, restids, no_shadow, location_assigned);
@@ -546,6 +561,17 @@ where
 		}
 
 		walk::walk_member_expression(self, it);
+	}
+
+	#[coverage_checked(BinaryExpression)]
+	fn visit_binary_expression(&mut self, it: &BinaryExpression<'data>) {
+		if matches!(it.operator, BinaryOperator::In) {
+			// Membership checks must use the same property namespace as computed
+			// reads and writes, or remapped keys can appear more than once.
+			self.handle_computed_property(&it.left, true);
+		}
+
+		walk::walk_binary_expression(self, it);
 	}
 
 	#[coverage_checked(DebuggerStatement)]

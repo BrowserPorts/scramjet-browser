@@ -24,6 +24,8 @@ export default function (client: ScramjetClient, _self: Self) {
 				loadScripts: false,
 				inline: true,
 				source: client.url.href,
+				// Fragment parse: a <base> here must not re-base its siblings.
+				fragment: true,
 				apisource: "Range.prototype.createContextualFragment",
 				foreignContext: foreignContextForRange(client, ctx.this),
 			});

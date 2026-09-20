@@ -303,6 +303,10 @@ function requestIncludesCredentials(
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed
 ): boolean {
+	if (parsed.fetchCredentials === "include") return true;
+	if (parsed.fetchCredentials === "omit" || parsed.fetchCredentials === "same-origin") {
+		return false;
+	}
 	if (parsed.fetchCredentialsInclude) return true;
 	const dest = parsed.destination;
 	// fetch(): destination is "" (empty). XHR / report: destination is

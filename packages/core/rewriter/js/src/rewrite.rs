@@ -50,8 +50,10 @@ pub(crate) enum RewriteType<'alloc: 'data, 'data> {
 		location_assigned: bool,
 	},
 
-	/// `cfg.wrapprop({})`
-	WrapProperty,
+	/// `(cfg.wrapprop({}))` | `cfg.wrapprop({})`
+	WrapProperty {
+		enclose: bool,
+	},
 
 	// dead code only if debug is disabled
 	#[allow(dead_code)]
@@ -146,9 +148,9 @@ impl<'alloc: 'data, 'data> RewriteType<'alloc, 'data> {
 				smallvec![change!(span, RebindProperty { ident, tempvar })]
 			}
 			Self::TempVar => smallvec![change!(span, TempVar)],
-			Self::WrapProperty => smallvec![
-				change!(span!(start), WrapPropertyLeft),
-				change!(span!(end), WrapPropertyRight),
+			Self::WrapProperty { enclose } => smallvec![
+				change!(span!(start), WrapPropertyLeft { enclose }),
+				change!(span!(end), WrapPropertyRight { enclose }),
 			],
 			Self::WrapObjectAssignment {
 				restids,
