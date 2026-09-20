@@ -135,6 +135,17 @@ records which materials exist, which are in git, and which have been checked.
   `a5681bf9b05db14d86776930017c647ad9e6e56ff6bbcfdf21e5848288dfaf1b` — and the
   same bytes ship beside the artifact as
   `LICENSE.libcurl.js-LGPL-3.0-or-later`. The wrapper's AGPL-3.0 text ships as
-  `LICENSE.wrapper-AGPL-3.0-only`. LGPL-3.0 is written as a supplement to
-  GPL-3.0 and the GPL-3.0 text itself is in neither tree; that is recorded here,
-  not resolved.
+  `LICENSE.wrapper-AGPL-3.0-only`.
+- **The GPL-3.0 text LGPL-3.0 incorporates is now retained.** LGPL-3.0 states
+  that it incorporates the terms and conditions of GPL-3.0 and supplements them,
+  and upstream ships only the supplement, so the incorporated text was previously
+  in neither tree. It is now kept verbatim at
+  `vendor/libcurl.js/LICENSE.GPL-3.0` — retrieved 2026-09-20 from
+  `https://www.gnu.org/licenses/gpl-3.0.txt`, 35149 bytes, sha256
+  `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`, unmodified.
+  **The artifact currently built in `vendor/libcurl.js/dist` and the
+  `source.tar.gz` beside it were assembled before this file was retained, so they
+  do not contain it.** `BUILD-RECIPE.md` records that the next build must copy it
+  into both licence sets; until a rebuild and repack, the packed asset's licence
+  set is still missing it. Retaining the text records the materials; it is not a
+  compliance certification.

@@ -45,6 +45,21 @@ several exist in unrelated projects and were deliberately not copied.
   the only ones.
 - `LICENSE` — upstream license text, verbatim (LGPLv3, byte-identical to
   `upstream/LICENSE`).
+- `LICENSE.GPL-3.0` — the GPL-3.0 text, verbatim and unmodified. LGPL-3.0 is not
+  a standalone licence: its own first paragraph says it "incorporates the terms
+  and conditions of version 3 of the GNU General Public License, supplemented by
+  the additional permissions listed below", and upstream ships only the
+  supplement. The incorporated text is kept here so the licence that actually
+  applies can be read in full. Retained for completeness of the materials; it is
+  not a compliance certification and no legal conclusion is asserted.
+
+  | field | value |
+  | --- | --- |
+  | source | `https://www.gnu.org/licenses/gpl-3.0.txt` (`.../gpl.txt` redirects to it and served identical bytes) |
+  | retrieved | 2026-09-20 |
+  | size | 35149 bytes, 674 lines, ASCII, LF endings |
+  | sha256 | `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` |
+  | modifications | none — the served bytes, unedited |
 
 ## Scoped per-session CA trust — historically patch 0001 (NOT vendored, NOT applied, NOT built)
 

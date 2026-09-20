@@ -223,6 +223,29 @@ Rebuild with the commands above and copy the wrapper's `dist/` over
 The Runway build **fails** if the artifact is absent; it never falls back to the
 published package.
 
+### Licence files the next build must carry
+
+The licence set is assembled from explicit files, not by copying this directory,
+so each one has to be named. Alongside what is already there —
+`LICENSE.libcurl.js-LGPL-3.0-or-later`, `LICENSE.wrapper-AGPL-3.0-only` and the
+native texts in `licenses/` — a rebuild must also copy
+**`LICENSE.GPL-3.0`** from this directory:
+
+- beside the artifact, into the `licenses/` directory, so it travels with
+  `dist/` and therefore into `packages/runway/dist/assets/libcurl/licenses/`;
+- into the corresponding source archive, as `source/licenses/LICENSE.GPL-3.0`,
+  beside the native texts already there.
+
+The reason is in the text itself: LGPL-3.0 incorporates the terms and conditions
+of GPL-3.0 and only supplements them, and upstream ships the supplement alone.
+`PROVENANCE.md` records where the file came from and its checksum. This is
+material completeness, not a compliance certification.
+
+**Truthfully, right now:** the artifact already built in `dist/`, its `licenses/`
+directory and its `source.tar.gz` were assembled **before** that text was
+retained, so none of them contains it. Nothing here edits a built artifact, so
+that stays true until the next rebuild and repack.
+
 ## Status
 
 Runway now defaults to this artifact, so its own runs no longer use the
