@@ -1,0 +1,39 @@
+diff --git a/client/javascript/http.js b/client/javascript/http.js
+index 12cd925..6a33bca 100644
+--- a/client/javascript/http.js
++++ b/client/javascript/http.js
+@@ -48,7 +48,7 @@ class HTTPSession extends CurlSession {
+         let response;
+         try {
+           let response_json = c_func_str(_http_get_info, [http_handle]);
+-          response = this.constructor.create_response(stream, JSON.parse(response_json));
++          response = this.constructor.create_response(stream, JSON.parse(response_json), params.method);
+         }
+         catch (e) {
+           //this runs inside a native data/end callback, so an exception unwinds
+@@ -145,7 +145,7 @@ class HTTPSession extends CurlSession {
+     return await this.request_async(url, params, body);
+   }
+ 
+-  static create_response(response_data, response_info) {
++  static create_response(response_data, response_info, method) {
+     response_info.ok = response_info.status >= 200 && response_info.status < 300;
+     response_info.statusText = status_messages[response_info.status] || "";
+     //a null body status cannot carry a body: the Response constructor throws if
+@@ -158,6 +158,16 @@ class HTTPSession extends CurlSession {
+       response_data = null;
+     }
+ 
++    //a HEAD response never has a body, whatever its status says and whatever
++    //Content-Length it advertises, so it is null rather than an empty stream.
++    //exact comparison: HTTP methods are case sensitive, and this is the same
++    //method string handed to the native layer, which matches it the same way.
++    //a GET that simply returned zero bytes is NOT this case and keeps its
++    //(empty) stream, so the two stay distinguishable.
++    if (method === "HEAD") {
++      response_data = null;
++    }
++
+     //construct base response object
+     let response_obj = new Response(response_data, response_info);
+     for (let key in response_info) {

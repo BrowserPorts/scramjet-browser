@@ -35,8 +35,10 @@ export const ASSET_DIRECTORIES = Object.freeze([
  * Assets Runway owns but does not keep under `src/`, copied into `dist/` so the
  * packed tarball carries them.
  *
- * The libcurl transport must be supplied separately at `vendor/libcurl.js/dist`.
- * Copying it here lets an installed consumer resolve it package-relatively.
+ * The libcurl transport is built from `vendor/libcurl.js` (pristine upstream +
+ * our patches) and lives there with its licences and `SOURCES.md`. Copying it
+ * here is what makes an installed consumer resolve it package-relatively,
+ * instead of needing a sibling checkout or the published build.
  */
 export const VENDOR_ASSETS = Object.freeze([
 	{
@@ -45,8 +47,8 @@ export const VENDOR_ASSETS = Object.freeze([
 		expect: "index.js",
 		what: "the bundled libcurl transport",
 		remedy:
-			"Supply the libcurl transport artifact, its licences and corresponding source " +
-			"at vendor/libcurl.js/dist before building Runway.",
+			"Build it with vendor/libcurl.js/prepare-build-tree.sh and the commands in " +
+			"vendor/libcurl.js/BUILD-RECIPE.md.",
 	},
 ]);
 

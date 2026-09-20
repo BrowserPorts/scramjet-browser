@@ -62,6 +62,8 @@ export const ASSET_SPECS: Readonly<Record<AssetKind, AssetSpec>> = Object.freeze
 	 * It is still an OPTIONAL transport in the same sense as before: only the
 	 * scramjet harness page loads it, the bare lane never does, and nothing in
 	 * the runner imports it. This only changes which directory is served.
+	 *
+	 * Source, licences and the exact inputs are in `SOURCES.md` beside the files.
 	 */
 	libcurl: {
 		owned: {
@@ -72,9 +74,10 @@ export const ASSET_SPECS: Readonly<Record<AssetKind, AssetSpec>> = Object.freeze
 		flag: "--libcurl-dist",
 		buildHint:
 			"In an installed package this asset ships with Runway, so a missing one " +
-			"means the install is incomplete. Reinstall, or supply the transport artifact " +
-			"with its licences and corresponding source at vendor/libcurl.js/dist " +
-			"before building from this repository. Alternatively, " +
+			"means the install is incomplete: reinstall, or rebuild it from the " +
+			"corresponding source beside it (BUILD.md and source.tar.gz). In this " +
+			"repository, build it with vendor/libcurl.js/prepare-build-tree.sh and the " +
+			"commands in vendor/libcurl.js/BUILD-RECIPE.md. Either way, " +
 			"--libcurl-dist <dir> overrides.",
 	},
 });
