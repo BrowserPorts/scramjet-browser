@@ -1,8 +1,36 @@
-import { readFileSync, writeFileSync, chmodSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFileSync, writeFileSync, chmodSync, realpathSync } from "node:fs";
+import { copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertNoSpecifiers,
+  assertRelativeSpecifiersResolved,
+  ensureDeclarationReferences,
+  ensureLibReferences,
+  redirectBareSpecifiers,
+  resolveRelativeSpecifiers,
+} from "./tools/declaration-postemit.mjs";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * `bun --bun` prepends a directory whose `node` is a symlink to the Bun binary,
+ * so any child resolving `#!/usr/bin/env node` runs under Bun instead of Node.
+ * The declaration toolchain (pnpm, tsc, tsc-alias) needs real Node, so drop only
+ * those shim directories and leave every other entry, and its order, untouched.
+ */
+function nodeToolchainPath(): string {
+  const entries = (process.env.PATH ?? "").split(delimiter);
+  return entries
+    .filter((entry) => {
+      if (!entry) return false;
+      try {
+        return basename(realpathSync(join(entry, "node"))) !== "bun";
+      } catch {
+        return true;
+      }
+    })
+    .join(delimiter);
+}
 import { exec, execSync } from "node:child_process";
 const execAsync = promisify(exec);
 import { promisify } from "node:util";
@@ -151,76 +179,266 @@ class ExternalStubPlugin {
 }
 
 // Custom plugin to generate TypeScript declarations
+//
+// The step is fail-closed: every part of it (the declaration compile, the alias
+// pass, the verbatim copies, the bundled declarations and the specifier
+// rewrite) runs inside `afterEmit.tapPromise`, and any failure rejects so
+// rspack exits non-zero. A red declaration compile used to be printed and then
+// dropped on the floor by a fire-and-forget `.tap`, which produced an exit code
+// of 0 with missing or stale `.d.ts` output.
+//
+// `tsc` never emits `.d.ts` inputs, and it never rewrites relative import
+// specifiers in what it does emit. Two core declaration inputs therefore need
+// a verbatim copy after emit, or the published types name files that are not
+// in the package:
+// - `src/global.d.ts` -> `dist/types/global.d.ts`: the ambient
+//   `GlobalThis`/`Self` aliases that emitted signatures reference, the `Window`
+//   payload fields, and the `Window`/`Document` `[SCRAMJETCLIENT]` properties.
+//   Written in the module form a published declaration needs (see the header
+//   comment in the source file).
+// - `rewriter/wasm/out/wasm.d.ts` -> `dist/rewriter/wasm/out/wasm.d.ts`: the
+//   wasm-bindgen declarations for the `Rewriter`/`JsRewriterOutput` API. The
+//   copy lands exactly where the emitted
+//   `dist/types/shared/rewriters/wasm.d.ts` resolves
+//   `../../../rewriter/wasm/out/wasm.js` from, so the published types describe
+//   the actual build artifact instead of a path outside the package.
+//
+// `bundledModules` carries the declarations of a build-only workspace
+// dependency into the package that exposes its types. The controller's public
+// `Controller.rpc` is an `RpcHelper<Controllerbound, SWbound>` from
+// `@mercuryworkshop/rpc`, which is not published; its declarations are emitted
+// into `dist/types/internal/` and the emitted specifier is redirected there, so
+// the installed declaration graph resolves without that package while the
+// public generic type is preserved exactly.
+type BundledModule = {
+  /** Bare specifier as it appears in the emitted declarations. */
+  specifier: string;
+  /** Absolute path of the module's TypeScript entry point. */
+  entry: string;
+  /** Output path of the bundled declaration, relative to `declarationDir`. */
+  out: string;
+};
+
+/**
+ * Declaration output directory -> the config that owns it.
+ *
+ * rspack runs the configs in this file concurrently in one process, so two
+ * plugin instances pointed at the same package produced two `tsc` runs writing
+ * the same `dist/types`, two rewrite passes over those files, and two
+ * `rm -rf` calls on the same staging directory. Interleaved, the second `tsc`
+ * re-emitted the raw output after the first pass had already rewritten it,
+ * which shipped unresolved specifiers (`./index` in `typesEntry.d.ts`) from a
+ * build that reported success. A declaration output has exactly one owner, and
+ * a second claim is a configuration error rather than something to serialise.
+ */
+const declarationOutputOwners = new Map<string, string>();
+
 class TypeScriptDeclarationsPlugin {
   dir: string;
   tsconfigName: string;
   useAlias: boolean;
   tempDir: string;
+  extraCopies: Array<{ from: string; to: string }>;
+  declarationDir: string;
+  bundledModules: BundledModule[];
+  declarationReferences: Array<{ file: string; path: string }>;
+  libReferences: Array<{ file: string; lib: string }>;
 
   constructor(
     dir: string,
     tempDir: string,
     tsconfigName: string = "tsconfig.types.json",
     useAlias: boolean = true,
+    extraCopies: Array<{ from: string; to: string }> = [],
+    options: {
+      declarationDir?: string;
+      bundledModules?: BundledModule[];
+      declarationReferences?: Array<{ file: string; path: string }>;
+      /** Paths are relative to the package directory, not to `declarationDir`. */
+      libReferences?: Array<{ file: string; lib: string }>;
+    } = {},
   ) {
     this.dir = dir;
     this.tempDir = tempDir;
     this.tsconfigName = tsconfigName;
     this.useAlias = useAlias;
+    this.extraCopies = extraCopies;
+    this.declarationDir = options.declarationDir ?? "dist/types";
+    this.bundledModules = options.bundledModules ?? [];
+    this.declarationReferences = options.declarationReferences ?? [];
+    this.libReferences = options.libReferences ?? [];
+  }
+
+  /**
+   * Runs a command in the package directory and rejects with its full output on
+   * any non-zero exit. `tsc` exits 2 for compilation diagnostics; that is a
+   * build failure here, not a warning, so a declaration the package cannot
+   * actually produce never reaches `dist`.
+   */
+  private async run(command: string, label: string) {
+    try {
+      const { stdout, stderr } = await execAsync(command, {
+        cwd: this.dir,
+        env: { ...process.env, PATH: nodeToolchainPath() },
+      });
+      if (stdout) console.log(stdout);
+      if (stderr) console.error(stderr);
+    } catch (error: any) {
+      const parts = [
+        `${label} failed in ${this.dir}`,
+        `command: ${command}`,
+        `exit: ${error?.code ?? "unknown"}`,
+      ];
+      if (error?.stdout) parts.push(`stdout:\n${error.stdout}`);
+      if (error?.stderr) parts.push(`stderr:\n${error.stderr}`);
+      throw new Error(parts.join("\n"));
+    }
   }
 
   apply(compiler: WebpackCompiler) {
-    compiler.hooks.afterEmit.tap("TypeScriptDeclarationsPlugin", () => {
-      (async () => {
-        try {
-          console.log(`Generating TypeScript declarations for ${this.dir}...`);
-          try {
-            const { stdout, stderr } = await execAsync(
-              `pnpm exec tsc --project ${this.tsconfigName}`,
-              { cwd: this.dir },
-            );
-            if (stdout) console.log(stdout);
-            if (stderr && !stderr.includes("TS")) console.error(stderr);
-          } catch (tscError: any) {
-            // tsc exits with error code if there are TS errors, but still generates files
-            // Only log if it's not a TypeScript compilation error
-            if (tscError.code !== 2) {
-              throw tscError;
-            }
-            // if (tscError.stdout) console.log(tscError.stdout);
-            // if (tscError.stderr) console.warn(tscError.stderr);
-          }
+    const declarationOutput = join(this.dir, this.declarationDir);
+    const owner = compiler.options.name ?? "<unnamed config>";
+    const existing = declarationOutputOwners.get(declarationOutput);
+    if (existing !== undefined) {
+      throw new Error(
+        `TypeScriptDeclarationsPlugin: ${declarationOutput} is already generated by the "${existing}" config; "${owner}" must not generate it as well. Declaration output has one owner per package.`,
+      );
+    }
+    declarationOutputOwners.set(declarationOutput, owner);
 
-          if (this.useAlias) {
-            const aliasResult = await execAsync(
-              `pnpm exec tsc-alias --project ${this.tsconfigName}`,
-              { cwd: this.dir },
-            );
-            if (aliasResult.stdout) console.log(aliasResult.stdout);
-            if (aliasResult.stderr) console.error(aliasResult.stderr);
-          }
+    compiler.hooks.afterEmit.tapPromise(
+      "TypeScriptDeclarationsPlugin",
+      async () => {
+        console.log(`Generating TypeScript declarations for ${this.dir}...`);
+        const declarationDir = join(this.dir, this.declarationDir);
 
-          try {
-            await execAsync(`rm -rf ${this.tempDir}`, { cwd: this.dir });
-          } catch (e) {}
+        await this.run(
+          `pnpm exec tsc --project ${this.tsconfigName}`,
+          "declaration compile (tsc)",
+        );
 
-          console.log(
-            `TypeScript declarations generated successfully for ${this.dir}`,
-          );
-        } catch (error: any) {
-          console.error(
-            `Error generating TypeScript declarations for ${this.dir}:`,
-            error.message,
+        if (this.useAlias) {
+          await this.run(
+            `pnpm exec tsc-alias --project ${this.tsconfigName}`,
+            "declaration alias pass (tsc-alias)",
           );
         }
-      })();
-    });
+
+        for (const { from, to } of this.extraCopies) {
+          const source = join(this.dir, from);
+          const target = join(this.dir, to);
+          await mkdir(dirname(target), { recursive: true });
+          // `copyFile` rejects when the source is missing, which is the point:
+          // a published declaration that names a file the build never produced
+          // is exactly the failure this copy exists to prevent.
+          await copyFile(source, target);
+          console.log(`TypeScript declarations: copied ${from} -> ${to}`);
+        }
+
+        if (this.libReferences.length) {
+          const { added } = ensureLibReferences(this.dir, this.libReferences);
+          for (const reference of added)
+            console.log(`TypeScript declarations: referenced ${reference}`);
+        }
+
+        for (const bundled of this.bundledModules) {
+          const target = join(declarationDir, bundled.out);
+          const stagingDir = join(
+            this.dir,
+            this.tempDir,
+            "bundled-declarations",
+          );
+          const emptyTypeRoots = join(stagingDir, "no-ambient-types");
+          await rm(stagingDir, { recursive: true, force: true });
+          await mkdir(emptyTypeRoots, { recursive: true });
+          // A standalone compile of the dependency's entry point: same source,
+          // same types, emitted with the settings the declaration needs and
+          // nothing from the consuming project's include graph.
+          //
+          // `strict` is on and `skipLibCheck` is off — this declaration is
+          // published inside another package, so it is held to the same bar as
+          // the rest of the output rather than emitted under relaxed settings.
+          // `typeRoots` points at an empty directory so the emit cannot depend on
+          // whichever `@types` packages happen to be installed above it, and
+          // `lib` is stated instead of inherited from `target` for the same
+          // reason: the only inputs are the entry point and the standard library.
+          await this.run(
+            [
+              "pnpm exec tsc",
+              JSON.stringify(bundled.entry),
+              "--declaration --emitDeclarationOnly",
+              "--target ES2022 --module ESNext --moduleResolution bundler",
+              "--lib ES2022,DOM,DOM.Iterable",
+              `--typeRoots ${JSON.stringify(emptyTypeRoots)}`,
+              "--strict",
+              `--outDir ${JSON.stringify(stagingDir)}`,
+            ].join(" "),
+            `bundled declaration compile for ${bundled.specifier}`,
+          );
+          const emitted = (await readdir(stagingDir)).filter((name) =>
+            name.endsWith(".d.ts"),
+          );
+          if (emitted.length !== 1) {
+            throw new Error(
+              `bundled declaration compile for ${bundled.specifier} emitted ${emitted.length} declaration files (${emitted.join(", ") || "none"}); expected exactly one`,
+            );
+          }
+          await mkdir(dirname(target), { recursive: true });
+          await copyFile(join(stagingDir, emitted[0]), target);
+          console.log(
+            `TypeScript declarations: bundled ${bundled.specifier} -> ${join(this.declarationDir, bundled.out)}`,
+          );
+        }
+
+        if (this.bundledModules.length) {
+          const map = Object.fromEntries(
+            this.bundledModules.map((bundled) => [
+              bundled.specifier,
+              bundled.out,
+            ]),
+          );
+          const { rewrites } = redirectBareSpecifiers(declarationDir, map);
+          console.log(
+            `TypeScript declarations: redirected ${rewrites.length} bundled specifier(s) in ${this.declarationDir}`,
+          );
+          assertNoSpecifiers(
+            declarationDir,
+            this.bundledModules.map((bundled) => bundled.specifier),
+          );
+        }
+
+        if (this.declarationReferences.length) {
+          const { added } = ensureDeclarationReferences(
+            declarationDir,
+            this.declarationReferences,
+          );
+          for (const reference of added)
+            console.log(`TypeScript declarations: referenced ${reference}`);
+        }
+
+        const { files, rewrites } = resolveRelativeSpecifiers(declarationDir);
+        console.log(
+          `TypeScript declarations: resolved ${rewrites.length} relative specifier(s) across ${files} file(s) in ${this.declarationDir}`,
+        );
+        assertRelativeSpecifiersResolved(declarationDir);
+
+        await rm(join(this.dir, this.tempDir), {
+          recursive: true,
+          force: true,
+        });
+
+        console.log(
+          `TypeScript declarations generated successfully for ${this.dir}`,
+        );
+      },
+    );
   }
 }
 
 // Project directories
 const scramjetdir = join(__dirname, "packages/core");
 const controllerdir = join(__dirname, "packages/controller");
+const rpcdir = join(__dirname, "packages/rpc");
 const utilsdir = join(__dirname, "packages/utils");
 const bootstrapdir = join(__dirname, "packages/bootstrap");
 const createproxyappdir = join(__dirname, "packages/create-proxy-app");
@@ -487,7 +705,17 @@ const moduleBundledConfig = createScramjetConfig({
 });
 
 // Type generation configuration
+//
+// Named, and depended on by every package that compiles against
+// `@mercuryworkshop/scramjet`'s published types: this compilation is what
+// produces `packages/core/dist/types`, and the controller and utils declaration
+// compiles resolve that directory. Without the edge, rspack runs them
+// concurrently with this one and their `tsc` reads a half-written — or, in a
+// clean checkout, absent — declaration tree, which surfaces as
+// "has no exported member" and "cannot find name" errors that depend on
+// scheduling rather than on the sources.
 const typeGenConfig = defineConfig({
+  name: "scramjet-types",
   context: scramjetdir,
   entry: {
     index: "./src/index.ts",
@@ -502,6 +730,31 @@ const typeGenConfig = defineConfig({
       "dist/temp-types-build",
       "tsconfig.types.json",
       true,
+      [
+        { from: "src/global.d.ts", to: "dist/types/global.d.ts" },
+        {
+          from: "rewriter/wasm/out/wasm.d.ts",
+          to: "dist/rewriter/wasm/out/wasm.d.ts",
+        },
+      ],
+      {
+        // Nothing imports the copied ambient file, and `tsc` keeps no path
+        // reference to a `.d.ts` input in its declaration output, so the entry
+        // gets the reference back here. `typesEntry.d.ts` (the package `types`)
+        // re-exports `./index`, so referencing it from `index.d.ts` covers both
+        // the `.` and `./bundled` entry points.
+        declarationReferences: [{ file: "index.d.ts", path: "./global.d.ts" }],
+        // `Rewriter` declares `[Symbol.dispose]()`, which needs a `lib` a
+        // consumer on `["ES2022", "DOM"]` does not have. The requirement belongs
+        // to the declaration that has the member, so it is stated there rather
+        // than left for a consumer to discover as a TS2550 inside the package.
+        libReferences: [
+          {
+            file: "dist/rewriter/wasm/out/wasm.d.ts",
+            lib: "esnext.disposable",
+          },
+        ],
+      },
     ),
   ],
   resolve: {
@@ -528,7 +781,7 @@ const controllerVersionDefines = new rspack.DefinePlugin({
 
 const controllerConfig = createGenericConfig({
   name: "scramjet-controller",
-  dependencies: ["scramjet-esmodule"],
+  dependencies: ["scramjet-esmodule", "scramjet-types"],
   entry: {
     api: join(controllerdir, "src/index.ts"),
     inject: join(controllerdir, "src/inject.ts"),
@@ -558,6 +811,22 @@ const controllerConfig = createGenericConfig({
       "dist/temp-types-build",
       "tsconfig.types.json",
       false,
+      [],
+      {
+        // `@mercuryworkshop/rpc` is a build-only workspace package: the
+        // controller bundles its runtime into `controller.api.js` already, and
+        // it stays a devDependency rather than becoming an unpublished
+        // registry dependency of the tarball. Its declarations are carried into
+        // the controller's own output so `Controller.rpc` keeps its real
+        // `RpcHelper<Controllerbound, SWbound>` type for consumers.
+        bundledModules: [
+          {
+            specifier: "@mercuryworkshop/rpc",
+            entry: join(rpcdir, "index.ts"),
+            out: "internal/rpc.d.ts",
+          },
+        ],
+      },
     ),
   ],
 });
@@ -569,7 +838,7 @@ const utilsVersionDefines = new rspack.DefinePlugin({
 
 const utilsIifeConfig = createGenericConfig({
   name: "scramjet-utils-iife",
-  dependencies: ["scramjet-esmodule", "scramjet-controller"],
+  dependencies: ["scramjet-esmodule", "scramjet-types", "scramjet-controller"],
   entry: {
     main: join(utilsdir, "src/index.ts"),
   },
@@ -583,20 +852,16 @@ const utilsIifeConfig = createGenericConfig({
     },
   },
   target: "web",
-  plugins: [
-    utilsVersionDefines,
-    new TypeScriptDeclarationsPlugin(
-      utilsdir,
-      "dist/temp-types-build",
-      "tsconfig.types.json",
-      false,
-    ),
-  ],
+  // No declaration plugin here: `packages/utils` declarations are generated once,
+  // by `scramjet-utils-esmodule` (see `declarationOutputOwners`). Both bundle
+  // formats describe the same types, and `packages/utils`'s only build script
+  // runs every config, so nothing loses declarations by owning them in one place.
+  plugins: [utilsVersionDefines],
 });
 
 const utilsModuleConfig = createGenericConfig({
   name: "scramjet-utils-esmodule",
-  dependencies: ["scramjet-esmodule", "scramjet-controller"],
+  dependencies: ["scramjet-esmodule", "scramjet-types", "scramjet-controller"],
   entry: {
     main: join(utilsdir, "src/index.ts"),
   },
@@ -623,6 +888,24 @@ const utilsModuleConfig = createGenericConfig({
 
 const bootstrapConfig = createGenericConfig({
   name: "scramjet-bootstrap",
+  // This config carries a declaration compiler, and `packages/bootstrap`'s
+  // `tsconfig.types.json` includes all of `src`, so `tsc` type-checks
+  // `src/client.ts` and `src/typesEntry.ts`, which import
+  // `@mercuryworkshop/scramjet-controller`. That resolves to the controller's
+  // `types` entry, `dist/types/typesEntry.d.ts`, whose own declaration graph
+  // reaches `@mercuryworkshop/scramjet`'s `dist/types`. Both of those are build
+  // outputs, so without these edges rspack schedules this config concurrently
+  // with the ones that produce them and `tsc` reads a half-written — or, in a
+  // clean checkout, absent — declaration tree.
+  //
+  // The runtime bundle does not need them: `nodeExternals` leaves every bare
+  // specifier external. These are declaration-compile edges, and they are the
+  // direct ones only; `scramjet-controller` brings `scramjet-esmodule` with it.
+  // rspack's own `MultiCompiler.validateDependencies` enforces that a
+  // `--configName` selection covers the whole closure, and the selections the
+  // workspace's own package scripts make are pinned as a static contract in
+  // `tests/ci/siblingDeclarations.js`.
+  dependencies: ["scramjet-types", "scramjet-controller"],
   entry: {
     server: join(bootstrapdir, "src/server.ts"),
     client: join(bootstrapdir, "src/client.ts"),
@@ -698,7 +981,7 @@ const createProxyAppConfig = createGenericConfig({
   ],
 });
 
-export default [
+const configs = [
   iifeConfig,
   iifeBundledConfig,
   moduleConfig,
@@ -711,3 +994,50 @@ export default [
   bootstrapStaticConfig,
   createProxyAppConfig,
 ];
+
+/**
+ * Sanity check on this file's own dependency graph. Pure: it reads the configs
+ * above and nothing else — no `process.argv`, no other package's manifest.
+ *
+ * Selection is rspack's job and is left to it. `MultiCompiler.validateDependencies`
+ * already refuses to run when `--configName` filters out a config that a selected
+ * config declares as a dependency:
+ *
+ *     [rspack-cli] Error: Compiler dependency `scramjet-types` not found.
+ *
+ * It gets that right for every spelling and form the CLI accepts — repeated flags,
+ * a space-separated list, `--config-name`, `--configName=x` — because it works
+ * from the parsed selection rather than from the command line text. Re-deriving it
+ * here would mean a second, hand-rolled CLI parser competing with the real one.
+ *
+ * What rspack does not check is a `dependencies` entry naming a config that does
+ * not exist: it is dropped silently, so the ordering the author asked for never
+ * happens and nothing says so. That is a property of this file alone, so it is
+ * checked here, and a package's own `pnpm build` staying correct is covered by the
+ * `build`-script assertions in `tests/ci/siblingDeclarations.js`.
+ */
+function assertConfigDependenciesExist(all: typeof configs) {
+  const names = new Set<string>();
+  for (const config of all) {
+    if (!config.name) throw new Error("every rspack config must have a name");
+    names.add(config.name);
+  }
+
+  const unknown: string[] = [];
+  for (const config of all) {
+    for (const dependency of config.dependencies ?? []) {
+      if (!names.has(dependency))
+        unknown.push(`${config.name} -> ${dependency}`);
+    }
+  }
+  if (unknown.length) {
+    throw new Error(
+      `rspack config dependencies name configs that do not exist:\n  ${unknown.join("\n  ")}\n` +
+        `known configs: ${[...names].join(", ")}`,
+    );
+  }
+}
+
+assertConfigDependenciesExist(configs);
+
+export default configs;

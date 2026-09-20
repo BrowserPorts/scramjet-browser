@@ -13,7 +13,7 @@
 		"directory": "packages/controller"
 	},
 	"scripts": {
-		"build": "cd ../.. && rspack build --mode production --config-name scramjet-esmodule --config-name scramjet-controller",
+		"build": "cd ../.. && rspack build --mode production --configName scramjet-esmodule --configName scramjet-types --configName scramjet-controller",
 		"prepack": "pnpm build"
 	},
 	"exports": {
@@ -30,8 +30,9 @@
 		"@mercuryworkshop/proxy-transports": "catalog:"
 	},
 	"devDependencies": {
+		"@mercuryworkshop/rpc": "workspace:*",
 		"@mercuryworkshop/scramjet": "workspace:*",
 		"@types/serviceworker": "^0.0.197",
-		"@mercuryworkshop/rpc": "workspace:*"
+		"typescript": "^5.9.3"
 	}
 }

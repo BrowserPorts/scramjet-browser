@@ -171,6 +171,13 @@ jobs:
       - name: Install pnpm dependencies
         run: pnpm install
 
+      # Guards the rewriter's freshness gate and its error propagation before
+      # anything is packed. It stubs cargo/wasm-bindgen/wasm-opt/wasm-snip, so
+      # it deliberately runs before the toolchain is installed: it must not
+      # depend on one.
+      - name: Test rewriter build script
+        run: pnpm test:rewriter-build
+
       - name: Setup Rewriter Toolchain
         uses: ./.github/actions/setup-rewriter-toolchain
         with:
@@ -267,18 +274,116 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Get artifacts
+      - name: Get artifacts (scramjet/core)
         uses: actions/download-artifact@v4
         with:
           name: scramjet-package
           path: packages/core
 
       - name: Extract package
-        run: tar xvf mercuryworkshop-scramjet-*.tgz package --strip-components=1
+        run: tar --strip-components=1 -xvf mercuryworkshop-scramjet-*.tgz package
         working-directory: packages/core
+
+      # The declaration contract spans the packages that ship types, so the
+      # controller's and utils' packed output has to be here too. Only `dist` is
+      # taken from these two: their manifests are checked as they are in the
+      # repository, and the packed `dist` is what a consumer receives.
+      - name: Get artifacts (scramjet/controller)
+        uses: actions/download-artifact@v4
+        with:
+          name: scramjet-controller-package
+          path: packages/controller
+
+      - name: Extract package (scramjet/controller)
+        run: tar --strip-components=1 -xvf mercuryworkshop-scramjet-controller-*.tgz package/dist
+        working-directory: packages/controller
+
+      - name: Get artifacts (scramjet/utils)
+        uses: actions/download-artifact@v4
+        with:
+          name: scramjet-utils-package
+          path: packages/utils
+
+      - name: Extract package (scramjet/utils)
+        run: tar --strip-components=1 -xvf mercuryworkshop-scramjet-utils-*.tgz package/dist
+        working-directory: packages/utils
 
       - name: Run package validation tests
         run: pnpm test:package
+
+  consumer-declarations:
+    name: Compile an External Consumer Against the Packed Declarations
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # No `pnpm install`: the point of this job is that the packages compile for
+      # someone who has none of this workspace. It installs the tarballs into an
+      # empty npm project and compiles against them, so a workspace link or a
+      # root-hoisted `@types` package cannot hide a missing dependency.
+      - name: Get artifacts (scramjet/core)
+        uses: actions/download-artifact@v4
+        with:
+          name: scramjet-package
+          path: packs
+
+      - name: Get artifacts (scramjet/controller)
+        uses: actions/download-artifact@v4
+        with:
+          name: scramjet-controller-package
+          path: packs
+
+      - name: Get artifacts (scramjet/utils)
+        uses: actions/download-artifact@v4
+        with:
+          name: scramjet-utils-package
+          path: packs
+
+      # `bundler` resolution is the required gate. `nodenext` is a known upstream
+      # failure in `@mercuryworkshop/proxy-transports` that this repository cannot
+      # fix; the tool records its raw `tsc` exit and diagnostic count in the report
+      # and emits a `::warning::` so it stays visible instead of being implied
+      # clean by this job passing.
+      - name: Compile the consumer
+        run: |
+          node tools/consumer-declaration-check.mjs \
+            --tarballs packs \
+            --report consumer-declaration-report.json
+
+      - name: Summarise the resolution matrix
+        if: always()
+        run: |
+          if [ ! -f consumer-declaration-report.json ]; then
+            echo "no report produced" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node -e '
+            const report = require("./consumer-declaration-report.json");
+            const rows = report.variants.map((v) =>
+              `| ${v.label} | ${v.required ? "required" : "not gating"} | ${v.expectation} | ${v.tscExit} | ${v.diagnostics} | ${v.blocking} | ${v.outcome} |`
+            );
+            console.log("### External consumer resolution matrix\n");
+            console.log("| variant | status | expectation | raw tsc exit | diagnostics | blocking | outcome |");
+            console.log("| --- | --- | --- | --- | --- | --- | --- |");
+            console.log(rows.join("\n"));
+            console.log(`\n${report.gate.claim}\n`);
+            console.log(`\`@types\` installed in the consumer: ${report.typesPackagesInstalled.length ? report.typesPackagesInstalled.map((t) => `${t.name}@${t.version}`).join(", ") : "none"}`);
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the consumer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-declaration-report
+          path: consumer-declaration-report.json
 
   tests:
     name: Run Scramjet Tests
@@ -320,7 +425,7 @@ jobs:
         working-directory: packages/runway
 
       - name: Run Runway tests
-        run: OMIT_WPT=1 pnpm test --parallel 4
+        run: pnpm test --concurrency 4
         working-directory: packages/runway
 
   rewritertests:
@@ -348,7 +453,15 @@ jobs:
   upload:
     name: Upload release
     runs-on: ubuntu-latest
-    needs: [version-check, build, package-validation, tests, rewritertests]
+    needs:
+      [
+        version-check,
+        build,
+        package-validation,
+        consumer-declarations,
+        tests,
+        rewritertests,
+      ]
     permissions: write-all
     if: github.ref == 'refs/heads/main'
 
@@ -406,7 +519,15 @@ jobs:
   publish:
     name: Publish Scramjet to NPM
     runs-on: ubuntu-latest
-    needs: [version-check, build, package-validation, tests, rewritertests]
+    needs:
+      [
+        version-check,
+        build,
+        package-validation,
+        consumer-declarations,
+        tests,
+        rewritertests,
+      ]
     permissions: write-all
     if: ${{ (github.ref == 'refs/heads/main') && (needs.version-check.outputs.scramjet_version_changed == 'true' || needs.version-check.outputs.controller_version_changed == 'true' || needs.version-check.outputs.bootstrap_version_changed == 'true' || needs.version-check.outputs.create_proxy_app_version_changed == 'true' || needs.version-check.outputs.utils_version_changed == 'true') }}
 

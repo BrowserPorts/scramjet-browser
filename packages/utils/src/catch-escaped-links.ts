@@ -12,7 +12,7 @@ export class CatchEscapedLinksPlugin extends ManagedPlugin {
 		super("catch-escaped-links", []);
 	}
 
-	install(frame: Frame): void {
+	install(frame: Frame): undefined {
 		this.tap(
 			frame.hooks.fetch.intercept,
 			(context, props) => {
@@ -30,5 +30,7 @@ export class CatchEscapedLinksPlugin extends ManagedPlugin {
 			},
 			{ after: ["scramjet-http-cache"] }
 		);
+
+		return undefined;
 	}
 }

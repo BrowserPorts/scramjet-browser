@@ -323,7 +323,7 @@ export class HttpCachePlugin extends ManagedPlugin {
 		return this.cachePromise;
 	}
 
-	install(frame: Frame): void {
+	install(frame: Frame): undefined {
 		super.install(frame);
 
 		const hooks = frame.fetchHandler.hooks.fetch;
@@ -455,6 +455,8 @@ export class HttpCachePlugin extends ManagedPlugin {
 				console.warn("[scramjet-http-cache] cache.put failed:", err);
 			}
 		});
+
+		return undefined;
 	}
 
 	/**
