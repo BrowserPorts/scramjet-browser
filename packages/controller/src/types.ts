@@ -1,6 +1,11 @@
-import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import type {
+	RawHeaders,
+	TransferrableResponse,
+} from "@mercuryworkshop/proxy-transports";
+import type {
+	CookieSyncOptions,
 	NativeServiceWorkerGatewayMetadata,
+	ScramjetClient,
 	ScramjetDestination,
 	ScramjetStorageMutation,
 	ServiceWorkerHostEvent,
@@ -20,6 +25,7 @@ export type TransferRequest = {
 	rawReferrer: string | null;
 	destination: ScramjetDestination;
 	mode: RequestMode;
+	credentials?: RequestCredentials;
 	referrer: string;
 	method: string;
 	body: BodyType | null;
@@ -53,8 +59,13 @@ export type ControllerDetachResponse = {
 	detached: boolean;
 };
 
+export type ControllerReadyPayload = {
+	workerId: string;
+	connectionId?: string;
+};
+
 export type Controllerbound = {
-	ready: [];
+	ready: [ControllerReadyPayload | undefined];
 	request: [TransferRequest, TransferResponse];
 	initRemoteTransport: [{ port: MessagePort; prefix: string }];
 };

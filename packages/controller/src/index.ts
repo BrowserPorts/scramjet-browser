@@ -26,6 +26,7 @@ import {
 	unrewriteUrl,
 } from "@mercuryworkshop/scramjet";
 import { ServiceWorkerRegistry } from "./serviceworker";
+import type { ServiceWorkerBackend } from "./serviceworker-backend";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
 	Controllerbound,
@@ -44,6 +45,7 @@ import type {
 import { assertRuntimeScramjetVersion } from "./version";
 
 export { assertRuntimeScramjetVersion, VERSION } from "./version";
+export type { ServiceWorkerBackend } from "./serviceworker-backend";
 
 export type Config = {
 	prefix: string;
@@ -52,6 +54,7 @@ export type Config = {
 	wasmPath: string;
 	virtualWasmPath: string;
 	nativeServiceWorkerPath: string;
+	nativeServiceWorkerRuntimePath: string;
 	codec: Record<"encode" | "decode", (input: string) => string>;
 };
 
@@ -62,16 +65,22 @@ export const config: Config = {
 	wasmPath: "/scramjet/scramjet.wasm",
 	virtualWasmPath: "scramjet.wasm.js",
 	nativeServiceWorkerPath: "/controller/controller.native-sw.js",
+	nativeServiceWorkerRuntimePath: "/scramjet/scramjet_bundled.js",
 	codec: {
 		encode: (url: string) => {
 			if (!url) return url;
 
-			return encodeURIComponent(url);
+			// Native service worker scopes reject encoded slash and backslash bytes.
+			return encodeURIComponent(encodeURIComponent(url));
 		},
 		decode: (url: string) => {
 			if (!url) return url;
 
-			return decodeURIComponent(url);
+			const decoded = decodeURIComponent(url);
+			// Retain links produced by the previous single-encoding codec.
+			return /^[a-z][a-z0-9+.-]*:/i.test(decoded)
+				? decoded
+				: decodeURIComponent(decoded);
 		},
 	},
 };
@@ -111,6 +120,8 @@ type PersistedCookieState = {
 export class ManagedPlugin extends Plugin {
 	frame: Frame = null!;
 	dependencies: string[] = [];
+	createServiceWorkerBackend?: (frame: Frame) => ServiceWorkerBackend;
+	serviceWorkerClient?: { name: string; script: string };
 	constructor(name: string, dependencies: string[]) {
 		super(name);
 		this.dependencies = dependencies;
@@ -126,6 +137,18 @@ const COOKIE_DB_NAME = "__scramjet_controller";
 const COOKIE_STORE_NAME = "state";
 const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
 const CONTROLLER_DETACH_TIMEOUT_MS = 5000;
+const CONTROLLER_READY_TIMEOUT_MS = 5000;
+
+function serviceWorkerScriptsMatch(
+	left: ServiceWorker,
+	right: ServiceWorker,
+): boolean {
+	const leftUrl = new URL(left.scriptURL);
+	const rightUrl = new URL(right.scriptURL);
+	return (
+		leftUrl.origin === rightUrl.origin && leftUrl.pathname === rightUrl.pathname
+	);
+}
 
 let cookieDbPromise: Promise<IDBDatabase> | null = null;
 
@@ -282,11 +305,18 @@ export class Controller {
 	prefix: string;
 	frames: Frame[] = [];
 	serviceWorkerController: ServiceWorker;
-	guardServiceWorkerRevive = true;
 
 	private ready: Promise<undefined>;
 	private readyResolve: ((value: undefined) => unknown) | null = null;
-	private serviceWorkerReadyResolve: (() => unknown) | null = null;
+	private readyReject: ((reason?: unknown) => unknown) | null = null;
+	private serviceWorkerReady: {
+		worker: ServiceWorker;
+		expectedWorkerId: string | undefined;
+		connectionId: string;
+		resolve: () => undefined;
+		reject: (reason?: unknown) => undefined;
+		timeout: ReturnType<typeof setTimeout>;
+	} | null = null;
 	public isReady: boolean = false;
 	rpc: RpcHelper<Controllerbound, SWbound>;
 	private port: MessagePort | null = null;
@@ -298,12 +328,15 @@ export class Controller {
 	private cookieSyncPromise: Promise<undefined> | null = null;
 	private cookieSyncDirty = true;
 	private cookieSyncChannel: BroadcastChannel;
+	private initializationComplete = false;
 	private closed = false;
 	private detached = false;
 	private closing: Promise<undefined> | null = null;
-	private serviceWorkerReviveGuardTimer: ReturnType<typeof setTimeout> | null =
-		null;
-	private serviceWorkerReconnectPromise: Promise<undefined> | null = null;
+	private serviceWorkerReconnect: {
+		worker: ServiceWorker;
+		expectedWorkerId: string | undefined;
+		promise: Promise<undefined>;
+	} | null = null;
 	private transportChannels = new Set<{
 		port: MessagePort;
 		rpc: RpcHelper<TransportToController, ControllerToTransport>;
@@ -364,12 +397,25 @@ export class Controller {
 		}
 
 		if (event.data?.$controller$swrevive) {
-			// if we just spawned the service worker, it will send this even though it's not actually dead
-			// TODO: pretty jank, fix at some point
-			if (this.guardServiceWorkerRevive) {
+			const revive = event.data.$controller$swrevive as {
+				workerId?: unknown;
+				revivalId?: unknown;
+			};
+			const worker = event.source;
+			if (
+				!(worker instanceof ServiceWorker) ||
+				worker.state === "redundant" ||
+				typeof revive.workerId !== "string" ||
+				typeof revive.revivalId !== "string" ||
+				!serviceWorkerScriptsMatch(this.serviceWorkerController, worker)
+			) {
 				return;
 			}
-			this.reconnectServiceWorker().catch((error) => {
+			this.reconnectServiceWorker(
+				worker,
+				revive.workerId,
+				revive.revivalId,
+			).catch((error) => {
 				console.error("Scramjet Controller reconnection failed:", error);
 			});
 		}
@@ -386,27 +432,33 @@ export class Controller {
 	}
 
 	private methods: MethodsDefinition<Controllerbound> = {
-		ready: async () => {
+		ready: async (payload) => {
 			const readyResolve = this.readyResolve;
-			const serviceWorkerReadyResolve = this.serviceWorkerReadyResolve;
-			if (serviceWorkerReadyResolve === null) {
+			const serviceWorkerReady = this.serviceWorkerReady;
+			const legacyReady =
+				payload === undefined &&
+				serviceWorkerReady?.expectedWorkerId === undefined;
+			if (
+				serviceWorkerReady === null ||
+				(!legacyReady &&
+					(typeof payload?.workerId !== "string" ||
+						payload.connectionId !== serviceWorkerReady.connectionId ||
+						(serviceWorkerReady.expectedWorkerId !== undefined &&
+							serviceWorkerReady.expectedWorkerId !== payload.workerId)))
+			) {
 				throw new Error(
 					"Scramjet Controller received an unexpected ready acknowledgement",
 				);
 			}
-			this.serviceWorkerReadyResolve = null;
+			clearTimeout(serviceWorkerReady.timeout);
+			this.serviceWorkerReady = null;
+			this.serviceWorkerController = serviceWorkerReady.worker;
 			if (readyResolve !== null) {
 				this.readyResolve = null;
+				this.readyReject = null;
 				readyResolve(undefined);
 			}
-			serviceWorkerReadyResolve();
-			if (this.serviceWorkerReviveGuardTimer !== null) {
-				clearTimeout(this.serviceWorkerReviveGuardTimer);
-			}
-			this.serviceWorkerReviveGuardTimer = setTimeout(() => {
-				this.guardServiceWorkerRevive = false;
-				this.serviceWorkerReviveGuardTimer = null;
-			}, 5000);
+			serviceWorkerReady.resolve();
 		},
 		request: async (data) => {
 			const path = new URL(data.rawUrl).pathname;
@@ -458,6 +510,7 @@ export class Controller {
 					rawUrl: new URL(data.rawUrl),
 					rawReferrer: data.rawReferrer,
 					rawDestination: data.destination,
+					rawCredentials: data.credentials,
 					method: data.method,
 					mode: data.mode,
 					referrer: data.referrer,
@@ -516,7 +569,7 @@ export class Controller {
 				if (!frame) throw new Error("no frame owns this transport channel");
 				return frame;
 			};
-			const registry = () => frameForChannel().serviceWorkers;
+			const registry = () => frameForChannel().serviceWorkerBackend;
 
 			// the page owns at most one container at a time; a reload replaces it
 			let detachPage: (() => unknown) | undefined;
@@ -536,6 +589,7 @@ export class Controller {
 							rawUrl: new URL(request.rawUrl),
 							rawReferrer: request.rawReferrer,
 							rawDestination: request.destination,
+							rawCredentials: request.credentials,
 							method: request.method,
 							mode: request.mode,
 							referrer: request.referrer,
@@ -590,8 +644,8 @@ export class Controller {
 					],
 					swUnregister: async ({ id }) => [await registry().unregister(id), []],
 					swUpdate: async ({ id }) => [await registry().update(id), []],
-					swPostMessage: async ({ id, data, ports, clientUrl }) => {
-						await registry().postMessage(id, data, ports, clientUrl);
+					swPostMessage: async ({ id, workerId, data, ports, clientUrl }) => {
+						await registry().postMessage(id, data, ports, clientUrl, workerId);
 					},
 					swAttachClient: async ({ clientUrl }) => {
 						detachPage?.();
@@ -761,8 +815,9 @@ export class Controller {
 		);
 
 		this.ready = Promise.all([
-			new Promise<undefined>((resolve) => {
+			new Promise<undefined>((resolve, reject) => {
 				this.readyResolve = resolve;
+				this.readyReject = reject;
 			}),
 			this.loadScramjetWasm(),
 			this.loadSavedCookies(true),
@@ -770,6 +825,7 @@ export class Controller {
 			if (this.closed || this.closing) {
 				throw new Error("Scramjet Controller closed before becoming ready");
 			}
+			this.initializationComplete = true;
 			this.isReady = true;
 			return undefined;
 		});
@@ -790,7 +846,15 @@ export class Controller {
 			"message",
 			this.onCookieSyncMessage,
 		);
-		this.setupMessagePort();
+		this.reconnectServiceWorker(this.serviceWorkerController).catch((error) => {
+			if (this.readyResolve === null || this.serviceWorkerReady !== null) {
+				return;
+			}
+			const readyReject = this.readyReject;
+			this.readyResolve = null;
+			this.readyReject = null;
+			readyReject?.(error);
+		});
 
 		navigator.serviceWorker.addEventListener(
 			"message",
@@ -839,17 +903,17 @@ export class Controller {
 		const sourceClientId = data.sourceClientId ?? data.clientId ?? "";
 		const resultingClientId = data.resultingClientId ?? data.clientId ?? "";
 		if (clientUrl) {
-			frame.serviceWorkers.noteClient(sourceClientId, clientUrl);
+			frame.serviceWorkerBackend.noteClient(sourceClientId, clientUrl);
 		} else if (isNavigation) {
 			// a navigation reports the id the document will have once it loads, and
 			// it's the only chance to learn about a client before it asks for
 			// anything - which is what clients.claim() needs
-			frame.serviceWorkers.noteClient(resultingClientId, url);
+			frame.serviceWorkerBackend.noteClient(resultingClientId, url);
 		}
 
 		// reading the body is destructive, so don't touch it until a registration
 		// that would actually see this request has been found
-		if (!(await frame.serviceWorkers.wouldRoute(url, clientUrl))) {
+		if (!(await frame.serviceWorkerBackend.wouldRoute(url, clientUrl))) {
 			return undefined;
 		}
 
@@ -878,7 +942,7 @@ export class Controller {
 			resultingClientId,
 		};
 
-		const result = await frame.serviceWorkers.routeFetch(init, clientUrl);
+		const result = await frame.serviceWorkerBackend.routeFetch(init, clientUrl);
 		if (!result.handled) return undefined;
 
 		if (result.error || !result.response) {
@@ -920,6 +984,7 @@ export class Controller {
 				rawUrl,
 				rawReferrer: data.rawReferrer,
 				rawDestination: data.destination,
+				rawCredentials: data.credentials,
 				method: data.method,
 				mode: data.mode,
 				referrer: data.referrer,
@@ -953,9 +1018,19 @@ export class Controller {
 		];
 	}
 
-	private setupMessagePort(): Promise<undefined> {
+	private setupMessagePort(
+		worker: ServiceWorker,
+		expectedWorkerId?: string,
+		revivalId?: string,
+	): Promise<undefined> {
 		if (this.closed || this.closing) {
 			throw new Error("Scramjet Controller is closed");
+		}
+		if (this.serviceWorkerReady !== null) {
+			const pending = this.serviceWorkerReady;
+			this.serviceWorkerReady = null;
+			clearTimeout(pending.timeout);
+			pending.reject(new Error("Scramjet Controller connection was replaced"));
 		}
 		if (this.port) {
 			this.port.removeEventListener("message", this.onTabChannelMessage);
@@ -968,53 +1043,113 @@ export class Controller {
 		}
 
 		const channel = new MessageChannel();
+		const connectionId = makeId();
 		this.port = channel.port1;
 		this.port.addEventListener("message", this.onTabChannelMessage);
 		this.port.start();
 
-		this.serviceWorkerController.postMessage(
-			{
-				$controller$init: {
-					prefix: this.prefix,
-					id: this.id,
-				},
-			},
-			[channel.port2],
-		);
-
-		return new Promise<undefined>((resolve) => {
-			this.serviceWorkerReadyResolve = () => {
-				resolve(undefined);
+		return new Promise<undefined>((resolve, reject) => {
+			const finishReject = (reason?: unknown): undefined => {
+				reject(reason);
 				return undefined;
 			};
+			const timeout = setTimeout(() => {
+				if (this.serviceWorkerReady?.connectionId !== connectionId) return;
+				this.serviceWorkerReady = null;
+				finishReject(
+					new Error("Scramjet Controller ready acknowledgement expired"),
+				);
+			}, CONTROLLER_READY_TIMEOUT_MS);
+			this.serviceWorkerReady = {
+				worker,
+				expectedWorkerId,
+				connectionId,
+				resolve: () => {
+					resolve(undefined);
+					return undefined;
+				},
+				reject: finishReject,
+				timeout,
+			};
+			try {
+				worker.postMessage(
+					{
+						$controller$init: {
+							prefix: this.prefix,
+							id: this.id,
+							connectionId,
+							...(expectedWorkerId === undefined
+								? {}
+								: { workerId: expectedWorkerId }),
+							...(revivalId === undefined ? {} : { revivalId }),
+						},
+					},
+					[channel.port2],
+				);
+			} catch (error) {
+				if (this.serviceWorkerReady?.connectionId === connectionId) {
+					this.serviceWorkerReady = null;
+				}
+				clearTimeout(timeout);
+				finishReject(error);
+			}
 		});
 	}
 
-	private async reconnectServiceWorker(): Promise<undefined> {
-		if (this.serviceWorkerReconnectPromise !== null) {
-			return this.serviceWorkerReconnectPromise;
+	private async reconnectServiceWorker(
+		worker: ServiceWorker,
+		expectedWorkerId?: string,
+		revivalId?: string,
+	): Promise<undefined> {
+		const pendingReconnect = this.serviceWorkerReconnect;
+		if (
+			pendingReconnect !== null &&
+			pendingReconnect.worker === worker &&
+			(expectedWorkerId === undefined ||
+				pendingReconnect.expectedWorkerId === expectedWorkerId)
+		) {
+			return pendingReconnect.promise;
 		}
 		this.isReady = false;
 		const reconnectPromise = (async () => {
-			await this.setupMessagePort();
+			await this.setupMessagePort(worker, expectedWorkerId, revivalId);
 			if (this.closed || this.closing) {
 				throw new Error("Scramjet Controller closed during reconnection");
 			}
-			this.isReady = true;
+			if (this.initializationComplete) this.isReady = true;
 			return undefined;
 		})();
-		this.serviceWorkerReconnectPromise = reconnectPromise;
+		this.serviceWorkerReconnect = {
+			worker,
+			expectedWorkerId,
+			promise: reconnectPromise,
+		};
 		try {
 			return await reconnectPromise;
 		} finally {
-			if (this.serviceWorkerReconnectPromise === reconnectPromise) {
-				this.serviceWorkerReconnectPromise = null;
+			if (this.serviceWorkerReconnect?.promise === reconnectPromise) {
+				this.serviceWorkerReconnect = null;
 			}
 		}
 	}
 
-	refreshServiceWorkerConnection(): Promise<undefined> {
-		return this.reconnectServiceWorker();
+	async refreshServiceWorkerConnection(): Promise<undefined> {
+		let worker = this.serviceWorkerController;
+		const registration = await navigator.serviceWorker.getRegistration(
+			new URL(this.prefix, location.href),
+		);
+		const active = registration?.active;
+		if (
+			active &&
+			active.state !== "redundant" &&
+			serviceWorkerScriptsMatch(worker, active)
+		) {
+			worker = active;
+		}
+		if (worker.state === "redundant") {
+			throw new Error("No active Scramjet service worker is available");
+		}
+		return await this.reconnectServiceWorker(worker);
 	}
 
 	private detachFromServiceWorker(): Promise<undefined> {
@@ -1074,7 +1209,7 @@ export class Controller {
 		for (const frame of this.frames) {
 			let frameFailed = false;
 			try {
-				await frame.serviceWorkers.close();
+				await frame.closeServiceWorkers();
 			} catch (error) {
 				failures.push(error);
 				frameFailed = true;
@@ -1132,9 +1267,11 @@ export class Controller {
 			"message",
 			this.onServiceWorkerMessage,
 		);
-		if (this.serviceWorkerReviveGuardTimer !== null) {
-			clearTimeout(this.serviceWorkerReviveGuardTimer);
-			this.serviceWorkerReviveGuardTimer = null;
+		if (this.serviceWorkerReady !== null) {
+			const pending = this.serviceWorkerReady;
+			this.serviceWorkerReady = null;
+			clearTimeout(pending.timeout);
+			pending.reject(channelError);
 		}
 
 		if (failures.length > 0) {
@@ -1324,6 +1461,7 @@ function yieldGetInjectScripts(
 	codecEncode: (input: string) => string,
 	codecDecode: (input: string) => string,
 	storagePartitionKey: string,
+	serviceWorkerClient?: { name: string; script: string },
 ) {
 	const getInjectScripts: ScramjetInterface["getInjectScripts"] = (
 		meta,
@@ -1344,6 +1482,7 @@ function yieldGetInjectScripts(
 		}
 		return [
 			script(config.scramjetPath),
+			...(serviceWorkerClient ? [script(serviceWorkerClient.script)] : []),
 			script(prefix.href + config.virtualWasmPath),
 			script(config.injectPath),
 			script(
@@ -1357,6 +1496,7 @@ function yieldGetInjectScripts(
 						cookies: ${JSON.stringify(cookieJar.dump())},
 						storage: ${JSON.stringify(storage?.dump?.() ?? null)},
 						storagePartitionKey: ${JSON.stringify(storagePartitionKey)},
+						serviceWorkerClient: ${JSON.stringify(serviceWorkerClient)},
 						yieldGetInjectScripts: ${yieldGetInjectScripts.toString()},
 						codecEncode: ${codecEncode.toString()},
 						codecDecode: ${codecDecode.toString()},
@@ -1374,7 +1514,26 @@ export class Frame {
 	id: string;
 	prefix: string;
 	fetchHandler: ScramjetFetchHandler;
-	serviceWorkers: ServiceWorkerRegistry;
+	private embedderServiceWorkers: ServiceWorkerRegistry | null = null;
+	readonly serviceWorkerBackend: ServiceWorkerBackend;
+
+	get serviceWorkers(): ServiceWorkerRegistry {
+		return (this.embedderServiceWorkers ??= new ServiceWorkerRegistry(this));
+	}
+
+	async closeServiceWorkers(): Promise<undefined> {
+		const backends = new Set<ServiceWorkerBackend>([this.serviceWorkerBackend]);
+		if (this.embedderServiceWorkers) backends.add(this.embedderServiceWorkers);
+		const results = await Promise.allSettled(
+			[...backends].map((backend) => backend.close()),
+		);
+		const errors = results.flatMap((result) =>
+			result.status === "rejected" ? [result.reason] : [],
+		);
+		if (errors.length)
+			throw new AggregateError(errors, "Service worker backend teardown failed");
+		return undefined;
+	}
 	hooks: {
 		fetch: FetchHooks;
 		init: FrameInitHooks;
@@ -1398,19 +1557,32 @@ export class Frame {
 					this.controller.config.codec.encode,
 					this.controller.config.codec.decode,
 					this.controller.init.storagePartitionKey,
+					this.plugins.find((plugin) => plugin.createServiceWorkerBackend)
+						?.serviceWorkerClient,
 				),
-				getWorkerInjectScripts: (meta, type, script) => {
+				getWorkerInjectScripts: (
+					meta,
+					type,
+					script,
+					nativeServiceWorker = false,
+				) => {
 					let str = "";
 
-					str += script(this.controller.config.scramjetPath);
-					str += script(this.prefix + this.controller.config.virtualWasmPath);
+					str += script(
+						nativeServiceWorker
+							? this.controller.config.nativeServiceWorkerRuntimePath
+							: this.controller.config.scramjetPath,
+					);
+					if (!nativeServiceWorker) {
+						str += script(this.prefix + this.controller.config.virtualWasmPath);
+					}
 					str += script(
 						"data:text/javascript;charset=utf-8;base64," +
 							base64Encode(`
 					(()=>{
 						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = $scramjet;
 
-						setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
+						if (self.WASM) setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
 						delete self.WASM;
 
 						const sjconfig = ${JSON.stringify(this.controller.scramjetConfig)};
@@ -1462,6 +1634,7 @@ export class Frame {
 		this.id = makeId();
 		this.prefix = this.controller.prefix + this.id + "/";
 		syncFrameName(element);
+		this.plugins = options.plugins ?? [];
 
 		this.fetchHandler = new ScramjetFetchHandler({
 			crossOriginIsolated: self.crossOriginIsolated,
@@ -1477,25 +1650,31 @@ export class Frame {
 					options,
 				);
 			},
-			async fetchBlobUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchBlobUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
-			async fetchDataUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchDataUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
 		});
 
-		this.serviceWorkers = new ServiceWorkerRegistry(this);
-
+		const serviceWorkerPlugins = this.plugins.filter(
+			(plugin) => plugin.createServiceWorkerBackend,
+		);
+		if (serviceWorkerPlugins.length > 1) {
+			throw new Error("A frame can select only one service worker backend");
+		}
 		this.hooks = {
 			fetch: this.fetchHandler.hooks.fetch,
 			init: Tap.create<FrameInitHooks>(),
 			error: Tap.create<FrameErrorHooks>(),
 		};
+		this.serviceWorkerBackend = serviceWorkerPlugins.length
+			? serviceWorkerPlugins[0].createServiceWorkerBackend!(this)
+			: this.serviceWorkers;
 
 		element[CONTROLLERFRAME] = this;
 
-		this.plugins = options.plugins ?? [];
 		for (const plugin of this.plugins) {
 			for (const dependency of plugin.dependencies) {
 				const dependencyPlugin = this.plugins.find(

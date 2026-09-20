@@ -6,6 +6,7 @@ import {
 	rewriteUrl,
 	ScramjetFetchHandler,
 	ScramjetHeaders,
+	type SchemeFetchInit,
 	type ScramjetFetchRequest,
 } from "@mercuryworkshop/scramjet";
 import { cachePlugin, controller } from "..";
@@ -446,11 +447,11 @@ const PlaygroundView: Component<
 				context: frame.context,
 				transport: frame.controller.transport,
 				async sendSetCookie() {},
-				async fetchBlobUrl(url: string) {
-					return BareResponse.fromNativeResponse(await fetch(url));
+				async fetchBlobUrl(url: string, init: SchemeFetchInit) {
+					return BareResponse.fromNativeResponse(await fetch(url, init));
 				},
-				async fetchDataUrl(url: string) {
-					return BareResponse.fromNativeResponse(await fetch(url));
+				async fetchDataUrl(url: string, init: SchemeFetchInit) {
+					return BareResponse.fromNativeResponse(await fetch(url, init));
 				},
 			});
 

@@ -24,6 +24,7 @@ export type BootstrapOptions = {
   wispPath: string;
 
   scramjetBundlePath: string;
+  scramjetNativeWorkerRuntimePath: string;
   scramjetWasmPath: string;
   scramjetUtilsBundlePath: string;
 
@@ -61,6 +62,7 @@ export const defaultConfig: Partial<BootstrapOptions> = {
   scramjetControllerNativeSwPath: "/controller/controller.native-sw.js",
   scramjetControllerSwPath: "/controller/controller.sw.js",
   scramjetBundlePath: "/scram/scramjet.js",
+  scramjetNativeWorkerRuntimePath: "/scram/scramjet_bundled.js",
   scramjetWasmPath: "/scram/scramjet.wasm",
   scramjetUtilsBundlePath: "/scram/scramjet-utils.js",
 };

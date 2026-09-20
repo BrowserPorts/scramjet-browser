@@ -286,6 +286,7 @@ const rootServiceWorker = navigator.serviceWorker
 	);
 
 type Init = {
+	serviceWorkerClient?: { name: string; script: string };
 	config: Config;
 	sjconfig: ScramjetConfig;
 	prefix: URL;
@@ -301,6 +302,7 @@ type Init = {
 		codecEncode: (input: string) => string,
 		codecDecode: (input: string) => string,
 		storagePartitionKey: string,
+		serviceWorkerClient?: { name: string; script: string },
 	) => any;
 	codecEncode: (input: string) => string;
 	codecDecode: (input: string) => string;
@@ -399,7 +401,7 @@ class ExecutionContextWrapper {
 						postMessage(
 							port,
 							response,
-							response.body instanceof ArrayBuffer ? [response.body] : [],
+							response.body instanceof ArrayBuffer || response.body instanceof ReadableStream ? [response.body] : [],
 						);
 					})
 					.catch((error) => {
@@ -506,6 +508,7 @@ class ExecutionContextWrapper {
 			storage: this.storage,
 			storagePartitionKey: this.init.storagePartitionKey,
 			interface: {
+				nativeServiceWorkerPath: this.init.config.nativeServiceWorkerPath,
 				getInjectScripts: this.init.yieldGetInjectScripts(
 					this.init.config,
 					this.init.sjconfig,
@@ -515,6 +518,7 @@ class ExecutionContextWrapper {
 					this.init.codecEncode,
 					this.init.codecDecode,
 					this.init.storagePartitionKey,
+					this.init.serviceWorkerClient,
 				),
 				codecEncode: this.init.codecEncode,
 				codecDecode: this.init.codecDecode,
@@ -551,6 +555,7 @@ class ExecutionContextWrapper {
 			initHeaders: this.init.initHeaders,
 			history: this.init.history,
 			serviceWorkerHost: this.transport.serviceWorkerHost,
+			serviceWorkerClientName: this.init.serviceWorkerClient?.name,
 		});
 		const frameInitContext = {
 			window: this.global.window,

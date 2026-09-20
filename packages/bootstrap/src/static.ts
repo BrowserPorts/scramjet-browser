@@ -133,7 +133,7 @@ async function downloadFile(
   return await response.arrayBuffer();
 }
 
-async function ensureFile(
+async function loadPackageFile(
   packageName: string,
   version: string,
   filePath: string,
@@ -242,7 +242,7 @@ if (isSw) {
       ].replace(/^[\^~]/, "");
 
       // Download scramjet files
-      await ensureFile(
+      await loadPackageFile(
         SCRAMJET_PACKAGE_NAME,
         scramjetVersion,
         "/dist/scramjet.js",
@@ -250,7 +250,15 @@ if (isSw) {
         config.scramjetBundlePath,
       );
 
-      await ensureFile(
+      await loadPackageFile(
+        SCRAMJET_PACKAGE_NAME,
+        scramjetVersion,
+        "/dist/scramjet_bundled.js",
+        "application/javascript",
+        config.scramjetNativeWorkerRuntimePath,
+      );
+
+      await loadPackageFile(
         SCRAMJET_PACKAGE_NAME,
         scramjetVersion,
         "/dist/scramjet.wasm",
@@ -259,7 +267,7 @@ if (isSw) {
       );
 
       // Download controller files
-      await ensureFile(
+      await loadPackageFile(
         SCRAMJET_CONTROLLER_PACKAGE_NAME,
         controllerVersion,
         "/dist/controller.api.js",
@@ -267,7 +275,7 @@ if (isSw) {
         config.scramjetControllerApiPath,
       );
 
-      await ensureFile(
+      await loadPackageFile(
         SCRAMJET_CONTROLLER_PACKAGE_NAME,
         controllerVersion,
         "/dist/controller.inject.js",
@@ -275,14 +283,14 @@ if (isSw) {
         config.scramjetControllerInjectPath,
       );
 
-      await ensureFile(
+      await loadPackageFile(
         SCRAMJET_CONTROLLER_PACKAGE_NAME,
         controllerVersion,
         "/dist/controller.sw.js",
         "application/javascript",
         config.scramjetControllerSwPath,
       );
-      await ensureFile(
+      await loadPackageFile(
         SCRAMJET_CONTROLLER_PACKAGE_NAME,
         controllerVersion,
         "/dist/controller.native-sw.js",
@@ -298,7 +306,7 @@ if (isSw) {
             LIBCURL_TRANSPORT_PINNED_MAJOR_VERSION,
         );
 
-        await ensureFile(
+        await loadPackageFile(
           LIBCURL_TRANSPORT_PACKAGE_NAME,
           libcurlVersion,
           "/dist/index.js",
@@ -312,7 +320,7 @@ if (isSw) {
             EPOXY_TRANSPORT_PINNED_MAJOR_VERSION,
         );
 
-        await ensureFile(
+        await loadPackageFile(
           EPOXY_TRANSPORT_PACKAGE_NAME,
           epoxyVersion,
           "/dist/index.js",

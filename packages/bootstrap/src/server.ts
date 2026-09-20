@@ -81,6 +81,8 @@ addEventListener("fetch", (e) => {
       config.downloadedFilesDir + "controller/package/dist/controller.sw.js",
     [config.scramjetBundlePath]:
       config.downloadedFilesDir + "scramjet/package/dist/scramjet.js",
+    [config.scramjetNativeWorkerRuntimePath]:
+      config.downloadedFilesDir + "scramjet/package/dist/scramjet_bundled.js",
     [config.scramjetWasmPath]:
       config.downloadedFilesDir + "scramjet/package/dist/scramjet.wasm",
     [config.scramjetUtilsBundlePath]:
