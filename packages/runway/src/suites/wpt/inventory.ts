@@ -84,8 +84,10 @@ export const RUNNER_DEADLINE_MARGIN_MS = 15_000;
  * claim about any future browser or lane in general, and the reference lane is
  * unaffected because `requirementsFor` scopes the requirement to `candidate`.
  *
- * Upstream wptserve is a separate process and does not feed `RouteObserver`.
- * Without route observation, a candidate-lane WPT case cannot
+ * Note that no route observation currently exists for WPT traffic (see
+ * `INTEGRATION.md`, "Route instrumentation is the open gap": upstream wptserve is a
+ * separate process and never feeds `RouteObserver`). The correct consequence is that
+ * a candidate-lane WPT case cannot
  * qualify yet — the requirement stays declared and fails, and is never relaxed or
  * satisfied with a manufactured match.
  */

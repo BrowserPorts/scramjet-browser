@@ -17,11 +17,17 @@
  * - `execute.ts` runs one case on the lanes the run hands it and emits records
  *   through the run's own `emit`.
  *
- * What is deliberately *not* here: a suite registration, a plan, a browser launch, a
- * Playwright object, or any edit to the run/config/lane owner's modules. The adapter
- * is code-ready and **not wired**: `executeWptCase` requires a `WptHostAttachment`
- * the current `Lane` contract cannot yet supply, and it refuses to produce a record
- * without one rather than inventing the attribution qualification depends on.
+ * What is deliberately *not* here: suite registration, plan construction, or a browser
+ * launch. Those belong to the run/config/lane owner and this directory edits none of
+ * their modules; `host-attachment.ts` is the only file that names Playwright types,
+ * and it uses just the objects the public lane contract already hands over.
+ *
+ * `executeWptCase` requires a `WptHostAttachment` and refuses to produce a record
+ * without one rather than inventing the attribution qualification depends on. `run.ts`
+ * supplies that attachment per attempt, so the suite is wired: see `INTEGRATION.md`
+ * for the current integration and for the route-instrumentation gap that still keeps a
+ * candidate-lane case from qualifying. Nothing in this directory records that a WPT
+ * case has been observed passing in a browser.
  */
 export {
 	UPSTREAM_HARNESS_TIMEOUT_MS,

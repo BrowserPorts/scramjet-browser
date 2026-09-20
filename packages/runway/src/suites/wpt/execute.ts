@@ -29,6 +29,12 @@
  * basename comparison would either reject every proxied case or accept an unrelated
  * document. So the adapter *requires* them as a typed input — see
  * {@link WptHostAttachment} — and refuses to produce a record without them.
+ *
+ * `run.ts` supplies that attachment per attempt — the identity mapping on the
+ * reference lane, the lane's own host integration on a candidate lane. Nothing here
+ * works around a missing attachment, because working around it would mean inventing
+ * the very evidence qualification depends on. `INTEGRATION.md` in this directory
+ * describes the current integration.
  */
 import type { InventoryEntry } from "../../core/inventory.ts";
 import { createNonce, type LaneId, type Nonce, type TestId } from "../../core/ids.ts";
@@ -161,7 +167,8 @@ export type WptExecutionContext = {
 	 * ids travel as their own fields here and are *not* buried in `details`, because a
 	 * fault reported the wrong way is a fault that silently disqualifies nothing.
 	 *
-	 * The implementer must forward these to `recorder.diagnostic` unchanged.
+	 * These are forwarded to `recorder.diagnostic` unchanged; `dispatchWptCase` in
+	 * `run.ts` is what does the forwarding.
 	 */
 	readonly diagnostic: (input: WptDiagnosticInput) => Promise<void>;
 };

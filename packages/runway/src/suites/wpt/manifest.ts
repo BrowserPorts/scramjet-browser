@@ -13,8 +13,9 @@
  * coerced, so a field that does not have the shape the producer contract declares
  * is an error rather than a case that quietly runs as something else.
  *
- * Forward compatibility is deliberate and one-directional. New fields are added
- * while existing ones keep their meaning, so an unrecognized key is recorded — see
+ * Forward compatibility is deliberate and one-directional. The producer contract
+ * (`scripts/WPT_INVENTORY.md`, "Manifest schema") says fields are *added* and
+ * existing ones keep their meaning, so an unrecognized key is recorded — see
  * {@link WptManifest.unrecognizedFields} — and never silently dropped nor treated
  * as a fatal error. An unrecognized *value* in a field this module interprets is
  * fatal, because interpreting it would be a guess.
