@@ -143,9 +143,15 @@ records which materials exist, which are in git, and which have been checked.
   `vendor/libcurl.js/LICENSE.GPL-3.0` — retrieved 2026-09-20 from
   `https://www.gnu.org/licenses/gpl-3.0.txt`, 35149 bytes, sha256
   `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`, unmodified.
-  **The artifact currently built in `vendor/libcurl.js/dist` and the
-  `source.tar.gz` beside it were assembled before this file was retained, so they
-  do not contain it.** `BUILD-RECIPE.md` records that the next build must copy it
-  into both licence sets; until a rebuild and repack, the packed asset's licence
-  set is still missing it. Retaining the text records the materials; it is not a
-  compliance certification.
+  `packages/runway/build.mjs` copies that tracked file into the packaged asset as
+  `dist/assets/libcurl/LICENSE.GPL-3.0`, beside the LGPL text, and fails the build
+  if it is missing — so a packed Runway tarball carries both texts regardless of
+  what the built artifact happens to contain. **Not yet in the archive:** the
+  artifact currently built in `vendor/libcurl.js/dist` and the `source.tar.gz`
+  beside it were assembled before the text was retained, and the Runway build
+  copies that archive as one opaque file rather than updating it, so the
+  corresponding source inside it still lacks the text. Putting it there is a
+  packaging step only — the existing archive can be repackaged with the file added,
+  with no libcurl, mbedTLS or wrapper recompilation and no change to any shipped
+  `.js` or `.wasm` — see `vendor/libcurl.js/BUILD-RECIPE.md`. Retaining and
+  shipping the text records the materials; it is not a compliance certification.

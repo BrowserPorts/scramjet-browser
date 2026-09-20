@@ -88,6 +88,22 @@ async function copyAssets() {
 		await mkdir(path.dirname(asset.to), { recursive: true });
 		await cp(asset.from, asset.to, { recursive: true });
 	}
+	// LGPL-3.0 is only a supplement to GPL-3.0 and says so in its first paragraph,
+	// but upstream ships the supplement alone, so the artifact carries no GPL-3.0
+	// text. Copying the tracked one is what makes the packaged asset carry both.
+	// It goes beside the artifact's own licence texts, not into `licenses/`, which
+	// holds the native components'. Deliberately after the artifact copy, so the
+	// tracked bytes win if an artifact ever carries a file of this name. If the
+	// tracked file is gone the copy throws and names it, which is the right
+	// outcome: a licence this one incorporates is not something to leave out.
+	// Nothing here opens `source.tar.gz`; that archive is copied as one opaque
+	// file and its own licence set is assembled when it is packaged. See
+	// `vendor/libcurl.js/BUILD-RECIPE.md`.
+	await mkdir(path.join(dist, "assets", "libcurl"), { recursive: true });
+	await cp(
+		path.join(packageRoot, "..", "..", "vendor", "libcurl.js", "LICENSE.GPL-3.0"),
+		path.join(dist, "assets", "libcurl", "LICENSE.GPL-3.0")
+	);
 }
 
 async function* walk(directory) {

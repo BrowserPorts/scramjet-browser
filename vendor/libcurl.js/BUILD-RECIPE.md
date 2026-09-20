@@ -223,28 +223,39 @@ Rebuild with the commands above and copy the wrapper's `dist/` over
 The Runway build **fails** if the artifact is absent; it never falls back to the
 published package.
 
-### Licence files the next build must carry
+### The GPL-3.0 text, and who copies it where
 
-The licence set is assembled from explicit files, not by copying this directory,
-so each one has to be named. Alongside what is already there —
-`LICENSE.libcurl.js-LGPL-3.0-or-later`, `LICENSE.wrapper-AGPL-3.0-only` and the
-native texts in `licenses/` — a rebuild must also copy
-**`LICENSE.GPL-3.0`** from this directory:
+LGPL-3.0 incorporates the terms and conditions of GPL-3.0 and only supplements
+them, and upstream ships the supplement alone, so `LICENSE.GPL-3.0` is kept in
+this directory. `PROVENANCE.md` records its source and checksum. This is material
+completeness, not a compliance certification.
 
-- beside the artifact, into the `licenses/` directory, so it travels with
-  `dist/` and therefore into `packages/runway/dist/assets/libcurl/licenses/`;
-- into the corresponding source archive, as `source/licenses/LICENSE.GPL-3.0`,
-  beside the native texts already there.
+Two destinations, and only one of them is automatic:
 
-The reason is in the text itself: LGPL-3.0 incorporates the terms and conditions
-of GPL-3.0 and only supplements them, and upstream ships the supplement alone.
-`PROVENANCE.md` records where the file came from and its checksum. This is
-material completeness, not a compliance certification.
+- **The packaged Runway asset — done by the build.** `packages/runway/build.mjs`
+  copies `vendor/libcurl.js/LICENSE.GPL-3.0` to
+  `dist/assets/libcurl/LICENSE.GPL-3.0`, beside the artifact's own
+  `LICENSE.libcurl.js-LGPL-3.0-or-later` (the artifact-level texts sit there;
+  `licenses/` holds the native components'). It reads the tracked file, so this
+  does not depend on the built artifact carrying one, and the build fails if that
+  file is absent.
+- **The corresponding source archive — a packaging step, not done here.**
+  `source.tar.gz` is assembled when the artifact is packaged and is copied around
+  as one opaque file afterwards; nothing in the Runway build opens it. Add this
+  text at the archive's root as `source/LICENSE.GPL-3.0`, beside `BUILD.md`, and
+  record it in `SOURCES.md`.
 
-**Truthfully, right now:** the artifact already built in `dist/`, its `licenses/`
-directory and its `source.tar.gz` were assembled **before** that text was
-retained, so none of them contains it. Nothing here edits a built artifact, so
-that stays true until the next rebuild and repack.
+  **This does not require compiling anything.** The existing archive can be
+  unpacked, given the licence file, and repackaged as-is: no emsdk, no libcurl or
+  mbedTLS rebuild, no wrapper rebuild, and no change to any `.js` or `.wasm`
+  output. Only the archive's own member list changes.
+
+**Truthfully, right now:** the artifact already built in `dist/` does not contain
+`LICENSE.GPL-3.0`, and neither does the `source.tar.gz` beside it — both were
+assembled before the text was retained. The packaged Runway asset does contain it,
+because the build copies the tracked file. The Runway build does not update the
+archive, and nothing here edits a built artifact, so the archive stays without it
+until someone repackages it.
 
 ## Status
 
