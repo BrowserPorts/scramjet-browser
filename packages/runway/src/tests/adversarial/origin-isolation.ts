@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // Two different sites viewed through the same proxy share one *real* browser
 // origin, so the browser's own same-origin policy no longer separates them.
@@ -19,12 +19,12 @@ import { serverTest } from "../../testcommon.ts";
 // failure message rather than hiding behind the known one.
 
 export default [
-	serverTest({
+	originTest({
 		// KNOWN FAILURE: the cross-site frame assertions below. Everything before
 		// them currently holds.
 		name: "originisolation-cross-site-frame-access",
 		hostname: "a.example",
-		cleartextHosts: ["b.example"],
+		extraHosts: ["b.example"],
 		autoPass: true,
 		js: `
 			// --- what works today ---

@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // client/shared/function.ts intercepts the Function constructor, stringifies
 // the function the real constructor produced, rewrites `return <source>` and
@@ -7,7 +7,7 @@ import { basicTest } from "../../testcommon.ts";
 // templates and most CSP-unsafe expression evaluators do the same.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "functionctor-basic",
 		js: `
 			const f = new Function("a", "b", "return a + b");
@@ -22,7 +22,7 @@ export default [
 			assertEqual(new Function(...["a", "return a"])(5), 5, "spread arguments");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-scope",
 		js: `
 			const notVisible = 5;
@@ -36,7 +36,7 @@ export default [
 			delete window.fnGlobal;
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-params",
 		js: `
 			assertEqual(new Function("a = 5", "return a")(), 5, "default parameter");
@@ -47,7 +47,7 @@ export default [
 			assertEqual(new Function("a", "b = a", "return b")(4), 4, "later default sees an earlier parameter");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-rewritten-body",
 		js: `
 			assertEqual(new Function("return location.href")(), location.href, "location inside the body");
@@ -56,7 +56,7 @@ export default [
 			assertEqual(new Function("return document.baseURI")(), document.baseURI, "document.baseURI");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-globals-rewritten",
 		js: `
 			new Function("checkglobal(top)")();
@@ -68,7 +68,7 @@ export default [
 			checkglobal(new Function("return window.top")());
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-syntax-errors",
 		js: `
 			let e1;
@@ -82,7 +82,7 @@ export default [
 			assert(e3 instanceof SyntaxError, "await in a sync body must be a SyntaxError, got " + e3);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-tostring",
 		js: `
 			const f = new Function("a", "return a + 1");
@@ -92,7 +92,7 @@ export default [
 			assert(s.startsWith("function anonymous"), "shape: " + s);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-call-forms",
 		js: `
 			const f = new Function("x", "return x * 2");
@@ -104,7 +104,7 @@ export default [
 			assertEqual(new Function("return this.v").call({ v: "V" }), "V", "explicit receiver");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-as-constructor",
 		js: `
 			const Ctor = new Function("this.x = 1");
@@ -115,7 +115,7 @@ export default [
 			assertEqual(new Ctor().m(), "m", "prototype methods");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-with-expression-compiler",
 		js: `
 			// how Alpine- and Vue2-style expression compilers build accessors
@@ -127,7 +127,7 @@ export default [
 			assertEqual(compile("a ? b : c")({ a: 1, b: "y", c: "n" }), "y", "conditional");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "functionctor-flavor-names",
 		js: `
 			assertEqual((async function () {}).constructor.name, "AsyncFunction", "AsyncFunction.name");
@@ -140,7 +140,7 @@ export default [
 	// ------------------------------------------------------------------
 	// the .constructor route into the Function family
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the global Function is replaced by one proxy and
 		// Function.prototype.constructor by a different one, so the two are no
 		// longer the same object. `x.constructor === Function` is a standard
@@ -152,7 +152,7 @@ export default [
 			assertEqual((() => {}).constructor, Function, "arrow function constructor");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: for the async/generator constructors the interceptor
 		// evaluates `return <source>` *inside a function of the same flavor*, so
 		// what comes back is a Promise (or a generator) that wraps the function
@@ -165,7 +165,7 @@ export default [
 			assertEqual(await f(), 1, "and it must resolve to the body's value");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "functionctor-generator-flavor",
 		js: `
@@ -175,7 +175,7 @@ export default [
 			assertDeepEqual([...f()], [1, 2], "and it must be iterable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "functionctor-asyncgenerator-flavor",
 		js: `

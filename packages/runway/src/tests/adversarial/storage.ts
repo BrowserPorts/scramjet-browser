@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // Storage is namespaced per proxied origin, so the keys a page writes are not
 // the keys the backing store holds. Every enumeration route has to un-namespace
@@ -11,7 +11,7 @@ import { basicTest } from "../../testcommon.ts";
 // measures length as a delta.
 
 const storageTest = (name: string, prefix: string, body: string) =>
-	basicTest({
+	scriptTest({
 		name,
 		js: `
 			const P = ${JSON.stringify(prefix)};
@@ -164,7 +164,7 @@ export default [
 			assertEqual(grew(), 0, "length back to where it started");
 		`
 	),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: clear() is a no-op - length, getItem, key(i) and
 		// Object.keys all still report every entry afterwards. Logout and
 		// "reset my settings" flows depend on it.
@@ -179,7 +179,7 @@ export default [
 			assertDeepEqual(Object.keys(localStorage), [], "keys after clear");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: a missing key read as a property yields null instead of
 		// undefined, so `storage.foo === undefined` and `typeof storage.foo`
 		// checks take the wrong branch.
@@ -189,7 +189,7 @@ export default [
 			assertEqual(localStorage.getItem("definitely-absent-key"), null, "but getItem still reports null");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "storage-event-not-in-writing-document",
 		js: `
 			// per spec the document that performs the write does not receive the event
@@ -201,7 +201,7 @@ export default [
 			localStorage.removeItem("sf");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: no storage event is delivered to other same-origin
 		// documents at all. Tabs and frames use it to stay in sync - propagating
 		// a logout, an auth-token refresh, a theme change - and none of that fires.
@@ -222,7 +222,7 @@ export default [
 			localStorage.removeItem("cf");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same in the other direction.
 		name: "storage-event-parent-listens",
 		js: `

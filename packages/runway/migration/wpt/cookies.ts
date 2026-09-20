@@ -590,7 +590,7 @@ async function ensureServer() {
 					// Chromium treats a failed h2c upgrade differently from a plain HTTP/1.1 response.
 					shouldUpgradeCallback: (req: IncomingMessage) =>
 						req.headers.upgrade?.toLowerCase() === "websocket",
-				},
+				} as http.ServerOptions,
 				async (request, response) => {
 					try {
 						const hostHeader = request.headers.host || "localhost";

@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // Response headers the proxy has to actively handle rather than pass through:
 // multiple Set-Cookie headers (folding them into one is a classic proxy bug),
@@ -9,7 +9,7 @@ import { serverTest } from "../../testcommon.ts";
 // depend on.
 
 export default [
-	serverTest({
+	originTest({
 		name: "respheaders-multiple-set-cookie",
 		autoPass: true,
 		js: `
@@ -38,7 +38,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "respheaders-etag-revalidation",
 		autoPass: true,
 		js: `
@@ -74,7 +74,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "respheaders-response-type",
 		autoPass: true,
 		js: `
@@ -94,15 +94,15 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		// A site that refuses to be framed still has to render inside the proxy's
 		// frame, so these headers must be neutralised; if that regresses, every
-		// site setting them goes blank. Applied to a subframe because serverTest
-		// owns the "/" response. scramjetOnly: unproxied, the frame is genuinely
+		// site setting them goes blank. Applied to a subframe because originTest
+		// owns the "/" response. candidateOnly: unproxied, the frame is genuinely
 		// blocked, which is the point.
 		name: "respheaders-framing-headers-neutralised",
 		autoPass: true,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			const f = document.createElement("iframe");
 			f.src = "/framed.html";
@@ -128,12 +128,12 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		// A strict CSP must not stop the proxy's rewritten code from running, and
 		// the site's own subresources must still load under it.
 		name: "respheaders-strict-csp",
 		autoPass: true,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			const f = document.createElement("iframe");
 			f.src = "/csp.html";

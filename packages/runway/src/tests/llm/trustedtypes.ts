@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // Coverage for the trusted-types proxy installed by
 // packages/core/src/client/shared/trustedtypes.ts. These tests assume the
@@ -6,7 +6,7 @@ import { basicTest } from "../../testcommon.ts";
 // through unchanged (Chromium) or installs a spec-shaped polyfill.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-globals-exist",
 		js: `
 			assert(typeof window.trustedTypes === "object" && window.trustedTypes !== null,
@@ -24,7 +24,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-factory-shape",
 		js: `
 			const tt = window.trustedTypes;
@@ -44,7 +44,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-constructors-throw",
 		js: `
 			let threw;
@@ -70,7 +70,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-create-policy-basic",
 		js: `
 			const tt = window.trustedTypes;
@@ -101,7 +101,7 @@ export default [
 	// this can actually throw if its enabled in the csp, we dont emulate csp in scramjet
 	// https://developer.mozilla.org/en-US/docs/Web/API/TrustedTypePolicyFactory/createPolicy#exceptions
 	/* 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-policy-duplicate-name-throws",
 		js: `
 			const tt = window.trustedTypes;
@@ -117,7 +117,7 @@ export default [
 		`,
 	}),
 	*/
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-policy-missing-callback",
 		js: `
 			const tt = window.trustedTypes;
@@ -140,7 +140,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-policy-callback-receives-original-input",
 		js: `
 			const tt = window.trustedTypes;
@@ -164,7 +164,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-policy-coerces-non-string-input",
 		js: `
 			const tt = window.trustedTypes;
@@ -184,7 +184,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-is-helpers",
 		js: `
 			const tt = window.trustedTypes;
@@ -213,7 +213,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-empty-singletons",
 		js: `
 			const tt = window.trustedTypes;
@@ -224,7 +224,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-default-policy-tracks",
 		js: `
 			const tt = window.trustedTypes;
@@ -246,7 +246,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-get-attribute-type",
 		js: `
 			const tt = window.trustedTypes;
@@ -262,7 +262,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-get-property-type",
 		js: `
 			const tt = window.trustedTypes;
@@ -277,7 +277,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-innerhtml-with-trusted",
 		js: `
 			const tt = window.trustedTypes;
@@ -297,7 +297,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-innerhtml-with-string-still-works",
 		js: `
 			// scramjet strips CSP so a plain string assignment to innerHTML must
@@ -311,7 +311,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-script-src-with-trusted",
 		js: `
 			const tt = window.trustedTypes;
@@ -328,7 +328,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-script-text-with-trusted",
 		js: `
 			const tt = window.trustedTypes;
@@ -345,7 +345,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-iframe-srcdoc-with-trusted",
 		js: `
 			const tt = window.trustedTypes;
@@ -363,7 +363,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-iframe-contentwindow-exposes-tt",
 		js: `
 			const iframe = document.createElement("iframe");
@@ -387,7 +387,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-toString-and-toJSON",
 		js: `
 			const tt = window.trustedTypes;
@@ -405,7 +405,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "trustedtypes-independent-policies",
 		js: `
 			const tt = window.trustedTypes;

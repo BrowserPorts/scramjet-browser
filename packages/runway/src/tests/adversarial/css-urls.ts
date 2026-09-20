@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // url() references have to be rewritten on the way in and un-rewritten on the
 // way out, through the CSSOM as well as through markup. Setting a background
@@ -7,7 +7,7 @@ import { basicTest } from "../../testcommon.ts";
 // style attribute.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "cssurls-setattribute-roundtrip",
 		js: `
 			const d = document.createElement("div");
@@ -16,7 +16,7 @@ export default [
 			assert(!d.outerHTML.includes("/~/sj/"), "outerHTML: " + d.outerHTML);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "cssurls-parsed-markup-roundtrip",
 		js: `
 			const d = document.createElement("div");
@@ -25,7 +25,7 @@ export default [
 			assert(!d.innerHTML.includes("/~/sj/"), "no proxy URL in innerHTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "cssurls-stylesheet-csstext",
 		js: `
 			const st = document.createElement("style");
@@ -40,7 +40,7 @@ export default [
 			assert(!st.textContent.includes("/~/sj/"), "textContent leaks the proxy URL: " + st.textContent);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "cssurls-non-url-properties",
 		js: `
 			const d = document.createElement("div");
@@ -58,7 +58,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: a CSSOM write stores the fully-rewritten proxy URL in the
 		// style attribute, so serializing the element exposes it. Anything that
 		// reads outerHTML/innerHTML after setting a background image from script
@@ -75,7 +75,7 @@ export default [
 			assert(!c.outerHTML.includes("/~/sj/"), "cssText write: " + c.outerHTML);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: getComputedStyle hands back the proxy URL. Lazy-loaders
 		// and image-preloaders read the computed background to decide what to
 		// fetch, and anything comparing it against a known URL fails.
@@ -89,7 +89,7 @@ export default [
 			assertEqual(c, 'url("' + location.origin + '/bg.png")', "computed style resolves to the real URL");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: cssText on a rule is un-rewritten but reading the same
 		// value through the rule's style declaration is not.
 		name: "cssurls-cssrule-style-property",
@@ -102,7 +102,7 @@ export default [
 			assertEqual(rule.style.getPropertyValue("background-image"), 'url("/x.png")', "getPropertyValue");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: reading a url() back returns an absolutized URL rather
 		// than the author's string, whichever way it was written - including a
 		// <style> element's own textContent, which CSS-in-JS libraries read back

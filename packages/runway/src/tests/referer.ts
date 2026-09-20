@@ -1,17 +1,8 @@
 import http from "http";
-import type { AddressInfo } from "node:net";
-import { basicTest, type Test } from "../testcommon.ts";
+import { fixtureTest, listen, scriptTest, type NativeTest } from "../testkit.ts";
 
 function html(body: string) {
 	return `<!doctype html><html><body>${body}</body></html>`;
-}
-
-function listen(server: http.Server): Promise<number> {
-	return new Promise((resolve) => {
-		server.listen(0, () => {
-			resolve((server.address() as AddressInfo).port);
-		});
-	});
 }
 
 function close(server?: http.Server): Promise<void> {
@@ -27,19 +18,20 @@ function requestRefererTest(props: {
 	name: string;
 	expectedReferer: (sourcePort: number) => string;
 	crossOrigin?: boolean;
-}): Test {
-	let sourceServer: http.Server | undefined;
-	let targetServer: http.Server | undefined;
-	let sourcePort = 0;
-	let targetPort = 0;
-	let settled = false;
-
+}): NativeTest {
 	const pagePath = "/source/page.html?token=runway";
 	const pagePathname = "/source/page.html";
 
-	const test: Test = {
+	return fixtureTest({
 		name: props.name,
-		port: 0,
+		verdict: "host",
+		create: () => {
+			let sourceServer: http.Server | undefined;
+			let targetServer: http.Server | undefined;
+			let sourcePort = 0;
+			let targetPort = 0;
+			let settled = false;
+			return {
 		async start({ pass, fail }) {
 			settled = false;
 
@@ -131,14 +123,16 @@ function requestRefererTest(props: {
 			if (!props.crossOrigin) {
 				targetPort = sourcePort;
 			}
-			test.port = sourcePort;
+			// The fixture owns its listeners, so it reports the port the harness
+			// should navigate to instead of mutating a shared test object.
+			return sourcePort;
 		},
 		async stop() {
 			await Promise.all([close(sourceServer), close(targetServer)]);
 		},
-	};
-
-	return test;
+			};
+		},
+	});
 }
 
 function iframeRefererTest(props: {
@@ -146,17 +140,12 @@ function iframeRefererTest(props: {
 	expectedReferer: (sourcePort: number) => string;
 	crossOrigin?: boolean;
 	mode: "document" | "request";
-}): Test {
-	let sourceServer: http.Server | undefined;
-	let targetServer: http.Server | undefined;
-	let sourcePort = 0;
-	let targetPort = 0;
-
+}): NativeTest {
 	const parentPath = "/source/parent.html?token=runway-iframe";
 	const parentPathname = "/source/parent.html";
 	const childPathname = "/child/frame.html";
 
-	const childHtml = (actualRefererHeader: string | null) => {
+	const childHtml = (actualRefererHeader: string | null, sourcePort: number) => {
 		const expected = props.expectedReferer(sourcePort);
 		const assertions =
 			props.mode === "request"
@@ -187,9 +176,14 @@ function iframeRefererTest(props: {
 		);
 	};
 
-	const test: Test = {
+	return fixtureTest({
 		name: props.name,
-		port: 0,
+		create: () => {
+			let sourceServer: http.Server | undefined;
+			let targetServer: http.Server | undefined;
+			let sourcePort = 0;
+			let targetPort = 0;
+			return {
 		async start() {
 			const handleChildRequest = (
 				req: http.IncomingMessage,
@@ -204,7 +198,7 @@ function iframeRefererTest(props: {
 				}
 
 				res.writeHead(200, { "Content-Type": "text/html" });
-				res.end(childHtml(req.headers.referer ?? null));
+				res.end(childHtml(req.headers.referer ?? null, sourcePort));
 			};
 
 			if (props.crossOrigin) {
@@ -246,18 +240,20 @@ function iframeRefererTest(props: {
 			if (!props.crossOrigin) {
 				targetPort = sourcePort;
 			}
-			test.port = sourcePort;
+			// The fixture owns its listeners, so it reports the port the harness
+			// should navigate to instead of mutating a shared test object.
+			return sourcePort;
 		},
 		async stop() {
 			await Promise.all([close(sourceServer), close(targetServer)]);
 		},
-	};
-
-	return test;
+			};
+		},
+	});
 }
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "referer-document-referrer-is-not-current-location",
 		js: `
 			assert(document.referrer.length > 0, "document.referrer should be populated inside the test iframe");

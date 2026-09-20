@@ -1,11 +1,11 @@
-import { basicTest, serverTest } from "../testcommon.ts";
+import { scriptTest, originTest } from "../testkit.ts";
 // historical regressions
 
 export default [
 	// scramjet/core
 	// introduced by: ?
 	// fixed by: https://github.com/HeyPuter/browser.js/commit/1715a6aeb072284b58ce38f807f1b14f5151dd7a
-	basicTest({
+	scriptTest({
 		name: "regression-1715-for-body-walk",
 		js: `
             const a = {top: 1, parent: 2, location: 3, eval: 4};
@@ -25,7 +25,7 @@ export default [
 	// scramjet/core
 	// introduced by: ?
 	// fixed by: https://github.com/HeyPuter/browser.js/commit/ae35b473dd2cbb0b76d3098e9a748e296cedf425
-	basicTest({
+	scriptTest({
 		name: "regression-ae35-optional-postmessage",
 		js: `
         const messages = [];
@@ -46,7 +46,7 @@ export default [
 	// introduced by: ?
 	// fixed by https://github.com/HeyPuter/browser.js/commit/09f823c9573f9cdd09bc94663a384ace9816fd4c
 	// related issue: https://discord.com/channels/1259284248129437726/1457141828557078592
-	basicTest({
+	scriptTest({
 		name: "regression-09f823c-rewriter-culled",
 		js: `
 			let [a, b] = (checkglobal(top), [0,1]);
@@ -62,7 +62,7 @@ export default [
 	// introduced by: ?
 	// fixed by https://github.com/HeyPuter/browser.js/commit/09f823c9573f9cdd09bc94663a384ace9816fd4c
 	// related issue: https://discord.com/channels/1259284248129437726/1457141828557078592
-	basicTest({
+	scriptTest({
 		name: "regression-09f823c-rewriter-crash",
 		js: `
 			()=>import("data:text/javascript,checkglobal(top)")
@@ -72,9 +72,9 @@ export default [
 	// scramjet/html
 	// module script metadata must stay in scramjet's reserved query params.
 	// Leaking it as an upstream type=module query can make module graphs load twice.
-	serverTest({
+	originTest({
 		name: "regression-module-script-query-does-not-leak",
-		scramjetOnly: true,
+		candidateOnly: true,
 		async start(server) {
 			let depRequests = 0;
 			server.on("request", (req, res) => {
@@ -152,7 +152,7 @@ export default [
 	// scramjet/core/rewriter
 	// non-computed keys of a destructured objects were wrapped with $scramjet$prop, causing invalid syntax
 	// fixed by https://github.com/HeyPuter/browser.js/commit/7d4be594f2c49a447252e0a520ff0e144bef28b2
-	basicTest({
+	scriptTest({
 		name: "regression-09f823c-rewriter-destructure-invalid-syntax",
 		autoPass: false,
 		js: `
@@ -204,9 +204,9 @@ export default [
 	// relative URL against the wrong frame.
 	// lead to youtube.com search breaking in chrome
 	// fixed by https://github.com/HeyPuter/browser.js/commit/1b988b4b53fac31c6627fd011d13028b9daff78c
-	serverTest({
+	originTest({
 		name: "regression-1b988b4-displaced-history-pushstate",
-		scramjetOnly: true,
+		candidateOnly: true,
 		async start(server) {
 			server.on("request", (req, res) => {
 				if (req.url === "/") {

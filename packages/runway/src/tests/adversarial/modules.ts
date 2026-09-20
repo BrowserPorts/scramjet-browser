@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // ES module loading: specifier resolution, import.meta.url, import maps, and
 // dynamic <script> injection. import.meta.url in particular is how modern code
@@ -18,7 +18,7 @@ const FILES: Record<string, string> = {
 };
 
 const modTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

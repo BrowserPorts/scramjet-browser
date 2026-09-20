@@ -5,20 +5,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
+import type { TLSSocket } from "node:tls";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Test } from "../../testcommon.ts";
 import {
 	REFERRER_GENERATED_ROOTS,
 	REFERRER_INHERITANCE_PAGES,
 } from "./selection.ts";
+import { resolveRunwayConfig, RunwayConfigError } from "../../config.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../../../../../../..");
 const vendorRoot = path.join(__dirname, "vendored");
-const testServerCertRoot = path.join(
-	repoRoot,
-	"external/playwright/tests/config/testserver"
-);
 
 const WPT_TESTHARNESS_JS = `
 (() => {
@@ -342,7 +339,9 @@ function maybeServeRedirect(
 
 	const hostHeader = request.headers.host || "localhost";
 	const currentHost = stripPort(hostHeader);
-	const currentProtocol = request.socket.encrypted ? "https:" : "http:";
+	const currentProtocol = (request.socket as TLSSocket).encrypted
+		? "https:"
+		: "http:";
 	const target = new URL(requestUrl.toString());
 	target.searchParams.delete("redirection");
 
@@ -411,8 +410,21 @@ async function createWptServer(): Promise<{
 	httpPort: number;
 	httpsPort: number;
 }> {
-	const cert = await fs.readFile(path.join(testServerCertRoot, "cert.pem"));
-	const key = await fs.readFile(path.join(testServerCertRoot, "key.pem"));
+	// These fixtures need a real TLS origin, so the certificate and key are an
+	// explicit consumer input. Runway carries no certificate of its own and does
+	// not read one out of an unrelated checkout.
+	const testTls = resolveRunwayConfig().testTls;
+	if (!testTls) {
+		throw new RunwayConfigError(
+			"The vendored referrer-policy fixtures need an HTTPS origin. Supply a " +
+				"certificate and key with --test-tls-cert <file> --test-tls-key <file> " +
+				"(RUNWAY_TEST_TLS_CERT / RUNWAY_TEST_TLS_KEY). Any certificate the " +
+				"selected browser accepts works; localhost self-signed material is fine " +
+				"with --wpt-tls legacy-insecure, which is not a TLS conformance claim."
+		);
+	}
+	const cert = await fs.readFile(testTls.certFile);
+	const key = await fs.readFile(testTls.keyFile);
 
 	let httpPort = 0;
 	let httpsPort = 0;
@@ -425,7 +437,9 @@ async function createWptServer(): Promise<{
 			const hostHeader = request.headers.host || "localhost";
 			const requestHost = stripPort(hostHeader);
 			const crossHost = requestHost === "localhost" ? "127.0.0.1" : "localhost";
-			const protocol = request.socket.encrypted ? "https" : "http";
+			const protocol = (request.socket as TLSSocket).encrypted
+				? "https"
+				: "http";
 			const requestUrl = new URL(
 				request.url || "/",
 				`${protocol}://${hostHeader}`

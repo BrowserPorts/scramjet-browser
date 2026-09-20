@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // Stylesheet loading end to end, plus the CSSOM views onto it: document
 // .styleSheets, @import chains, constructable stylesheets (what every
@@ -13,7 +13,7 @@ const FILES: Record<string, string> = {
 };
 
 const cssTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

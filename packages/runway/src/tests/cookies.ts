@@ -1,7 +1,7 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 
 export default [
-	serverTest({
+	originTest({
 		name: "cookies-fetch-set-cookie-race",
 		autoPass: false,
 		js: `
@@ -26,12 +26,12 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "cookies-twitter",
 		hostname: "x.com",
 		// api.x.com is already under x.com for routing; list it when it is not a subdomain
-		// of hostname (e.g. hostname "cdn.net" + cleartextHosts: ["api.other.net"]).
-		cleartextHosts: ["api.x.com"],
+		// of hostname (e.g. hostname "cdn.net" + extraHosts: ["api.other.net"]).
+		extraHosts: ["api.x.com"],
 		js: `
 		await fetch("/set-cookie", { credentials: "include" });
 		const check = await fetch("https://api.x.com/check", { credentials: "include" });
@@ -156,7 +156,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "cookies-img-set-cookie-race",
 		autoPass: false,
 		js: `

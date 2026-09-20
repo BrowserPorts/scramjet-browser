@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // A page is free to use `location`, `top`, `parent` and `eval` as ordinary
 // local names. The rewriter has no scope analysis, so it has to be careful:
@@ -14,7 +14,7 @@ import { basicTest } from "../../testcommon.ts";
 // the page's own variable resolves to the location proxy.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "shadowing-let-const",
 		js: `
 			{
@@ -30,7 +30,7 @@ export default [
 			assertEqual((function () { let location = 6; return location; })(), 6, "let inside a function");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "shadowing-params",
 		js: `
 			assertEqual((function (location) { return location; })(5), 5, "parameter named location");
@@ -41,7 +41,7 @@ export default [
 			assertEqual((function (...location) { return location.length; })(1, 2), 2, "rest parameter");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "shadowing-catch-and-function-decl",
 		js: `
 			assertEqual((function () { try { throw 5; } catch (location) { return location; } })(), 5, "catch parameter");
@@ -49,7 +49,7 @@ export default [
 			assertEqual((function () { class location {} return typeof location; })(), "function", "class declaration named location");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "shadowing-var-top-parent",
 		js: `
 			assertEqual((function () { var top = 6; return top; })(), 6, "var top");
@@ -62,7 +62,7 @@ export default [
 	// ------------------------------------------------------------------
 	// var location
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the declaration is renamed to $scramjet$temploc and the
 		// initializer is assigned to the real global location instead.
 		name: "shadowing-var-location",
@@ -70,7 +70,7 @@ export default [
 			assertEqual((function () { var location = 6; return location; })(), 6, "var location in a function");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// The value is pushed at the global `location`, so this guards the worst
 		// case: a page that writes `var location = "/somewhere"` must not end up
 		// navigating itself.
@@ -82,35 +82,35 @@ export default [
 			assertEqual(location.href, before, "a local var named location must not navigate the page");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-declare-then-assign",
 		js: `
 			assertEqual((function () { var location; location = 6; return location; })(), 6, "declare then assign");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-multi-declarator",
 		js: `
 			assertEqual((function () { var a = 1, location = 6; return location; })(), 6, "second declarator in a var statement");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-nested-block",
 		js: `
 			assertEqual((function () { { var location = 6; } return location; })(), 6, "var location declared in a nested block");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-arrow",
 		js: `
 			assertEqual((() => { var location = 6; return location; })(), 6, "var location in an arrow function");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-closure",
 		js: `
@@ -120,7 +120,7 @@ export default [
 			})(), 6, "a nested closure reads the outer var");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: `for (var location = 0; …)` is the same declaration
 		// path, so the loop counter is assigned to the global on every entry.
 		name: "shadowing-var-location-for-loop",
@@ -132,7 +132,7 @@ export default [
 			})(), 2, "var location as a loop counter");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE
 		name: "shadowing-var-location-function-ctor",
 		js: `

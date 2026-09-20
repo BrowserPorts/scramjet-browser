@@ -1,16 +1,16 @@
 import http from "http";
-import { basicTest, serverTest, playwrightTest } from "../../testcommon.ts";
+import { listen, scriptTest, originTest, pageTest } from "../../testkit.ts";
 
 const PAYLOAD = "checkglobal(top);pass()";
 const IFRAME_PAYLOAD = "parent.checkglobal(top);parent.pass()";
 const SAFE_COMPLETION = 'setTimeout(() => pass("no escape"), 100);';
 
 function escapeTest(props: { name: string; js: string }) {
-	return basicTest({
+	return scriptTest({
 		name: props.name,
 		js: props.js,
 		autoPass: false,
-		scramjetOnly: true,
+		candidateOnly: true,
 	});
 }
 
@@ -25,23 +25,20 @@ function scriptTextEscape(name: string, body: string) {
 	});
 }
 
-function createHtmlServer(
+async function createHtmlServer(
 	html: string
 ): Promise<{ server: http.Server; port: number }> {
-	return new Promise((resolve) => {
-		const server = http.createServer((req, res) => {
-			if (req.url === "/") {
-				res.writeHead(200, { "Content-Type": "text/html" });
-				res.end(html);
-				return;
-			}
-			res.writeHead(404);
-			res.end("Not found");
-		});
-		server.listen(0, () => {
-			resolve({ server, port: (server.address() as any).port });
-		});
+	const server = http.createServer((req, res) => {
+		if (req.url === "/") {
+			res.writeHead(200, { "Content-Type": "text/html" });
+			res.end(html);
+			return;
+		}
+		res.writeHead(404);
+		res.end("Not found");
 	});
+	const port = await listen(server);
+	return { server, port };
 }
 
 export default [
@@ -79,7 +76,7 @@ export default [
 			Reflect.set(document, "location", "javascript:${PAYLOAD}");
 		`,
 	}),
-	playwrightTest({
+	pageTest({
 		name: "escapes-postmessage-source-eval",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createHtmlServer(`
@@ -331,10 +328,10 @@ export default [
 			${SAFE_COMPLETION}
 		`,
 	}),
-	serverTest({
+	originTest({
 		name: "escapes-xhr-responsexml-xhtml-img-onerror",
 		autoPass: false,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			const xhr = new XMLHttpRequest();
 			xhr.open("GET", "/payload.xhtml");
@@ -355,10 +352,10 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "escapes-xhr-response-document-html-img-onerror",
 		autoPass: false,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			const xhr = new XMLHttpRequest();
 			xhr.open("GET", "/payload.html");
@@ -378,10 +375,10 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "escapes-xhr-response-document-xhtml-img-onerror",
 		autoPass: false,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			const xhr = new XMLHttpRequest();
 			xhr.open("GET", "/payload.xhtml");

@@ -1,7 +1,7 @@
-import { basicTest } from "../testcommon.ts";
+import { scriptTest } from "../testkit.ts";
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-svg-self-closing",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -9,7 +9,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path></path><circle></circle>", "tags should be self-closing");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-not-svg-self-closing",
 		js: `
 			const svg = document.createElement("div");
@@ -17,7 +17,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path><circle></circle></path>", "tags should not be self-closing");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-wrong-namespace-svg-self-closing",
 		js: `
 			const svg = document.createElement("svg");
@@ -25,7 +25,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path><circle></circle></path>", "tags should not be self-closing");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-outerhtml-not-inside-svg",
 		js: `
 			const div = document.createElement("div");
@@ -33,7 +33,7 @@ export default [
 			assertEqual(div.outerHTML, "<div><svg><path></path><circle></circle></svg><path><circle></circle></path></div>", "tags outside the svg should not be self-closing, but inside should be");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-outerhtml-inside-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -44,7 +44,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-insertadjacenthtml-svg-beforeend",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -52,7 +52,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path></path><circle></circle>", "insertAdjacentHTML on svg should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-insertadjacenthtml-g-afterbegin",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -62,7 +62,7 @@ export default [
 			assertEqual(svg.innerHTML, "<g><path></path><circle></circle></g>", "insertAdjacentHTML on nested g should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-insertadjacenthtml-div-html-rules",
 		js: `
 			const div = document.createElement("div");
@@ -71,7 +71,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-nested-svg",
 		js: `
 			const outer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -81,7 +81,7 @@ export default [
 			assertEqual(outer.innerHTML, "<svg><path></path><circle></circle></svg>", "inner svg innerHTML should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-clippath",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -91,7 +91,7 @@ export default [
 			assertEqual(svg.innerHTML, "<clipPath><path></path><circle></circle></clipPath>", "clipPath innerHTML should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-symbol",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -101,7 +101,7 @@ export default [
 			assertEqual(svg.innerHTML, "<symbol><path></path><circle></circle></symbol>", "symbol innerHTML should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-svg-rect-line",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -110,7 +110,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-html-div-under-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -120,7 +120,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "HTML div under svg still parses innerHTML as HTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-div-inside-foreignobject",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -133,7 +133,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-defs-gradient-stops",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -149,7 +149,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-innerhtml-polygon-ellipse",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -162,7 +162,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -172,7 +172,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path></path><circle></circle>", "fragment parsed with svg as range context should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-div-html",
 		js: `
 			const div = document.createElement("div");
@@ -182,7 +182,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "fragment parsed with div as range context should use HTML rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-nested-g",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -194,7 +194,7 @@ export default [
 			assertEqual(svg.innerHTML, "<g><path></path><circle></circle></g>", "fragment with g as range context should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-html-div-under-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -206,7 +206,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "HTML div as range context under svg should parse fragment as HTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-foreignobject-div",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -220,7 +220,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "div inside foreignObject as range context should parse fragment as HTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-clippath",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -232,7 +232,7 @@ export default [
 			assertEqual(svg.innerHTML, "<clipPath><path></path><circle></circle></clipPath>", "clipPath as range context should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-range-fragment-collapsed-start-of-svg-text",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -246,7 +246,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-document-parsehtmlunsafe-body-svg",
 		js: `
 			const doc = Document.parseHTMLUnsafe("<body><svg><path /><circle /></svg><path /><circle /></body>");
@@ -257,7 +257,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-domparser-parsefromstring-html-svg",
 		js: `
 			const doc = new DOMParser().parseFromString(
@@ -271,7 +271,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-element-sethtmlunsafe-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -279,7 +279,7 @@ export default [
 			assertEqual(svg.innerHTML, "<path></path><circle></circle>", "setHTMLUnsafe on svg should use foreign content rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-element-sethtmlunsafe-div",
 		js: `
 			const div = document.createElement("div");
@@ -287,7 +287,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "setHTMLUnsafe on HTML div should use HTML rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-element-sethtmlunsafe-html-div-under-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -297,7 +297,7 @@ export default [
 			assertEqual(div.innerHTML, "<path><circle></circle></path>", "setHTMLUnsafe on HTML div under svg should use HTML rules");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "foreigncontext-element-gethtml-svg",
 		js: `
 			const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "purpose": "Named upstream WPT path selections for Runway's service-worker parity inventory. Paths are upstream-relative and portable: no host path, browser location or repository layout is referenced or required. Every path below was verified to resolve to tracked files in a complete standalone upstream checkout at revision 3c26d25d7935b6027410da3aedffa81c9c78f674; run check-wpt-selection.py against the checkout in use before trusting this file, because upstream renames directories.",
+  "consumerInput": "The upstream WPT checkout is always supplied explicitly by the consumer; this file names no checkout and no discovery is performed. The browser executable/channel is likewise consumer-specified and is recorded by the runner with each result, never by this selection or by the inventory.",
+  "scope": "This is a bounded selection of service-worker-affecting areas, not a closure over WPT. Selecting every group here does not cover WPT, does not prove that the selected areas are the complete set of service-worker-affecting specs, and says nothing about pass/fail. Selection is inventory: it records no execution and no result. Manifest item types outside the declared runner support contract (testharness, crashtest, reftest) are inventory only and must never be reported as passes or as skips-that-pass.",
+  "groups": {
+    "service-workers": {
+      "tier": "primary",
+      "rationale": "The service worker and Cache Storage specs themselves: registration, lifecycle, fetch events, clients and cache API.",
+      "paths": [
+        "service-workers"
+      ]
+    },
+    "workers": {
+      "tier": "primary",
+      "rationale": "Dedicated, shared and module worker semantics that the service worker script environment and Runway's worker rewriting share.",
+      "paths": [
+        "workers"
+      ]
+    },
+    "html-clients-and-navigation": {
+      "tier": "primary",
+      "rationale": "Navigation, session history and window handling that service worker Clients, navigation preload and controlled-document rules depend on.",
+      "paths": [
+        "html/browsers/browsing-the-web",
+        "html/browsers/windows",
+        "html/browsers/history"
+      ]
+    },
+    "html-agents-and-isolation": {
+      "tier": "primary",
+      "rationale": "Origin, agent cluster and cross-origin isolation behaviour that determines which documents a service worker may control and share memory with.",
+      "paths": [
+        "html/browsers/origin",
+        "html/cross-origin-embedder-policy",
+        "html/cross-origin-opener-policy",
+        "html/anonymous-iframe",
+        "html/browsers/sandboxing"
+      ]
+    },
+    "html-messaging": {
+      "tier": "primary",
+      "rationale": "postMessage, BroadcastChannel and structured clone paths used by every client/worker message exchange.",
+      "paths": [
+        "webmessaging",
+        "html/infrastructure/safe-passing-of-structured-data",
+        "html/webappapis/structured-clone"
+      ]
+    },
+    "fetch": {
+      "tier": "primary",
+      "rationale": "Request/Response/Headers semantics, CORS, redirects, request destinations and fetch metadata that a fetch handler must reproduce.",
+      "paths": [
+        "fetch"
+      ]
+    },
+    "content-security-policy": {
+      "tier": "primary",
+      "rationale": "CSP enforcement for worker scripts, imported scripts and responses synthesised by a service worker.",
+      "paths": [
+        "content-security-policy",
+        "upgrade-insecure-requests"
+      ]
+    },
+    "trusted-types": {
+      "tier": "primary",
+      "rationale": "Trusted Types enforcement, including its worker global surface.",
+      "paths": [
+        "trusted-types"
+      ]
+    },
+    "secure-contexts-and-mixed-content": {
+      "tier": "primary",
+      "rationale": "Secure-context gating of service worker registration and mixed-content blocking of subresources a worker fetches.",
+      "paths": [
+        "secure-contexts",
+        "mixed-content"
+      ]
+    },
+    "policies": {
+      "tier": "primary",
+      "rationale": "Referrer, permissions and document policy inheritance across documents, workers and worker-issued requests.",
+      "paths": [
+        "referrer-policy",
+        "permissions-policy",
+        "document-policy"
+      ]
+    },
+    "subresource-integrity": {
+      "tier": "primary",
+      "rationale": "Integrity checking of scripts and of responses served from a service worker or cache.",
+      "paths": [
+        "subresource-integrity"
+      ]
+    },
+    "storage": {
+      "tier": "primary",
+      "rationale": "Storage buckets/estimate, IndexedDB, File System Access, File API, Web Locks and Storage Access, which are the persistence surfaces available inside a service worker.",
+      "paths": [
+        "storage",
+        "IndexedDB",
+        "fs",
+        "FileAPI",
+        "web-locks",
+        "storage-access-api"
+      ]
+    },
+    "cookies": {
+      "tier": "primary",
+      "rationale": "Cookie visibility and attributes for worker-issued requests and for responses a worker produces.",
+      "paths": [
+        "cookies"
+      ]
+    },
+    "clear-site-data": {
+      "tier": "primary",
+      "rationale": "Clear-Site-Data must remove registrations, caches and storage; this is directly observable service worker teardown.",
+      "paths": [
+        "clear-site-data"
+      ]
+    },
+    "wasm": {
+      "tier": "primary",
+      "rationale": "WebAssembly JS API, the fetch-based compile/instantiate entry points and structured-clone serialisation of modules across workers.",
+      "paths": [
+        "wasm/jsapi",
+        "wasm/webapi",
+        "wasm/serialization"
+      ]
+    },
+    "timing": {
+      "tier": "primary",
+      "rationale": "Resource, navigation, server and user timing entries, which expose whether a response came from a service worker and how it was timed.",
+      "paths": [
+        "resource-timing",
+        "navigation-timing",
+        "performance-timeline",
+        "user-timing",
+        "server-timing"
+      ]
+    },
+    "sw-extension-specs": {
+      "tier": "supporting",
+      "rationale": "Specs whose entry points only exist on a service worker registration or global. Not part of the requested M0-M6 cross-spec selection; available as an explicit opt-in.",
+      "paths": [
+        "background-fetch",
+        "background-sync",
+        "periodic-background-sync",
+        "push-api",
+        "notifications",
+        "payment-handler"
+      ]
+    },
+    "m7-incoming-dependencies": {
+      "tier": "inventory-only",
+      "rationale": "Transport and streaming areas that later M7 work is expected to depend on. Inventory only: listing them records incoming dependencies and does not claim any implementation, execution or result.",
+      "paths": [
+        "websockets",
+        "webtransport",
+        "streams",
+        "xhr"
+      ]
+    }
+  },
+  "presets": {
+    "serviceworker": {
+      "suite": "serviceworker",
+      "description": "The historical default selection of generate-serviceworker-wpt.py, unchanged: the service-workers subtree only.",
+      "groups": [
+        "service-workers"
+      ]
+    },
+    "crossspec-sw-affecting": {
+      "suite": "crossspec-sw-affecting",
+      "description": "The requested cross-spec service-worker-affecting areas. Bounded selection; see the top-level scope statement and the excluded list.",
+      "groups": [
+        "service-workers",
+        "workers",
+        "html-clients-and-navigation",
+        "html-agents-and-isolation",
+        "html-messaging",
+        "fetch",
+        "content-security-policy",
+        "trusted-types",
+        "secure-contexts-and-mixed-content",
+        "policies",
+        "subresource-integrity",
+        "storage",
+        "cookies",
+        "clear-site-data",
+        "wasm",
+        "timing"
+      ]
+    },
+    "crossspec-sw-affecting-with-extensions": {
+      "suite": "crossspec-sw-affecting-with-extensions",
+      "description": "The cross-spec selection plus the service-worker extension specs.",
+      "groups": [
+        "service-workers",
+        "workers",
+        "html-clients-and-navigation",
+        "html-agents-and-isolation",
+        "html-messaging",
+        "fetch",
+        "content-security-policy",
+        "trusted-types",
+        "secure-contexts-and-mixed-content",
+        "policies",
+        "subresource-integrity",
+        "storage",
+        "cookies",
+        "clear-site-data",
+        "wasm",
+        "timing",
+        "sw-extension-specs"
+      ]
+    },
+    "m7-incoming-dependencies": {
+      "suite": "m7-incoming",
+      "description": "Inventory-only listing of transport/streaming areas that later M7 work depends on. No implementation or execution is implied.",
+      "groups": [
+        "m7-incoming-dependencies"
+      ]
+    }
+  },
+  "excluded": [
+    {
+      "path": "html/semantics/scripting-1",
+      "reason": "Script element loading breadth; not required for the requested service-worker areas and large enough to distort counts."
+    },
+    {
+      "path": "client-hints",
+      "reason": "Header hint negotiation. Reachable from worker requests but outside the requested M0-M6 areas."
+    },
+    {
+      "path": "preload",
+      "reason": "Preload/prefetch scheduling; interacts with fetch but is not a requested area."
+    },
+    {
+      "path": "speculation-rules",
+      "reason": "Prerendering and prefetch speculation; separate milestone concern."
+    },
+    {
+      "path": "beacon",
+      "reason": "Beacon transport; not a requested area."
+    },
+    {
+      "path": "webrtc",
+      "reason": "Not implementable in the Runway harness and unrelated to service worker parity."
+    },
+    {
+      "path": "webnn",
+      "reason": "Hardware-backed API, unrelated to service worker parity."
+    },
+    {
+      "path": "web-share",
+      "reason": "User-gesture platform integration, unrelated to service worker parity."
+    },
+    {
+      "path": "bluetooth",
+      "reason": "Device API, unrelated to service worker parity."
+    },
+    {
+      "path": "(everything else)",
+      "reason": "WPT contains far more directories than this file names. The excluded list is illustrative, not exhaustive, so no closure over WPT is claimed."
+    }
+  ]
+}

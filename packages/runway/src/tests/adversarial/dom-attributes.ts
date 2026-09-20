@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // URL-bearing attributes are stored rewritten with the author's value kept
 // alongside them, so every route that can observe an attribute has to agree:
@@ -6,7 +6,7 @@ import { basicTest } from "../../testcommon.ts";
 // selector matching, cloning and MutationObserver records.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "domattr-names-and-serialization",
 		js: `
 			const img = document.createElement("img");
@@ -22,7 +22,7 @@ export default [
 			assertDeepEqual(img.getAttributeNames(), ["class"], "names after removal");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "domattr-clonenode",
 		js: `
 			const img = document.createElement("img");
@@ -37,7 +37,7 @@ export default [
 			assertEqual(d.cloneNode(true).querySelector("a").href, location.origin + "/x", "cloned subtree property");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "domattr-dataset-classlist",
 		js: `
 			const d = document.createElement("div");
@@ -50,7 +50,7 @@ export default [
 			assertEqual(d.outerHTML, '<div data-foo-bar="1" class="a b"></div>', "outerHTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "domattr-collections",
 		js: `
 			document.body.innerHTML = '<a href="/l1">a</a><img src="/i1.png"><form action="/f1"></form>';
@@ -61,7 +61,7 @@ export default [
 			assertEqual(document.querySelectorAll("[src]").length, 1, "presence selector");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "domattr-customelements",
 		js: `
 			const calls = [];
@@ -84,7 +84,7 @@ export default [
 			assertEqual(document.querySelector("my-el-adversarial"), el, "queryable by tag name");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "domattr-shadow-root-basics",
 		js: `
 			const host = document.createElement("div");
@@ -103,7 +103,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: getAttributeNames(), outerHTML and hasAttribute all
 		// filter the internal bookkeeping attribute, but the `attributes`
 		// NamedNodeMap does not - iterating it exposes scramjet-attr-src.
@@ -120,7 +120,7 @@ export default [
 			assertEqual(img.attributes.getNamedItem("src").value, "/a.png", "getNamedItem");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: setting a URL property produces two mutation records -
 		// one for the internal attribute and one for the real one. Frameworks
 		// that observe attributes (Stimulus, Alpine, Angular, any
@@ -142,7 +142,7 @@ export default [
 			assertEqual(records[0].oldValue, null, "oldValue");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the DOM holds the rewritten value, so a selector written
 		// against the author's value never matches. `querySelector('link[href="…"]')`
 		// and `[src="…"]` lookups are everywhere in loader and dedup code.
@@ -154,7 +154,7 @@ export default [
 			assert(document.querySelector('a[href^="/l"]') !== null, "prefix attribute selector");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the integrity IDL attribute reads back empty even though
 		// the content attribute is kept. Worth noting the deeper problem it hints
 		// at: the attribute survives into the DOM while the script body is
@@ -170,7 +170,7 @@ export default [
 			assertEqual(s.getAttribute("integrity"), "sha384-abc", "integrity attribute");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: markup parsed into a shadow root is not rewritten, so
 		// relative URLs resolve against the proxy origin and the resources 404.
 		// The same markup parsed into the light DOM is fine.

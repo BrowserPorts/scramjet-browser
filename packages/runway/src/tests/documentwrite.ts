@@ -1,8 +1,8 @@
-import { basicTest, htmlTest } from "../testcommon.ts";
+import { scriptTest, documentTest } from "../testkit.ts";
 
 // TODO: these tests suck
 export default [
-	basicTest({
+	scriptTest({
 		name: "documentwrite-sanity",
 		js: `
 			const doc = document.implementation.createHTMLDocument();
@@ -14,7 +14,7 @@ export default [
 			assertEqual(doc.body.innerHTML, "<h1>Hello, world!</h1>", "document.write should write the correct HTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "documentwrite-streaming",
 		js: `
 			const doc = document.implementation.createHTMLDocument();
@@ -29,7 +29,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "documentwrite-streaming-cross-realm",
 		js: `
 			const iframe = document.createElement("iframe");
@@ -49,7 +49,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "documentwrite-close-flushes-buffered-tail",
 		js: `
 			const doc = document.implementation.createHTMLDocument();
@@ -64,7 +64,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "documentwrite-open-resets-partial-stream",
 		js: `
 			const doc = document.implementation.createHTMLDocument();
@@ -80,7 +80,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "documentwrite-empty-call-preserves-parser-state",
 		js: `
 			const doc = document.implementation.createHTMLDocument();
@@ -96,7 +96,7 @@ export default [
 			);
 		`,
 	}),
-	htmlTest({
+	documentTest({
 		name: "documentwrite-script-insertion-point",
 		html: `<!DOCTYPE html>
 <html>

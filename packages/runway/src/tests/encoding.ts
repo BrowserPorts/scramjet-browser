@@ -1,56 +1,17 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 
-// Inline test helpers — same as COMMON_JS in testcommon.ts but inlined since it's not exported.
-const TEST_HELPERS = `
-function emitBinding(name, payload) {
-	var fn = globalThis[name];
-	if (typeof fn === 'function') {
-		fn(JSON.stringify(payload));
-	}
-}
-function pass(message, details) {
-	emitBinding('__testPass', { message: message, details: details });
-}
-function fail(message, details) {
-	emitBinding('__testFail', { message: message, details: details });
-}
-function assertConsistent(label, value) {
-	if (typeof value === 'undefined') {
-		value = label;
-		label = 'default';
-	}
-	emitBinding('__testConsistent', { label: label, value: value });
-	return Promise.resolve();
-}
-function assert(condition, message) {
-	if (!condition) { fail(message || 'Assertion failed'); throw new Error(message || 'Assertion failed'); }
-}
-function assertEqual(actual, expected, message) {
-	if (actual !== expected) {
-		var msg = message || ('Expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
-		fail(msg, { actual: actual, expected: expected });
-		throw new Error(msg);
-	}
-}
-var assertEquals = assertEqual;
-function waitForTestFunctions(timeout) {
-	timeout = timeout || 5000;
-	return new Promise(function(resolve, reject) {
-		var start = Date.now();
-		function check() {
-			if (typeof __testPass === 'function' && typeof __testFail === 'function') resolve();
-			else if (Date.now() - start > timeout) reject(new Error('Timed out'));
-			else setTimeout(check, 10);
-		}
-		check();
-	});
-}
-async function runTest(testFn) {
-	try { await waitForTestFunctions(); await testFn(); pass(); } catch (err) { fail(err.message); }
-}
-`;
+/**
+ * Character-encoding fixtures.
+ *
+ * The assertion runs through the harness helpers the host installs into the
+ * profile (`runTest`, `assertEqual`, `pass`, `fail`). Those are the only helpers:
+ * a fixture-served copy would report results without the attempt nonce the host
+ * requires to attribute them, so a copy either fails as unattributed or, worse,
+ * looks like a result belonging to some other attempt. Nothing about a charset
+ * test needs its own reporting channel.
+ */
 
-// Helper: create a serverTest that serves custom-encoded HTML with an inline assertion.
+// Helper: create a originTest that serves custom-encoded HTML with an inline assertion.
 function encodingTest(opts: {
 	name: string;
 	/** Raw bytes for the HTML page body (<head> + <body> content) */
@@ -60,7 +21,7 @@ function encodingTest(opts: {
 	/** JS assertion to run in the browser (has access to assertEqual, assert, pass, fail, runTest) */
 	assertion: string;
 }) {
-	return serverTest({
+	return originTest({
 		name: opts.name,
 		// Don't set `js` — we handle all routes ourselves so we can control Content-Type and encoding of `/`
 		start: async (server, _port) => {
@@ -68,16 +29,13 @@ function encodingTest(opts: {
 				if (req.url === "/") {
 					res.writeHead(200, { "Content-Type": opts.contentType });
 					res.end(opts.html);
-				} else if (req.url === "/common.js") {
-					res.writeHead(200, {
-						"Content-Type": "application/javascript; charset=utf-8",
-					});
-					res.end(TEST_HELPERS);
 				} else if (req.url === "/script.js") {
 					res.writeHead(200, {
 						"Content-Type": "application/javascript; charset=utf-8",
 					});
-					res.end(`runTest(async () => {\n${opts.assertion}\n});`);
+					// `true`: the assertion decides only whether it throws, so the pass is
+					// reported for it, through the host's own nonce-carrying helper.
+					res.end(`runTest(async () => {\n${opts.assertion}\n}, true);`);
 				} else {
 					res.writeHead(404);
 					res.end("Not found");
@@ -87,9 +45,9 @@ function encodingTest(opts: {
 	});
 }
 
-// Build HTML bytes with script includes baked in
+// Build HTML bytes with the assertion script baked in
 function htmlPage(bodyContent: string): string {
-	return `<!DOCTYPE html><html><head><script src="/common.js"></script></head><body>${bodyContent}<script src="/script.js"></script></body></html>`;
+	return `<!DOCTYPE html><html><head></head><body>${bodyContent}<script src="/script.js"></script></body></html>`;
 }
 
 export default [
@@ -143,7 +101,7 @@ export default [
 		name: "encoding-meta-charset-tag",
 		contentType: "text/html",
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><meta charset="utf-8"><script src="/common.js"></script></head><body><span id="test">café</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><span id="test">café</span><script src="/script.js"></script></body></html>',
 			"utf-8"
 		),
 		assertion: `
@@ -159,7 +117,7 @@ export default [
 		name: "encoding-meta-http-equiv-content-type",
 		contentType: "text/html",
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><script src="/common.js"></script></head><body><span id="test">café</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head><meta http-equiv="content-type" content="text/html; charset=utf-8"></head><body><span id="test">café</span><script src="/script.js"></script></body></html>',
 			"utf-8"
 		),
 		assertion: `
@@ -190,7 +148,7 @@ export default [
 		contentType: "text/html; charset=iso-8859-1",
 		// 0xe9 = é in windows-1252 / ISO-8859-1
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><script src="/common.js"></script></head><body><span id="test">caf\xe9</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head></head><body><span id="test">caf\xe9</span><script src="/script.js"></script></body></html>',
 			"latin1"
 		),
 		assertion: `
@@ -219,7 +177,7 @@ export default [
 		name: "encoding-meta-charset-case-insensitive",
 		contentType: "text/html",
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><META CHARSET="UTF-8"><script src="/common.js"></script></head><body><span id="test">tëst</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head><META CHARSET="UTF-8"></head><body><span id="test">tëst</span><script src="/script.js"></script></body></html>',
 			"utf-8"
 		),
 		assertion: `
@@ -236,7 +194,7 @@ export default [
 		name: "encoding-meta-charset-utf16-becomes-utf8",
 		contentType: "text/html",
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><meta charset="utf-16"><script src="/common.js"></script></head><body><span id="test">hello</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head><meta charset="utf-16"></head><body><span id="test">hello</span><script src="/script.js"></script></body></html>',
 			"utf-8"
 		),
 		assertion: `
@@ -269,7 +227,7 @@ export default [
 		contentType: "text/html; charset=ascii",
 		// 0x93 = \u201c (left double quote), 0x94 = \u201d (right double quote) in windows-1252
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><script src="/common.js"></script></head><body><span id="test">\x93hi\x94</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head></head><body><span id="test">\x93hi\x94</span><script src="/script.js"></script></body></html>',
 			"latin1"
 		),
 		assertion: `
@@ -299,7 +257,7 @@ export default [
 		name: "encoding-meta-charset-after-1024-bytes-ignored",
 		contentType: "text/html",
 		html: Buffer.from(
-			`<!DOCTYPE html><html><head><!-- ${"x".repeat(1100)} --><meta charset="windows-1251"><script src="/common.js"></script></head><body><span id="test">ok</span><script src="/script.js"></script></body></html>`,
+			`<!DOCTYPE html><html><head><!-- ${"x".repeat(1100)} --><meta charset="windows-1251"></head><body><span id="test">ok</span><script src="/script.js"></script></body></html>`,
 			"utf-8"
 		),
 		assertion: `
@@ -342,7 +300,7 @@ export default [
 		contentType: "text/html; charset=windows-1252",
 		// 0x91 = ', 0x92 = ', 0x96 = –
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><script src="/common.js"></script></head><body><span id="test">\x91hello\x92 \x96 world</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head></head><body><span id="test">\x91hello\x92 \x96 world</span><script src="/script.js"></script></body></html>',
 			"latin1"
 		),
 		assertion: `
@@ -360,7 +318,7 @@ export default [
 		// The meta says windows-1251, but the header says utf-8
 		// The content is valid UTF-8, so if header wins, it decodes correctly
 		html: Buffer.from(
-			'<!DOCTYPE html><html><head><meta charset="windows-1251"><script src="/common.js"></script></head><body><span id="test">héllo</span><script src="/script.js"></script></body></html>',
+			'<!DOCTYPE html><html><head><meta charset="windows-1251"></head><body><span id="test">héllo</span><script src="/script.js"></script></body></html>',
 			"utf-8"
 		),
 		assertion: `

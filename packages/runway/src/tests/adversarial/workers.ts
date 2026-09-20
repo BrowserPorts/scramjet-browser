@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // A worker gets its own scramjet client with iswindow === false, its own
 // location, and its own URL base for fetch/XHR/importScripts. Sites lean on
@@ -6,7 +6,7 @@ import { serverTest } from "../../testcommon.ts";
 // batching - and bundlers emit module workers by default.
 
 const workerTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

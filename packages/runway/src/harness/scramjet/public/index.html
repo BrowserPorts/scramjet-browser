@@ -6,6 +6,7 @@
 		<script src="/controller/controller.api.js"></script>
 		<script src="/libcurl/index.js"></script>
 		<script src="/runway-cleartext-https-transport.js"></script>
+		<script src="/runway-plugins.js"></script>
 	</head>
 	<body>
 		<h1>Scramjet Test Harness</h1>
@@ -28,10 +29,32 @@
 			let controller;
 			let scramjetFrame;
 
+			async function loadHarnessConfig() {
+				// The harness page URL carries this attempt's nonce; forwarding the
+				// query string lets the host correlate the transport connection with
+				// the test and lane that caused it.
+				const response = await fetch(
+					`/runway-harness-config.json${location.search}`,
+				);
+				if (!response.ok)
+					throw new Error(`Harness config load failed: ${response.status}`);
+				const config = await response.json();
+				if (typeof config.wispUrl !== "string" || !config.wispUrl)
+					throw new Error("Harness config is missing wispUrl");
+				return config;
+			}
+
 			async function init() {
+				const harnessConfig = await loadHarnessConfig();
+				window.__runwayHarnessConfig = harnessConfig;
+				const pluginSetup = await prepareRunwayPlugins();
 				statusEl.textContent = "Registering service worker...";
 
-				const registration = await navigator.serviceWorker.register("/sw.js");
+				const hostWorker = pluginSetup.profile.serviceWorker;
+				const registration = await navigator.serviceWorker.register(
+					hostWorker?.url ?? "/sw.js",
+					{ scope: "/", type: hostWorker?.type ?? "classic" },
+				);
 
 				// Wait for the service worker to be ready
 				if (!navigator.serviceWorker.controller) {
@@ -63,7 +86,7 @@
 				statusEl.textContent = "Initializing controller...";
 
 				const innerTransport = new LibcurlClient({
-					wisp: "ws://localhost:4501/",
+					wisp: harnessConfig.wispUrl,
 				});
 				const transport = new RunwayCleartextHttpsTransport(innerTransport);
 
@@ -72,16 +95,20 @@
 					throw new Error("No service worker available for controller");
 				}
 
-				controller = new Controller({
+				const controllerOptions = {
 					serviceworker: sw,
 					transport,
 					storagePartitionKey: "runway:harness",
-				});
+				};
+				await pluginSetup.configure(controllerOptions);
+				controller = new Controller(controllerOptions);
 				window.__runwayController = controller;
 
 				await controller.ready;
 
-				scramjetFrame = controller.createFrame(testframe);
+				scramjetFrame = controller.createFrame(testframe, {
+					plugins: pluginSetup.plugins,
+				});
 				window.__runwayScramjetFrame = scramjetFrame;
 
 				statusEl.textContent = "Ready - waiting for test...";
@@ -101,6 +128,39 @@
 						origin: new URL(location.href),
 						base: new URL(location.href),
 					});
+				};
+
+				// The controller-owned case frame, for a host that drives navigation
+				// itself instead of going through __runwayNavigate.
+				//
+				// `element` is the very element this controller passed to createFrame, so
+				// a host can designate the frame by identity rather than by querying for
+				// something that looks right. Guest content inside the frame cannot
+				// substitute it, and a same-origin guest that later injects a lookalike
+				// into this document cannot either, because the host captures the element
+				// before anything is navigated.
+				//
+				// `encode` must produce the URL Frame.go() would really load, so it
+				// mirrors that call exactly — same context, same meta, and the same
+				// `destination: "document"`, which is a query parameter on the rewritten
+				// URL and therefore part of the physical identity. Omitting it (as
+				// __runwayGetProxiedUrl above does) yields a URL that is *close to* but
+				// not the one the controller navigates to.
+				window.__runwayCaseFrame = {
+					element: scramjetFrame.element,
+					prefix: scramjetFrame.context.prefix.href,
+					encode: (url) =>
+						$scramjet.rewriteUrl(
+							url,
+							scramjetFrame.context,
+							{
+								origin: new URL(location.href),
+								base: new URL(location.href),
+							},
+							{ destination: "document" },
+						),
+					decode: (url) =>
+						$scramjet.unrewriteUrl(url, scramjetFrame.context),
 				};
 
 				window.__runwayReload = () => {

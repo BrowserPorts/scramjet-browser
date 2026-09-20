@@ -1,8 +1,8 @@
 import http from "http";
-import { serverTest, type Test } from "../testcommon.ts";
+import { originTest, type NativeTest } from "../testkit.ts";
 
 /**
- * A page plus the service worker script it registers. `serverTest` already
+ * A page plus the service worker script it registers. `originTest` already
  * answers `/` and `/script.js`; anything else this test needs is served by a
  * second listener that only runs when the first one declined.
  */
@@ -15,16 +15,16 @@ function swTest(props: {
     { type: string; body: string; headers?: Record<string, string> }
   >;
   autoPass?: boolean;
-  expectedOkCount?: number;
-}): Test {
-  let serviceWorkerRequests = 0;
-  return serverTest({
+  expectedOkCalls?: number;
+}): NativeTest {
+  return originTest({
     name: props.name,
     autoPass: props.autoPass ?? false,
-    scramjetOnly: true,
-    expectedOkCount: props.expectedOkCount,
+    candidateOnly: false,
+    expectedOkCalls: props.expectedOkCalls,
     js: props.js,
     async start(server: http.Server) {
+      const serviceWorkerRequests = new Map<string, number>();
       server.on("request", (req, res) => {
         if (res.headersSent || res.writableEnded) return;
 
@@ -35,10 +35,12 @@ function swTest(props: {
             "Content-Type": "application/javascript",
             "Cache-Control": "no-store",
           });
-          serviceWorkerRequests += 1;
+          const requestKey = req.url ?? "/sw.js";
+          const requestCount = (serviceWorkerRequests.get(requestKey) ?? 0) + 1;
+          serviceWorkerRequests.set(requestKey, requestCount);
           res.end(
             typeof props.sw === "function"
-              ? props.sw(serviceWorkerRequests)
+              ? props.sw(requestCount)
               : props.sw,
           );
 
@@ -79,10 +81,10 @@ const waitForActive = `
 export default [
   // --- the container itself ------------------------------------------------
 
-  serverTest({
+  originTest({
     name: "serviceworker-container-is-native",
     autoPass: true,
-    scramjetOnly: true,
+    candidateOnly: true,
     js: `
 			const container = navigator.serviceWorker;
 			assert(container, "navigator.serviceWorker should exist");
@@ -133,7 +135,7 @@ export default [
 				await navigator.serviceWorker.register("https://example.com/sw.js");
 				fail("cross-origin register should have thrown");
 			} catch (err) {
-				assert(err instanceof TypeError, "should be a TypeError, got " + err);
+				assertEqual(err.name, "SecurityError", "registration origin and scope restrictions use SecurityError");
 				assert(
 					String(err.message).includes("does not match the current origin"),
 					"message should match the platform's, got: " + err.message
@@ -158,7 +160,7 @@ export default [
 				await navigator.serviceWorker.register("/nested/sw.js", { scope: "/" });
 				fail("out-of-range scope should have thrown");
 			} catch (err) {
-				assert(err instanceof TypeError, "should be a TypeError, got " + err);
+				assertEqual(err.name, "SecurityError", "registration origin and scope restrictions use SecurityError");
 				assert(
 					String(err.message).includes("max scope"),
 					"message should mention the max scope, got: " + err.message
@@ -456,7 +458,7 @@ export default [
 				location.href,
 				"event.source should be the page that sent it"
 			);
-			assert(reply.data.clientCount >= 1, "matchAll should see the page");
+			assertEqual(reply.data.clientCount, 1, "matchAll must only expose clients of this virtual origin");
 			assertEqual(
 				reply.origin,
 				location.origin,
@@ -598,7 +600,7 @@ export default [
     autoPass: false,
     js: `
 			${waitForActive}
-			const registration = await navigator.serviceWorker.register("/sw.js");
+			const registration = await navigator.serviceWorker.register("/sw.js?run=" + crypto.randomUUID());
 			await waitForActive(registration);
 			for (let i = 0; i < 100 && !navigator.serviceWorker.controller; i++) {
 				await new Promise((resolve) => setTimeout(resolve, 50));

@@ -1,4 +1,4 @@
-import { basicTest } from "../testcommon.ts";
+import { scriptTest } from "../testkit.ts";
 
 export default [
 	// ===========================================
@@ -7,7 +7,7 @@ export default [
 
 	// should not be able to get a reference to any of them
 
-	basicTest({
+	scriptTest({
 		name: "rewriter-globals-global",
 		js: `
         checkglobal(top);
@@ -16,7 +16,7 @@ export default [
         checkglobal(eval);
     `,
 	}),
-	basicTest({
+	scriptTest({
 		name: "rewriter-globals-global-shadowed",
 		js: `
         {
@@ -33,7 +33,7 @@ export default [
     `,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "rewriter-globals-member",
 		js: `
         checkglobal(window.top);
@@ -43,7 +43,7 @@ export default [
     `,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "rewriter-computed-member-string",
 		js: `
         checkglobal(window["top"]);
@@ -53,7 +53,7 @@ export default [
     `,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "rewriter-computed-member-dynamic",
 		js: `
         const keys = ["top", "parent", "location", "eval"];

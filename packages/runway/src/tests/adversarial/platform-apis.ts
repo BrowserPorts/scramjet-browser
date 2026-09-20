@@ -1,4 +1,4 @@
-import { basicTest, htmlTest } from "../../testcommon.ts";
+import { scriptTest, documentTest } from "../../testkit.ts";
 
 // Assorted platform APIs that pages lean on constantly: blobs and object URLs,
 // resource timing, error stacks, storage-adjacent APIs, timers and the
@@ -6,7 +6,7 @@ import { basicTest, htmlTest } from "../../testcommon.ts";
 // ends up in analytics payloads and error reports.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "platform-blob-basics",
 		js: `
 			const b = new Blob(["hello"], { type: "text/plain" });
@@ -20,7 +20,7 @@ export default [
 			assert(f instanceof Blob, "File is a Blob");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-objecturl-fetch",
 		js: `
 			const u = URL.createObjectURL(new Blob(["objecturl-body"], { type: "text/plain" }));
@@ -31,7 +31,7 @@ export default [
 			URL.revokeObjectURL(u);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-objecturl-image",
 		js: `
 			const bytes = Uint8Array.from(
@@ -50,7 +50,7 @@ export default [
 			URL.revokeObjectURL(u);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-filereader",
 		js: `
 			const b = new Blob(["filereader-body"], { type: "text/plain" });
@@ -69,7 +69,7 @@ export default [
 			assert(dataUrl.startsWith("data:text/plain;base64,"), "readAsDataURL: " + dataUrl);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-canvas",
 		js: `
 			const bytes = Uint8Array.from(
@@ -88,7 +88,7 @@ export default [
 			URL.revokeObjectURL(u);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-resource-timing-own-entries",
 		js: `
 			const names = performance.getEntriesByType("resource").map((e) => e.name);
@@ -99,7 +99,7 @@ export default [
 			assertEqual(typeof performance.now(), "number", "performance.now");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-performance-observer",
 		js: `
 			const seen = await new Promise((resolve) => {
@@ -115,7 +115,7 @@ export default [
 			for (const n of seen) assert(!n.includes("/~/sj/"), "observed entry leaks the proxy URL: " + n);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-timers",
 		js: `
 			const id = setTimeout(() => {}, 1000);
@@ -135,7 +135,7 @@ export default [
 			assertDeepEqual(order, ["micro", "promise"], "microtask ordering");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-secure-context-and-crypto",
 		js: `
 			assertEqual(
@@ -149,7 +149,7 @@ export default [
 			assertEqual(crypto.getRandomValues(new Uint8Array(4)).length, 4, "getRandomValues");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-navigator-surface",
 		js: `
 			assertEqual(typeof navigator.userAgent, "string", "userAgent");
@@ -162,7 +162,7 @@ export default [
 			assertEqual(navigator.sendBeacon(location.origin + "/beacon2"), true, "and an absolute one");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-indexeddb-roundtrip",
 		js: `
 			const db = await new Promise((res, rej) => {
@@ -188,7 +188,7 @@ export default [
 			db.close();
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-form-data",
 		js: `
 			const f = document.createElement("form");
@@ -207,7 +207,7 @@ export default [
 			assertEqual(fd.get("f").name, "n.txt", "FormData file entry");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-form-submit-event",
 		js: `
 			const f = document.createElement("form");
@@ -224,7 +224,7 @@ export default [
 			assertEqual(f.action, location.origin + "/nowhere", "action unchanged");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-intersection-observer",
 		js: `
 			const d = document.createElement("div");
@@ -242,7 +242,7 @@ export default [
 			assert(entry.rootBounds !== undefined, "rootBounds present");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-resize-observer",
 		js: `
 			const d = document.createElement("div");
@@ -258,7 +258,7 @@ export default [
 			assertEqual(entry.contentRect.width, 20, "contentRect.width");
 		`,
 	}),
-	htmlTest({
+	documentTest({
 		name: "platform-import-meta-url",
 		html: `<!DOCTYPE html><html><body><script type="module">
 			runTest(async () => {
@@ -272,7 +272,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the proxy's own scripts show up in the page's resource
 		// timeline under the harness origin, so RUM and performance-analytics
 		// libraries report requests the site never made.
@@ -283,7 +283,7 @@ export default [
 			assertDeepEqual(leaked, [], "no proxy-internal resources in the page's timeline");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: stack frames carry the whole proxy URL, with the site's
 		// real URL percent-encoded inside it. Every error-reporting SDK (Sentry,
 		// Bugsnag, Rollbar) ships this verbatim, and stack-parsing code that
@@ -296,7 +296,7 @@ export default [
 			assert(!e.stack.includes(":4500"), "nor the harness origin: " + e.stack);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: revoking an object URL does not invalidate it, so the
 		// blob stays fetchable and its memory stays pinned.
 		name: "platform-objecturl-revoke",
@@ -309,7 +309,7 @@ export default [
 			assert(failed, "revokeObjectURL must invalidate the URL");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: databases() reports the namespaced name plus the proxy's
 		// own control database.
 		name: "platform-indexeddb-databases",
@@ -329,7 +329,7 @@ export default [
 				"and must not expose proxy-internal databases: " + JSON.stringify(names));
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: navigator.serviceWorker is absent - most likely
 		// deliberate, since the proxy owns the registration, but it is observable:
 		// PWAs feature-detect on it and take a different path when it is missing.
@@ -339,7 +339,7 @@ export default [
 			assertEqual(typeof navigator.serviceWorker, "object", "serviceWorker container");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "platform-datatransfer",
 		js: `
 			// clipboard and drag payloads must not be rewritten on the way through

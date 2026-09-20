@@ -1,4 +1,4 @@
-import { basicTest, multiFrameTest } from "../../testcommon.ts";
+import { scriptTest, frameTreeTest } from "../../testkit.ts";
 
 // Tests for the BroadcastChannel.postMessage proxy that wraps data in a
 // {$scramjet$messagetype, $scramjet$origin, $scramjet$data} envelope.
@@ -7,7 +7,7 @@ import { basicTest, multiFrameTest } from "../../testcommon.ts";
 // never be visible to page code.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-string-sanity",
 		js: `
 			const channel = "scramjet-bc-string-" + Date.now() + "-" + Math.random();
@@ -24,7 +24,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-object-sanity",
 		js: `
 			const channel = "scramjet-bc-object-" + Date.now() + "-" + Math.random();
@@ -43,7 +43,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-envelope-not-leaked",
 		js: `
 			// The proxy wraps data in an envelope with $scramjet$ keys.
@@ -66,7 +66,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-onmessage-property",
 		js: `
 			const channel = "scramjet-bc-onmessage-" + Date.now() + "-" + Math.random();
@@ -84,7 +84,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-event-origin-string",
 		js: `
 			const channel = "scramjet-bc-origin-" + Date.now() + "-" + Math.random();
@@ -103,7 +103,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-name-property",
 		js: `
 			const channel = "scramjet-bc-name-" + Date.now() + "-" + Math.random();
@@ -113,7 +113,7 @@ export default [
 		`,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-sender-does-not-self-receive",
 		js: `
 			// Per BC spec, the sending BroadcastChannel instance does not
@@ -134,7 +134,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-different-channels-isolated",
 		js: `
 			const nameA = "scramjet-bc-isoA-" + Date.now() + "-" + Math.random();
@@ -156,7 +156,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-multiple-listeners",
 		js: `
 			const channel = "scramjet-bc-multi-" + Date.now() + "-" + Math.random();
@@ -186,7 +186,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-closed-does-not-receive",
 		js: `
 			const channel = "scramjet-bc-closed-" + Date.now() + "-" + Math.random();
@@ -207,7 +207,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-primitives-roundtrip",
 		js: `
 			const channel = "scramjet-bc-primitives-" + Date.now() + "-" + Math.random();
@@ -232,7 +232,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-array-roundtrip",
 		js: `
 			const channel = "scramjet-bc-array-" + Date.now() + "-" + Math.random();
@@ -254,7 +254,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-nested-object-roundtrip",
 		js: `
 			const channel = "scramjet-bc-nested-" + Date.now() + "-" + Math.random();
@@ -273,7 +273,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-removeeventlistener",
 		js: `
 			const channel = "scramjet-bc-remove-" + Date.now() + "-" + Math.random();
@@ -294,7 +294,7 @@ export default [
 		autoPass: false,
 	}),
 
-	basicTest({
+	scriptTest({
 		name: "broadcastchannel-event-origin-matches-document",
 		// Pin a fake hostname so we can assert the *exact* origin that the
 		// proxy stamps into the envelope, rather than whatever localhost port
@@ -319,7 +319,7 @@ export default [
 		autoPass: false,
 	}),
 
-	multiFrameTest({
+	frameTreeTest({
 		name: "broadcastchannel-cross-origin-isolated",
 		// BroadcastChannel is same-origin per spec. Since every scramjet
 		// document actually lives on the harness's real origin, the proxy
@@ -343,7 +343,7 @@ export default [
 			`,
 			subframes: [
 				{
-					originid: "cross",
+					originId: "cross",
 					id: "child",
 					js: () => `
 						// Wait for the root to install its listener, then post
@@ -359,7 +359,7 @@ export default [
 		},
 	}),
 
-	multiFrameTest({
+	frameTreeTest({
 		name: "broadcastchannel-multi-frame-same-origin",
 		root: {
 			js: () => `

@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // WebAssembly is unusually strict about what the network layer hands it:
 // instantiateStreaming/compileStreaming refuse anything that isn't served as
@@ -16,7 +16,7 @@ const WASM = Buffer.from([
 ]);
 
 const wasmTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

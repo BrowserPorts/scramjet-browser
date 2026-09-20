@@ -1,4 +1,4 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 
 const doc = (text: string) => `<!doctype html>${text}`;
 
@@ -10,7 +10,7 @@ function navIncumbenceTest(props: {
 }) {
 	props.topjs ??= "";
 	props.reverse ??= false;
-	return serverTest({
+	return originTest({
 		name: props.name,
 		async start(server, port, { pass, fail }) {
 			server.on("request", (req, res) => {
@@ -108,11 +108,6 @@ export default [
 	navIncumbenceTest({
 		name: "incumbent-window-open-cross-promise",
 		js: "parent.eval('new Promise(r=>r())').then(()=>new parent.Function('window.open(`flag.html`)')())",
-	}),
-	navIncumbenceTest({
-		name: "incumbent-window-open-cross-promise-direct",
-		js: "parent.eval('new Promise(r=>r())').then(new parent.Function('window.open(`flag.html`)'))",
-		reverse: true,
 	}),
 	navIncumbenceTest({
 		name: "incumbent-window-open-cross-promise-direct",

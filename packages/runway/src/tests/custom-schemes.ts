@@ -1,26 +1,21 @@
-import { playwrightTest } from "../testcommon.ts";
+import { listen, pageTest } from "../testkit.ts";
 import http from "http";
 import type { CDPSession } from "playwright";
 
-let testServerPort = 9100;
-
-// Helper to create a test server that serves pages with custom scheme links
-function createTestServer(
+async function createTestServer(
 	htmlContent: string
 ): Promise<{ server: http.Server; port: number }> {
-	const port = testServerPort++;
-	return new Promise((resolve) => {
-		const server = http.createServer((req, res) => {
-			if (req.url === "/") {
-				res.writeHead(200, { "Content-Type": "text/html" });
-				res.end(htmlContent);
-			} else {
-				res.writeHead(404);
-				res.end("Not found");
-			}
-		});
-		server.listen(port, () => resolve({ server, port }));
+	const server = http.createServer((req, res) => {
+		if (req.url === "/") {
+			res.writeHead(200, { "Content-Type": "text/html" });
+			res.end(htmlContent);
+		} else {
+			res.writeHead(404);
+			res.end("Not found");
+		}
 	});
+	const port = await listen(server);
+	return { server, port };
 }
 
 // Helper to set up CDP session and intercept frame navigation requests
@@ -68,23 +63,23 @@ async function setupFrameNavigationInterception(page: any): Promise<{
 
 export default [
 	// Test clicking an anchor with custom scheme - capture via CDP Page domain
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-click-anchor",
-		fn: async ({ page, frame, navigate }) => {
-			const { server, port } = await createTestServer(`
+		html: `
 				<!DOCTYPE html>
 				<html>
 				<body>
 					<a id="custom-link" href="custom-scheme://example.com/test">Click me</a>
 				</body>
 				</html>
-			`);
-
+			`,
+		fn: async ({ page, frame, navigate, originUrl }) => {
+			if (!originUrl) throw new Error("missing instrumented origin");
 			const { navigatedUrls, cleanup } =
 				await setupFrameNavigationInterception(page);
 
 			try {
-				await navigate(`http://localhost:${port}/`);
+				await navigate(originUrl);
 
 				// Wait for the link to be visible
 				const link = frame.locator("#custom-link");
@@ -111,13 +106,12 @@ export default [
 				}
 			} finally {
 				await cleanup();
-				server.close();
 			}
 		},
 	}),
 
 	// Test clicking mailto: link
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-click-mailto",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -162,7 +156,7 @@ export default [
 	}),
 
 	// Test clicking tel: link
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-click-tel",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -203,7 +197,7 @@ export default [
 	}),
 
 	// Test window.location assignment with custom scheme
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-location-assign",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -251,7 +245,7 @@ export default [
 	}),
 
 	// Test location.replace with custom scheme
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-location-replace",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -301,7 +295,7 @@ export default [
 	}),
 
 	// Test dynamically created anchor and click
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-dynamic-anchor-click",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -363,7 +357,7 @@ export default [
 	}),
 
 	// Test form submission with custom scheme action
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-form-submit",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`
@@ -409,7 +403,7 @@ export default [
 	}),
 
 	// Test multiple custom schemes on one page
-	playwrightTest({
+	pageTest({
 		name: "custom-schemes-multiple-links",
 		fn: async ({ page, frame, navigate }) => {
 			const { server, port } = await createTestServer(`

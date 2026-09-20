@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // The navigations a site actually performs: submitting a form, following a
 // link, opening a popup. These are driven from the page and verified on the
@@ -7,7 +7,7 @@ import { serverTest } from "../../testcommon.ts";
 // a site unusable rather than merely wrong.
 
 export default [
-	serverTest({
+	originTest({
 		name: "navigation-form-get",
 		autoPass: false,
 		js: `
@@ -37,7 +37,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "navigation-form-post",
 		autoPass: false,
 		js: `
@@ -74,7 +74,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "navigation-form-post-multipart",
 		autoPass: false,
 		js: `
@@ -112,7 +112,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "navigation-link-click",
 		autoPass: false,
 		js: `
@@ -140,7 +140,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "navigation-popup-opener-postmessage",
 		autoPass: false,
 		js: `
