@@ -45,7 +45,7 @@ export function resolveBrowserSelection(
 			{
 				details: Object.fromEntries(named.map((entry) => [entry.source, entry.value])),
 				remedy:
-					"Pass exactly one of --browser-executable, --browser-channel or --browser bundled.",
+					"Pass exactly one of --browser-executable, --browser-channel or --browser-bundled.",
 			}
 		);
 	}
@@ -96,7 +96,7 @@ export function resolveBrowserSelection(
 		});
 	}
 
-	// `--browser bundled` is an explicit acknowledgement of the bundled download,
+	// `--browser-bundled` is an explicit acknowledgement of the bundled download,
 	// but the binary is still not one the consumer named, so it is not proof.
 	return Object.freeze({
 		kind: "bundled",

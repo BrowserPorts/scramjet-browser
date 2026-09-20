@@ -12,11 +12,13 @@ It deliberately names symbols rather than line numbers.
 ## 1. Selection and configuration
 
 `WPT_SUITE_NAME` (`"wpt"`) is part of `KNOWN_SUITES` in `src/config/resolve.ts`, so
-`--suites wpt` resolves like any other suite.
+`--suite wpt` resolves like any other suite. The flag is singular — the option is
+declared `--suite <suites>` in `src/cli/program.ts` and takes a comma separated
+list.
 
 The consumer-facing flags are defined in `src/cli/program.ts`:
 
-- `--wpt-manifest <file>` — required with `--suites wpt`. The manifest **is** the
+- `--wpt-manifest <file>` — required with `--suite wpt`. The manifest **is** the
   denominator and is never inferred.
 - `--wpt-root <dir>` and `--wpt-server-config <file>` — the upstream checkout to
   serve cases from and the wptserve config to start it with. `resolve.ts` requires

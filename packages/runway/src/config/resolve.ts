@@ -136,7 +136,7 @@ export function resolveRunConfiguration(
 			"--wpt-manifest was given but the wpt suite was not selected",
 			{
 				details: { suites: suiteNames, source: options.wptManifest.source },
-				remedy: "Add --suites wpt, or drop --wpt-manifest.",
+				remedy: "Add --suite wpt, or drop --wpt-manifest.",
 			}
 		);
 	}

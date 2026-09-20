@@ -2,9 +2,15 @@
  * Which paths may never be inside the Runway tarball, as a pure function.
  *
  * This is the whole of the "custom" packaging logic: a list of rules over
- * tarball member paths. It lives in its own module so the unit tests exercise
- * the exact function `check-package.mjs` runs over the packed archive. There is
- * no parser, no framework, no state — a rule is a label and a pattern.
+ * tarball member paths. It lives in its own module so the rules can be read and
+ * reused without running the packer; `check-package.mjs` imports
+ * `findForbiddenTarballPaths` and applies it to the members of the archive
+ * `pnpm pack` produced, alongside `publint` and `attw`. There is no parser, no
+ * framework, no state — a rule is a label and a pattern.
+ *
+ * Nothing here is covered by an automated test: this package ships no unit
+ * tests, so `pnpm check-package` running over a real tarball is the only thing
+ * that exercises these rules.
  */
 
 /**

@@ -134,7 +134,7 @@ function addAssetOptions(command: Command): Command {
 		.option("--plugin-manifest <file>", "external plugin profile JSON")
 		.option(
 			"--wpt-manifest <file>",
-			"WPT inventory manifest (required with --suites wpt); the denominator, never inferred"
+			"WPT inventory manifest (required with --suite wpt); the denominator, never inferred"
 		)
 		.option(
 			"--wpt-root <dir>",
