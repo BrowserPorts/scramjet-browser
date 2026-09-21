@@ -232,6 +232,26 @@ before the test frame is created; the flag is ignored for the reference lane.
 a factory receives `{ scramjet, controller, options, assets }` and returns
 `{ plugins, configure?, report?, verify? }`.
 
+The manifest owns four keys: `name`, `plugins` (`entry`, optional `options`),
+`assets` (`name`, `directory`) and an optional `serviceWorker` (`entry`, and
+`type`, `classic` or `module`). Relative entry and directory paths resolve against
+the manifest's own directory, so nothing is discovered from a sibling checkout, an
+environment variable or the working directory — an optional external bundle is
+activated only by a path the consumer wrote down. `options` are passed through to
+the factory untouched. Each plugin entry is served at
+`/__runway_plugins__/<index>/<basename>`, a declared `serviceWorker` entry at
+`/__runway_plugins__/host/<basename>`, and each asset mount at
+`/__runway_plugins__/assets/<name>/`, which is the prefix the factory receives in
+`assets`: a module can load further files of its own from there, such as a worker
+script or a wasm binary. The candidate lane's provenance then records an entry
+hash per entry — `plugin:<index>:<basename>`, or `plugin:host:<basename>` for the
+optional service worker — a digest of the servable-file inventory under each mount
+as `asset:<name>`, and the profile name as the literal label `profile:name`, which
+is not a hash. These hashes are not a transitive dependency graph. Loading a
+module, or observing zero taps, does not establish that candidate behavior changed
+or remained unchanged, nor that product owners executed. The existing harness
+still constructs this lane’s controller and frame.
+
 Every hook after `plugins` is optional, and `verify` is **not** verification of
 the candidate: it asserts the plugin's own behaviour for one navigated URL,
 throwing fails the attempt, and returning cleanly is recorded as the plugin
