@@ -1,7 +1,6 @@
 import { IncrementalHtmlRewriter, rewriteHtml } from "@rewriters/html";
 import { ScramjetClient } from "@client/index";
-import { String, _URL } from "@/shared/snapshot";
-import { createReferrerString } from "@/fetch/util";
+import { String } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient, _self: Self) {
 	function resetDocumentWriter(document: Document) {
@@ -113,16 +112,12 @@ export default function (client: ScramjetClient, _self: Self) {
 	});
 
 	client.Trap("Document.prototype.referrer", {
-		get() {
-			if (!client.history) return "";
-			if (client.history.length < 2) return "";
-			const lastState = client.history[client.history.length - 2];
-			const referrerURL = new _URL(lastState.url);
-			return createReferrerString(
-				referrerURL,
-				client.url,
-				lastState.refererPolicy
-			);
+		get(ctx) {
+			if (ctx.this !== client.global.document) {
+				return client.descriptors.get("Document.prototype.referrer", ctx.this);
+			}
+			const navigation = client.history?.[client.history.length - 1];
+			return navigation?.referrer ?? "";
 		},
 	});
 

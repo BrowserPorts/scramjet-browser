@@ -1,6 +1,6 @@
 import http from "http";
 import type { AddressInfo } from "node:net";
-import { basicTest, type Test } from "../testcommon.ts";
+import type { Test } from "../testcommon.ts";
 
 function html(body: string) {
 	return `<!doctype html><html><body>${body}</body></html>`;
@@ -145,6 +145,7 @@ function iframeRefererTest(props: {
 	name: string;
 	expectedReferer: (sourcePort: number) => string;
 	crossOrigin?: boolean;
+	sameDocumentNavigation?: boolean;
 	mode: "document" | "request";
 }): Test {
 	let sourceServer: http.Server | undefined;
@@ -177,6 +178,15 @@ function iframeRefererTest(props: {
 						document.referrer !== location.href,
 						"iframe document.referrer should not equal the iframe location"
 					);
+					${props.sameDocumentNavigation ? `
+						const referrerBefore = document.referrer;
+						history.pushState(null, "", "?after-push-state");
+						assertEqual(
+							document.referrer,
+							referrerBefore,
+							"same-document navigation should preserve document.referrer"
+						);
+					` : ""}
 				`;
 		return html(
 			`<script>
@@ -257,15 +267,12 @@ function iframeRefererTest(props: {
 }
 
 export default [
-	basicTest({
+	iframeRefererTest({
 		name: "referer-document-referrer-is-not-current-location",
-		js: `
-			assert(document.referrer.length > 0, "document.referrer should be populated inside the test iframe");
-			assert(
-				document.referrer !== location.href,
-				"document.referrer should describe the previous document, not the current one"
-			);
-		`,
+		mode: "document",
+		sameDocumentNavigation: true,
+		expectedReferer: (sourcePort) =>
+			`http://localhost:${sourcePort}/source/parent.html?token=runway-iframe`,
 	}),
 	requestRefererTest({
 		name: "referer-fetch-same-origin-sends-full-url",

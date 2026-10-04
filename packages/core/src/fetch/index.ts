@@ -114,7 +114,7 @@ export type FetchHandlerInit = {
 
 export type TrackedHistoryState = {
 	url: string;
-	refererPolicy?: string;
+	referrer: string;
 };
 export class ScramjetFetchTrackedClient {
 	history: TrackedHistoryState[] = [];

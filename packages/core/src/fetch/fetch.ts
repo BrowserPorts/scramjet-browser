@@ -105,12 +105,10 @@ async function handleParsedFetch(
 	);
 
 	if (isDocument(parsed)) {
-		// for document.referer
+		// Keep the navigation's policy-filtered referrer for the document it creates
 		parsed.trackedClient?.history.push({
 			url: parsed.url.href,
-			refererPolicy: ScramjetHeaders.fromRawHeaders(response.rawHeaders).get(
-				"referrer-policy"
-			),
+			referrer: newheaders.get("Referer") ?? "",
 		});
 	}
 
