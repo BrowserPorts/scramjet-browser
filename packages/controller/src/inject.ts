@@ -278,12 +278,16 @@ class RemoteTransport implements ProxyTransport {
 	}
 }
 
-const rootServiceWorker = navigator.serviceWorker
-	.getRegistration(new URL("/", location.href).href)
-	.then(
-		(registration) =>
-			registration?.active ?? navigator.serviceWorker.controller,
-	);
+// A parent may have hooked this frame before its document scripts arrive
+// Its existing client only needs the navigation metadata refreshed by load
+const rootServiceWorker = SCRAMJETCLIENT in globalThis
+	? Promise.resolve(null)
+	: navigator.serviceWorker
+			.getRegistration(new URL("/", document.baseURI).href)
+			.then(
+				(registration) =>
+					registration?.active ?? navigator.serviceWorker.controller,
+			);
 
 type Init = {
 	config: Config;
