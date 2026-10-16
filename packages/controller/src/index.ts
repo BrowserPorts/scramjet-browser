@@ -32,6 +32,7 @@ import type {
 	ControllerDetachRequest,
 	ControllerDetachResponse,
 	ControllerToTransport,
+	CookieSyncUpdate,
 	FrameErrorHooks,
 	FrameInitHooks,
 	SerializedCookieSyncEntry,
@@ -126,6 +127,18 @@ const COOKIE_DB_NAME = "__scramjet_controller";
 const COOKIE_STORE_NAME = "state";
 const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
 const CONTROLLER_DETACH_TIMEOUT_MS = 5000;
+// how long a Set-Cookie response waits for each page to apply the cookie
+const COOKIE_SYNC_ACK_TIMEOUT_MS = 1000;
+
+type TransportChannel = {
+	port: MessagePort;
+	rpc: RpcHelper<TransportToController, ControllerToTransport>;
+	/** Cleared while the page is hidden or gone */
+	receivesCookies: boolean;
+	/** Set when the page misses a deadline; it gets no updates until it answers, then a snapshot */
+	behind: boolean;
+	unsubscribe?: () => unknown;
+};
 
 let cookieDbPromise: Promise<IDBDatabase> | null = null;
 
@@ -304,10 +317,7 @@ export class Controller {
 	private serviceWorkerReviveGuardTimer: ReturnType<typeof setTimeout> | null =
 		null;
 	private serviceWorkerReconnectPromise: Promise<undefined> | null = null;
-	private transportChannels = new Set<{
-		port: MessagePort;
-		rpc: RpcHelper<TransportToController, ControllerToTransport>;
-	}>();
+	private transportChannels = new Set<TransportChannel>();
 
 	private wasmAlreadyFetched = false;
 	private wasmPayload: string | null = null;
@@ -336,32 +346,6 @@ export class Controller {
 	};
 	private onServiceWorkerMessage = async (event: MessageEvent) => {
 		if (this.closed || this.closing) return;
-
-		if (
-			event.data?.$controller$setCookie &&
-			typeof event.data.$controller$setCookie === "object"
-		) {
-			const payload = event.data.$controller$setCookie as {
-				cookies?: SerializedCookieSyncEntry[];
-				options?: CookieSyncOptions;
-				id?: string;
-			};
-
-			if (payload.options?.clear) {
-				await this.cookieJar.clear();
-			}
-			await this.applyCookieSyncEntries(payload.cookies, payload.options);
-
-			if (typeof payload.id === "string") {
-				this.serviceWorkerController.postMessage({
-					$sw$setCookieDone: {
-						id: payload.id,
-					},
-				});
-			}
-
-			return;
-		}
 
 		if (event.data?.$controller$swrevive) {
 			// if we just spawned the service worker, it will send this even though it's not actually dead
@@ -510,6 +494,14 @@ export class Controller {
 			}
 		},
 		initRemoteTransport: async ({ port, prefix }) => {
+			// cookies saved by another tab belong in this page's first snapshot
+			await this.loadSavedCookies().catch((error) => {
+				console.error("Scramjet cookie synchronization failed:", error);
+			});
+			if (this.closed || this.closing) {
+				port.close();
+				return;
+			}
 			const pathname = new URL(prefix, location.href).pathname;
 			const frameForChannel = () => {
 				const frame = this.frames.find((f) => pathname.startsWith(f.prefix));
@@ -642,6 +634,12 @@ export class Controller {
 						}
 						await applyMutation.call(this.storage, mutations);
 					},
+					setCookieReceiver: async ({ active }) => {
+						channel.receivesCookies = active;
+						channel.behind = false;
+						// a page shown again missed every update while it was hidden
+						if (active) this.sendCookieSnapshot(channel);
+					},
 					connect: async ({ url, protocols, requestHeaders, port, proxy }) => {
 						let resolve: (arg: TransportToController["connect"][1]) => unknown;
 						const promise = new Promise<TransportToController["connect"][1]>(
@@ -707,7 +705,13 @@ export class Controller {
 				"transport",
 				(data, transfer) => port.postMessage(data, transfer),
 			);
-			this.transportChannels.add({ port, rpc });
+			const channel: TransportChannel = {
+				port,
+				rpc,
+				receivesCookies: true,
+				behind: false,
+			};
+			this.transportChannels.add(channel);
 			port.onmessageerror = (ev) => {
 				console.error(
 					"Transport port messageerror (this should never happen!)",
@@ -719,7 +723,7 @@ export class Controller {
 			};
 
 			try {
-				registry().subscribe((event) => {
+				channel.unsubscribe = registry().subscribe((event) => {
 					rpc
 						.call("swEvent", event, event.type === "message" ? event.ports : [])
 						.catch(() => {
@@ -732,6 +736,9 @@ export class Controller {
 			}
 
 			rpc.call("ready", undefined, []);
+			// the jar is read in the task that starts the port, so every cookie the page wrote
+			// before connecting is applied after this snapshot, and the page keeps it
+			this.sendCookieSnapshot(channel);
 		},
 	};
 
@@ -1095,19 +1102,8 @@ export class Controller {
 
 		const channelError = new Error("Scramjet Controller closed");
 		for (const channel of this.transportChannels) {
-			for (const callback of channel.rpc.promiseCallbacks.values()) {
-				callback.reject(channelError);
-			}
-			channel.rpc.promiseCallbacks.clear();
-			channel.port.onmessage = null;
-			channel.port.onmessageerror = null;
-			try {
-				channel.port.close();
-			} catch {
-				// the channel was already closed
-			}
+			this.closeTransportChannel(channel, channelError);
 		}
-		this.transportChannels.clear();
 
 		for (const callback of this.rpc.promiseCallbacks.values()) {
 			callback.reject(channelError);
@@ -1198,14 +1194,68 @@ export class Controller {
 		cookies: SerializedCookieSyncEntry[],
 		options: CookieSyncOptions = {},
 	): Promise<undefined> {
-		if (!this.port) {
-			return undefined;
-		}
+		const update: CookieSyncUpdate = { cookies, options };
+		await Promise.all(
+			Array.from(this.transportChannels, (channel) =>
+				this.deliverCookieSync(channel, update),
+			),
+		);
+		return undefined;
+	}
 
-		await this.rpc.call("sendSetCookie", {
-			cookies,
-			options,
+	private sendCookieSnapshot(channel: TransportChannel): undefined {
+		this.deliverCookieSync(channel, { snapshot: this.cookieJar.dump() });
+		return undefined;
+	}
+
+	/**
+	 * Resolves once the page has applied the update, or once it misses the deadline. Never
+	 * rejects, so a busy or departed page can't fail or stall the response that set the cookie
+	 */
+	private async deliverCookieSync(
+		channel: TransportChannel,
+		update: CookieSyncUpdate,
+	): Promise<undefined> {
+		if (!channel.receivesCookies || channel.behind) return undefined;
+		const delivered = channel.rpc.call("cookieSync", update).then(
+			() => true,
+			() => true,
+		);
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const deadline = new Promise<false>((resolve) => {
+			timer = setTimeout(() => resolve(false), COOKIE_SYNC_ACK_TIMEOUT_MS);
 		});
+		const acknowledged = await Promise.race([delivered, deadline]);
+		clearTimeout(timer);
+		if (acknowledged) return undefined;
+
+		// stop queueing updates for a page that isn't answering, and resync it once it does
+		channel.behind = true;
+		delivered.then(() => {
+			if (!channel.behind || !this.transportChannels.has(channel)) return;
+			channel.behind = false;
+			this.sendCookieSnapshot(channel);
+		});
+		return undefined;
+	}
+
+	private closeTransportChannel(
+		channel: TransportChannel,
+		error: Error,
+	): undefined {
+		this.transportChannels.delete(channel);
+		channel.unsubscribe?.();
+		for (const callback of channel.rpc.promiseCallbacks.values()) {
+			callback.reject(error);
+		}
+		channel.rpc.promiseCallbacks.clear();
+		channel.port.onmessage = null;
+		channel.port.onmessageerror = null;
+		try {
+			channel.port.close();
+		} catch {
+			// the channel was already closed
+		}
 		return undefined;
 	}
 

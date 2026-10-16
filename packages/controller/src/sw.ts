@@ -10,27 +10,9 @@ import type {
 	SWbound,
 } from "./types.js";
 
-function makeId(): string {
-	const bytes = crypto.getRandomValues(new Uint8Array(16));
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-		"",
-	);
-}
-
-const cookieResolvers: Record<string, () => undefined> = {};
 addEventListener("message", (e) => {
 	if (!e.data) return;
 	if (typeof e.data != "object") return;
-	if (e.data.$sw$setCookieDone && typeof e.data.$sw$setCookieDone == "object") {
-		const done = e.data.$sw$setCookieDone;
-
-		const resolver = cookieResolvers[done.id];
-		if (resolver) {
-			resolver();
-			delete cookieResolvers[done.id];
-		}
-	}
-
 	if (
 		e.data.$sw$initRemoteTransport &&
 		typeof e.data.$sw$initRemoteTransport == "object"
@@ -63,61 +45,11 @@ class ControllerReference {
 		public id: string,
 		private port: MessagePort,
 	) {
-		this.rpc = new RpcHelper(
+		this.rpc = new RpcHelper<SWbound, Controllerbound>(
 			{
-				sendSetCookie: async ({ cookies, options }) => {
-					const clients = (await self.clients.matchAll()).filter((client) =>
-						new URL(client.url).pathname.startsWith(this.prefix),
-					);
-					const ids: string[] = [];
-					const promises: Promise<string>[] = [];
-					let timeoutId: ReturnType<typeof setTimeout> | undefined;
-					try {
-						for (const client of clients) {
-							const id = makeId();
-							ids.push(id);
-							promises.push(
-								new Promise<string>((resolve) => {
-									cookieResolvers[id] = () => {
-										resolve(id);
-										return undefined;
-									};
-								}),
-							);
-							client.postMessage({
-								$controller$setCookie: {
-									cookies,
-									options,
-									id,
-								},
-							});
-						}
-
-						if (promises.length > 0) {
-							const timeoutPromise = new Promise<never>((_resolve, reject) => {
-								timeoutId = setTimeout(() => {
-									const pending = ids.filter(
-										(id) => cookieResolvers[id] !== undefined,
-									);
-									reject(
-										new Error(
-											"timed out waiting for set cookie responses: " +
-												`cookies=${cookies.length} clients=${clients.length} ` +
-												`pending=${pending.length}/${ids.length} ` +
-												`clientUrls=${clients.map((client) => client.url).join(",")}`,
-										),
-									);
-								}, 1000);
-							});
-
-							await Promise.race([Promise.all(promises), timeoutPromise]);
-						}
-					} finally {
-						if (timeoutId !== undefined) clearTimeout(timeoutId);
-						for (const id of ids) {
-							delete cookieResolvers[id];
-						}
-					}
+				sendSetCookie: async () => {
+					// cookies sync over each frame's transport port now, so this only keeps tabs that
+					// loaded the previous controller from waiting forever once this worker takes over
 				},
 			},
 			"tabchannel-" + id,

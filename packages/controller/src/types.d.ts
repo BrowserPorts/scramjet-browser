@@ -44,6 +44,13 @@ export type SerializedCookieSyncEntry = {
 	cookie: string;
 };
 
+/** A snapshot replaces a frame's jar before any cookies in the same update are set */
+export type CookieSyncUpdate = {
+	snapshot?: string;
+	cookies?: SerializedCookieSyncEntry[];
+	options?: CookieSyncOptions;
+};
+
 export type ControllerDetachRequest = {
 	id: string;
 };
@@ -60,6 +67,8 @@ export type Controllerbound = {
 };
 
 export type SWbound = {
+	// only tabs still running the previous controller call this; cookies now sync over each
+	// frame's transport port
 	sendSetCookie: [
 		{
 			cookies: SerializedCookieSyncEntry[];
@@ -118,6 +127,8 @@ export type TransportToController = {
 			mutations: ScramjetStorageMutation[];
 		},
 	];
+	// a hidden page gets no cookie updates until it is shown again
+	setCookieReceiver: [{ active: boolean }];
 	connect: [
 		{
 			url: string;
@@ -142,6 +153,7 @@ export type TransportToController = {
 
 export type ControllerToTransport = {
 	ready: [];
+	cookieSync: [CookieSyncUpdate];
 	swEvent: [ServiceWorkerHostEvent];
 	// the client half of ServiceWorkerPageOps, run in whichever page the
 	// controller picked for the realm that asked

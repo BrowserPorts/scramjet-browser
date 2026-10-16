@@ -28,12 +28,14 @@ import type { Config } from ".";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
 	ControllerToTransport,
+	CookieSyncUpdate,
 	SerializedCookieSyncEntry,
 	TransportToController,
 	WebSocketMessage,
 } from "./types";
 
 const MessagePort_postMessage = MessagePort.prototype.postMessage;
+const EventTarget_addEventListener = EventTarget.prototype.addEventListener;
 const postMessage = (
 	port: MessagePort,
 	data: any,
@@ -41,6 +43,53 @@ const postMessage = (
 ) => {
 	MessagePort_postMessage.call(port, data, transfer as any);
 };
+
+/**
+ * A page's copy of the controller's cookie jar. A script's cookie stays pending until the
+ * controller has applied it, so a snapshot read before then can't drop it from document.cookie
+ */
+class CookieMirror {
+	private pending = new Set<SerializedCookieSyncEntry>();
+
+	constructor(public jar: CookieJar) {}
+
+	async track(
+		entries: SerializedCookieSyncEntry[],
+		applied: Promise<unknown>,
+	): Promise<undefined> {
+		for (const entry of entries) this.pending.add(entry);
+		try {
+			await applied;
+		} finally {
+			for (const entry of entries) this.pending.delete(entry);
+		}
+		return undefined;
+	}
+
+	apply(update: CookieSyncUpdate): undefined {
+		if (typeof update.snapshot === "string") {
+			this.jar.load(update.snapshot);
+			for (const { url, cookie } of this.pending) {
+				this.jar.setDocumentCookie({ url: new URL(url), cookie });
+			}
+		} else if (update.options?.clear) {
+			this.jar.clear();
+		}
+
+		for (const entry of update.cookies ?? []) {
+			if (typeof entry?.url !== "string" || typeof entry.cookie !== "string") {
+				continue;
+			}
+
+			try {
+				this.jar.setCookies(entry.cookie, new URL(entry.url));
+			} catch {
+				console.error("Failed to set cookie", entry);
+			}
+		}
+		return undefined;
+	}
+}
 
 class RemoteTransport implements ProxyTransport {
 	private readyResolve!: (value: undefined) => unknown;
@@ -121,11 +170,17 @@ class RemoteTransport implements ProxyTransport {
 	}
 
 	private rpc: RpcHelper<ControllerToTransport, TransportToController>;
-	constructor(public port: MessagePort) {
+	constructor(
+		public port: MessagePort,
+		private cookies: CookieMirror,
+	) {
 		this.rpc = new RpcHelper<ControllerToTransport, TransportToController>(
 			{
 				ready: async () => {
 					this.readyResolve(undefined);
+				},
+				cookieSync: async (update) => {
+					this.cookies.apply(update);
 				},
 				swEvent: async (event) => {
 					for (const listener of this.swListeners) {
@@ -260,12 +315,20 @@ class RemoteTransport implements ProxyTransport {
 		cookies: Array<{ url: URL; cookie: string }>,
 		options: CookieSyncOptions = {},
 	): Promise<undefined> {
-		await this.rpc.call("sendSetCookie", {
-			cookies: cookies.map(({ url, cookie }) => ({
-				url: url.href,
-				cookie,
-			})),
-			options,
+		const entries = cookies.map(({ url, cookie }) => ({
+			url: url.href,
+			cookie,
+		}));
+		await this.cookies.track(
+			entries,
+			this.rpc.call("sendSetCookie", { cookies: entries, options }),
+		);
+		return undefined;
+	}
+
+	setCookieReceiver(active: boolean): undefined {
+		this.rpc.call("setCookieReceiver", { active }).catch((error) => {
+			console.error("Scramjet cookie receiver update failed:", error);
 		});
 		return undefined;
 	}
@@ -277,13 +340,6 @@ class RemoteTransport implements ProxyTransport {
 		return true;
 	}
 }
-
-const rootServiceWorker = navigator.serviceWorker
-	.getRegistration(new URL("/", location.href).href)
-	.then(
-		(registration) =>
-			registration?.active ?? navigator.serviceWorker.controller,
-	);
 
 type Init = {
 	config: Config;
@@ -310,10 +366,11 @@ type Init = {
 
 export function load(init: Init) {
 	if (SCRAMJETCLIENT in globalThis) {
+		// the reused window's jar is kept in sync over its transport, so the cookies baked into
+		// this document are older than the ones it already has
 		((globalThis as any)[SCRAMJETCLIENT] as ScramjetClient).syncDocumentInit({
 			initHeaders: init.initHeaders,
 			history: init.history,
-			cookies: init.cookies,
 		});
 		return;
 	}
@@ -344,32 +401,69 @@ function createFrameId() {
 
 class ExecutionContextWrapper {
 	client!: ScramjetClient;
+	cookies: CookieMirror;
 	cookieJar: CookieJar;
 	storage: ScramjetStorageJar | undefined;
 	transport: RemoteTransport;
-	private handleServiceWorkerCookieMessage: (event: MessageEvent) => unknown;
+	private rootServiceWorker: Promise<ServiceWorker | null>;
+	private handleServiceWorkerMessage: (event: MessageEvent) => unknown;
+	private hidden = false;
+	// inherited contexts run in this realm, so their own page events stop firing once this page goes
+	private dependents = new Set<ExecutionContextWrapper>();
 
 	constructor(
 		public global: typeof globalThis,
 		public init: Init,
+		inherited?: ExecutionContextWrapper,
 	) {
+		const serviceWorker = this.global.navigator.serviceWorker;
+		const nativePostMessage = this.global.ServiceWorker?.prototype.postMessage;
+		const initialController = serviceWorker?.controller ?? null;
+		const nativeGetRegistration = serviceWorker?.getRegistration;
+		this.rootServiceWorker =
+			inherited?.rootServiceWorker ??
+			Promise.resolve()
+				.then(() =>
+					nativeGetRegistration?.call(
+						serviceWorker,
+						new URL("/", this.init.prefix).href,
+					),
+				)
+				.then((registration) => registration?.active ?? initialController)
+				.catch((error) => {
+					// replaced documents can reject lookup while their captured controller still works
+					if (initialController) return initialController;
+					throw error;
+				});
+
+		// initial blank, document-written and opened windows read the same jar as their parent
+		this.cookies = inherited?.cookies ?? new CookieMirror(new CookieJar());
+		this.cookieJar = this.cookies.jar;
+		if (!inherited) this.cookieJar.load(this.init.cookies);
+
 		const channel = new MessageChannel();
-		this.transport = new RemoteTransport(channel.port1);
-		rootServiceWorker
+		this.transport = new RemoteTransport(channel.port1, this.cookies);
+		this.rootServiceWorker
 			.then((worker) => {
 				if (worker === null) {
 					throw new Error(
 						"Scramjet transport requires the root service worker",
 					);
 				}
-				worker.postMessage(
+				if (!nativePostMessage) {
+					throw new Error(
+						"Scramjet transport requires service workers in this context",
+					);
+				}
+				nativePostMessage.call(
+					worker,
 					{
 						$sw$initRemoteTransport: {
 							port: channel.port2,
 							prefix: this.init.prefix.href,
 						},
 					},
-					[channel.port2],
+					{ transfer: [channel.port2] },
 				);
 			})
 			.catch((cause) => {
@@ -378,96 +472,74 @@ class ExecutionContextWrapper {
 				);
 			});
 
-		this.cookieJar = new CookieJar();
-		this.cookieJar.load(this.init.cookies);
 		this.storage = this.init.storage
 			? new ScramjetStorageJar(this.init.storage, async (mutation) => {
 					return await this.transport.sendStorageMutation([mutation]);
 				})
 			: undefined;
 
-		this.handleServiceWorkerCookieMessage = (event: MessageEvent) => {
+		this.handleServiceWorkerMessage = (event: MessageEvent) => {
 			const nativeRequest = event.data?.$scramjet$nativeServiceWorker;
-			if (nativeRequest && typeof nativeRequest === "object") {
-				const port = event.ports[0];
-				if (!port) return;
-				this.transport
-					.nativeServiceWorkerRequest(
-						nativeRequest as NativeServiceWorkerGatewayMetadata,
-					)
-					.then((response) => {
-						postMessage(
-							port,
-							response,
-							response.body instanceof ArrayBuffer ? [response.body] : [],
-						);
-					})
-					.catch((error) => {
-						postMessage(port, { error: String(error?.message ?? error) });
-					});
-				return;
-			}
-
-			if (
-				!event.data?.$controller$setCookie ||
-				typeof event.data.$controller$setCookie !== "object"
-			) {
-				return;
-			}
-
-			const payload = event.data.$controller$setCookie as {
-				cookies?: SerializedCookieSyncEntry[];
-				options?: CookieSyncOptions;
-				id?: string;
-			};
-
-			if (payload.options?.clear) {
-				this.cookieJar.clear();
-			}
-
-			if (Array.isArray(payload.cookies)) {
-				for (const cookie of payload.cookies) {
-					if (
-						typeof cookie?.url !== "string" ||
-						typeof cookie.cookie !== "string"
-					) {
-						continue;
-					}
-
-					try {
-						this.cookieJar.setCookies(cookie.cookie, new URL(cookie.url));
-					} catch {
-						console.error("Failed to set cookie", cookie);
-					}
-				}
-			}
-
-			if (typeof payload.id === "string") {
-				rootServiceWorker
-					.then((worker) => {
-						if (worker === null) {
-							throw new Error(
-								"Scramjet cookie acknowledgement requires the root service worker",
-							);
-						}
-						worker.postMessage({
-							$sw$setCookieDone: {
-								id: payload.id,
-							},
-						});
-					})
-					.catch((error) => {
-						console.error("Scramjet cookie acknowledgement failed:", error);
-					});
-			}
+			if (!nativeRequest || typeof nativeRequest !== "object") return;
+			const port = event.ports[0];
+			if (!port) return;
+			this.transport
+				.nativeServiceWorkerRequest(
+					nativeRequest as NativeServiceWorkerGatewayMetadata,
+				)
+				.then((response) => {
+					postMessage(
+						port,
+						response,
+						response.body instanceof ArrayBuffer ? [response.body] : [],
+					);
+				})
+				.catch((error) => {
+					postMessage(port, { error: String(error?.message ?? error) });
+				});
 		};
 
-		navigator.serviceWorker?.addEventListener(
-			"message",
-			this.handleServiceWorkerCookieMessage,
+		if (serviceWorker) {
+			// internal messages bypass the site's message-event filtering in every frame
+			EventTarget_addEventListener.call(
+				serviceWorker,
+				"message",
+				this.handleServiceWorkerMessage as EventListener,
+			);
+		}
+
+		// a page that is hidden or gone can't answer, so it stops holding up Set-Cookie
+		// responses, and catches up with a snapshot if it is shown again
+		inherited?.dependents.add(this);
+		const onPageHide = (event: PageTransitionEvent) => {
+			if (!event.isTrusted) return;
+			// an inherited context that hides without its parent is gone for good
+			if (!event.persisted) inherited?.dependents.delete(this);
+			this.setHidden(true);
+		};
+		const onPageShow = (event: PageTransitionEvent) => {
+			if (event.isTrusted) this.setHidden(false);
+		};
+		EventTarget_addEventListener.call(
+			this.global,
+			"pagehide",
+			onPageHide as EventListener,
+		);
+		EventTarget_addEventListener.call(
+			this.global,
+			"pageshow",
+			onPageShow as EventListener,
 		);
 
 		this.injectScramjet();
+	}
+
+	private setHidden(hidden: boolean): undefined {
+		if (this.hidden === hidden) return undefined;
+		this.hidden = hidden;
+		this.transport.setCookieReceiver(!hidden);
+		for (const dependent of this.dependents) dependent.setHidden(hidden);
+		return undefined;
 	}
 
 	injectScramjet() {
@@ -533,19 +605,21 @@ class ExecutionContextWrapper {
 				if (!data || typeof data !== "object") return false;
 
 				return (
-					"$controller$setCookie" in data ||
 					"$controller$swrevive" in data ||
 					"$scramjet$nativeServiceWorker" in data ||
-					"$sw$setCookieDone" in data ||
 					"$sw$initRemoteTransport" in data
 				);
 			},
 			hookSubcontext: (frameself) => {
-				const context = new ExecutionContextWrapper(frameself, {
-					...this.init,
-					cookies: this.cookieJar.dump(),
-					storage: this.storage?.dump() ?? null,
-				});
+				const context = new ExecutionContextWrapper(
+					frameself,
+					{
+						...this.init,
+						cookies: this.cookieJar.dump(),
+						storage: this.storage?.dump() ?? null,
+					},
+					this,
+				);
 				return context.client;
 			},
 			initHeaders: this.init.initHeaders,
