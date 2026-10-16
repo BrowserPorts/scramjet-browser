@@ -173,13 +173,17 @@ export class InterceptorClient {
 					signal,
 					redirect: request.redirect,
 				});
+			// libcurl reads a HEAD response's Content-Length as a body still to come and fails it as
+			// partial, so a HEAD goes out as a GET whose body is dropped once the headers are in
 			const response = await this.transport.request(
 				url,
-				method,
+				method === "HEAD" ? "GET" : method,
 				body,
 				headers,
 				signal
 			);
+			if (method === "HEAD" && response.body instanceof ReadableStream)
+				response.body.cancel().catch(() => undefined);
 			const location = header(response.headers, "location");
 			if (
 				REDIRECTS.includes(response.status) &&
