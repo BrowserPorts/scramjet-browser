@@ -174,16 +174,34 @@ export class InterceptorClient {
 					redirect: request.redirect,
 				});
 			// libcurl reads a HEAD response's Content-Length as a body still to come and fails it as
-			// partial, so a HEAD goes out as a GET whose body is dropped once the headers are in
+			// partial, so a HEAD goes out as a GET for the first byte; its Content-Range carries the
+			// size, and the byte is read out, since dropping a stream mid-transfer leaves Wisp
+			// delivering data for a stream that no longer exists
+			const head = method === "HEAD";
+			const ranged = head && !headers.some(([name]) => /^range$/i.test(name));
 			const response = await this.transport.request(
 				url,
-				method === "HEAD" ? "GET" : method,
+				head ? "GET" : method,
 				body,
-				headers,
+				ranged ? [...headers, ["Range", "bytes=0-0"]] : headers,
 				signal
 			);
-			if (method === "HEAD" && response.body instanceof ReadableStream)
-				response.body.cancel().catch(() => undefined);
+			if (head) {
+				await new Response(response.body as BodyInit)
+					.arrayBuffer()
+					.catch(() => undefined);
+				const total = /\/(\d+)\s*$/.exec(
+					header(response.headers, "content-range") ?? ""
+				)?.[1];
+				if (ranged && (response.status === 206 || response.status === 416)) {
+					response.status = 200;
+					response.statusText = "OK";
+					response.headers = response.headers.filter(
+						([name]) => !/^content-(range|length)$/i.test(name)
+					);
+					response.headers.push(["Content-Length", total ?? "0"]);
+				}
+			}
 			const location = header(response.headers, "location");
 			if (
 				REDIRECTS.includes(response.status) &&
@@ -192,8 +210,10 @@ export class InterceptorClient {
 			) {
 				if (request.redirect === "error" || hop >= MAX_REDIRECTS)
 					throw new TypeError("Failed to fetch");
-				if (response.body instanceof ReadableStream)
-					response.body.cancel().catch(() => undefined);
+				if (!head)
+					await new Response(response.body as BodyInit)
+						.arrayBuffer()
+						.catch(() => undefined);
 				if (
 					(response.status === 303 && method !== "HEAD") ||
 					((response.status === 301 || response.status === 302) &&
