@@ -1,10 +1,14 @@
-import {
-	BareCompatibleClient,
-	type ProxyTransport,
-	type RawHeaders,
-} from "@mercuryworkshop/proxy-transports";
+import { BareCompatibleClient } from "@mercuryworkshop/proxy-transports";
 import { getOwnPropertyDescriptorHandler } from "@client/helpers";
-import type { Proxy, ProxyCtx, Trap, TrapCtx } from "@client/client";
+import type {
+	ProxyCtx,
+	ProxyHooks,
+	ProxyTransport,
+	RawHeaders,
+	TransportSocket,
+	TrapCtx,
+	TrapHooks,
+} from "./types";
 import {
 	Array_isArray,
 	Object_defineProperty,
@@ -19,10 +23,10 @@ import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
 
 /** Where a request goes: the browser's own network, the Wisp transport, or nowhere */
-export type InterceptorRoute = "native" | "wisp" | "blocked";
+export type ScramjetMinimalRoute = "native" | "wisp" | "blocked";
 
 /** Plain settings, so a page can hand the same ones to its workers */
-export type InterceptorConfig = {
+export type ScramjetMinimalConfig = {
 	/** Origins whose requests keep the browser's network, such as the page's own files */
 	direct: string[];
 	/** Hostnames, with their subdomains, whose requests fail the way blocked ones do */
@@ -39,18 +43,11 @@ export type InterceptorConfig = {
 	origin?: string;
 };
 
-export type InterceptorOptions = {
+export type ScramjetMinimalOptions = {
 	/** Starts the transport the first time a request has to leave the direct origins */
 	transport: () => Promise<ProxyTransport>;
 	/** Told about requests that failed after leaving through the transport */
 	onError?: (error: unknown, url: string) => void;
-};
-
-export type InterceptorModule = {
-	/** Lower numbers install first */
-	order?: number;
-	enabled?: (client: InterceptorClient) => boolean;
-	default: (client: InterceptorClient, self: typeof globalThis) => void;
 };
 
 const REDIRECTS = [301, 302, 303, 307, 308];
@@ -70,11 +67,17 @@ function header(headers: RawHeaders, name: string): string | null {
  * rewriting URLs for a service worker, so it works where no service worker can run, such as a
  * sandboxed frame with an opaque origin.
  */
-export class InterceptorClient {
+export class ScramjetMinimalClient {
 	natives: Record<string, any> = {};
 	descriptors: Record<string, PropertyDescriptor | undefined> = {};
 	transport: LazyTransport;
-	bare: BareCompatibleClient;
+	bare: {
+		createWebSocket(
+			remote: string | URL,
+			protocols?: string | string[],
+			requestHeaders?: RawHeaders
+		): TransportSocket;
+	};
 	/** Original URLs of resources served from blob URLs, so scripts still see where they came from */
 	origins = new NativeMap<string, string>();
 	#blobs = new NativeMap<string, Promise<string>>();
@@ -85,11 +88,13 @@ export class InterceptorClient {
 
 	constructor(
 		public global: typeof globalThis,
-		public config: InterceptorConfig,
-		public options: InterceptorOptions
+		public config: ScramjetMinimalConfig,
+		public options: ScramjetMinimalOptions
 	) {
 		this.transport = new LazyTransport(options.transport);
-		this.bare = new BareCompatibleClient(this.transport);
+		this.bare = new BareCompatibleClient(
+			this.transport as never
+		) as unknown as ScramjetMinimalClient["bare"];
 		this.nativeFetch = global.fetch.bind(global);
 		this.#direct = new Set(
 			config.direct.map((origin) => new NativeURL(origin).origin)
@@ -117,7 +122,7 @@ export class InterceptorClient {
 		}
 	}
 
-	route(url: URL): InterceptorRoute {
+	route(url: URL): ScramjetMinimalRoute {
 		if (!WISP_PROTOCOLS.includes(url.protocol)) return "native";
 		// A socket to a direct origin's host is direct too
 		const scheme =
@@ -335,7 +340,7 @@ export class InterceptorClient {
 
 	// The helpers below mirror ScramjetClient's, so interceptor modules are written the same way
 
-	Proxy(name: string | readonly string[], handler: Proxy<any>): void {
+	Proxy(name: string | readonly string[], handler: ProxyHooks): void {
 		if (Array_isArray(name)) {
 			for (const each of name) this.Proxy(each, handler);
 			return;
@@ -352,7 +357,7 @@ export class InterceptorClient {
 		this.RawProxy(target, prop, handler);
 	}
 
-	RawProxy(target: any, prop: string, handler: Proxy<any>) {
+	RawProxy(target: any, prop: string, handler: ProxyHooks) {
 		if (!target || !prop || !Reflect_has(target, prop)) return;
 		const value = Reflect_get(target, prop);
 		const descriptor = Object_getOwnPropertyDescriptor(target, prop);
@@ -363,7 +368,7 @@ export class InterceptorClient {
 			traps.construct = (fn: any, args: any[], newTarget: any) => {
 				let result: any;
 				let early = false;
-				const ctx: ProxyCtx<any, "construct"> = {
+				const ctx: ProxyCtx = {
 					fn,
 					this: null,
 					args,
@@ -387,7 +392,7 @@ export class InterceptorClient {
 			traps.apply = (fn: any, that: any, args: any[]) => {
 				let result: any;
 				let early = false;
-				const ctx: ProxyCtx<any, "apply"> = {
+				const ctx: ProxyCtx = {
 					fn,
 					this: that,
 					args,
@@ -414,7 +419,7 @@ export class InterceptorClient {
 		});
 	}
 
-	Trap(name: string | readonly string[], descriptor: Trap<any>): void {
+	Trap(name: string | readonly string[], descriptor: TrapHooks): void {
 		if (Array_isArray(name)) {
 			for (const each of name) this.Trap(each, descriptor);
 			return;
@@ -433,10 +438,10 @@ export class InterceptorClient {
 		this.RawTrap(target, prop, descriptor);
 	}
 
-	RawTrap(target: any, prop: string, descriptor: Trap<any>) {
+	RawTrap(target: any, prop: string, descriptor: TrapHooks) {
 		if (!target || !prop || !Reflect_has(target, prop)) return;
 		const old = Object_getOwnPropertyDescriptor(target, prop);
-		const context = (that: any): TrapCtx<any> => ({
+		const context = (that: any): TrapCtx => ({
 			this: that,
 			get: () => old?.get?.call(that),
 			set: (value: any) => old?.set?.call(that, value),

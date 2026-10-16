@@ -486,6 +486,30 @@ const moduleBundledConfig = createScramjetConfig({
   },
 });
 
+// Scramjet's client without the proxy (src/minimal): hooking and a Wisp transport, for hosts that
+// supply their own interceptors. No rewriter, rewriter wasm, controller or service worker
+const minimalClientConfig = createScramjetConfig({
+  name: "scramjet-minimal",
+  entry: {
+    minimal: join(scramjetdir, "src/minimal/index.ts"),
+  },
+  output: {
+    filename: "scramjet.minimal.mjs",
+    path: join(scramjetdir, "dist"),
+    libraryTarget: "module",
+    iife: false,
+  },
+  rewriterWasm: "undefined",
+  extraConfig: {
+    performance: {
+      hints: false,
+    },
+    experiments: {
+      outputModule: true,
+    },
+  },
+});
+
 // Type generation configuration
 const typeGenConfig = defineConfig({
   context: scramjetdir,
@@ -703,6 +727,7 @@ export default [
   iifeBundledConfig,
   moduleConfig,
   moduleBundledConfig,
+  minimalClientConfig,
   typeGenConfig,
   controllerConfig,
   utilsIifeConfig,

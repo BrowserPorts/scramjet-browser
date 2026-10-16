@@ -3,7 +3,7 @@ import type {
 	RawHeaders,
 	TransferrableResponse,
 	WebSocketDataType,
-} from "@mercuryworkshop/proxy-transports";
+} from "./types";
 
 type Connect = ProxyTransport["connect"];
 

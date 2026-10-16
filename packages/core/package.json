@@ -13,6 +13,7 @@
 	},
 	"scripts": {
 		"build": "cd ../.. && rspack build --mode production",
+		"build:minimal": "cd ../.. && rspack build --mode production --config-name scramjet-minimal && tsc -p packages/core/tsconfig.minimal.json",
 		"rewriter:build": "cd rewriter/wasm/ && bash build.sh && cd ../../",
 		"format": "prettier --write .",
 		"lint": "eslint ./src/",
