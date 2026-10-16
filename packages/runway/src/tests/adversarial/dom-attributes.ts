@@ -104,11 +104,7 @@ export default [
 
 	// ------------------------------------------------------------------
 	basicTest({
-		// KNOWN FAILURE: getAttributeNames(), outerHTML and hasAttribute all
-		// filter the internal bookkeeping attribute, but the `attributes`
-		// NamedNodeMap does not - iterating it exposes scramjet-attr-src.
-		// Attribute mirroring (web components, `[...el.attributes]` copy loops)
-		// carries it straight into the page's own markup.
+		// Attribute mirroring must not copy internal bookkeeping into custom elements
 		name: "domattr-attributes-namednodemap",
 		js: `
 			const img = document.createElement("img");

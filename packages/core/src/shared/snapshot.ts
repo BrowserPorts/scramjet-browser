@@ -84,6 +84,7 @@ export const _Promise = makeWrap(globalThis.Promise);
 export type _Promise<T> = Wrapped<Promise<T>>;
 
 export const Symbol_for = globalThis.Symbol.for;
+export const Symbol_iterator = globalThis.Symbol.iterator;
 
 declare const WrappedBrand: unique symbol;
 
