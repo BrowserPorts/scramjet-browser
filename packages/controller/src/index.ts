@@ -477,6 +477,7 @@ export class Controller {
 					rawUrl: new URL(data.rawUrl),
 					rawReferrer: data.rawReferrer,
 					rawDestination: data.destination,
+					rawCredentials: data.credentials,
 					method: data.method,
 					mode: data.mode,
 					referrer: data.referrer,
@@ -1237,7 +1238,7 @@ export class Frame {
 					(()=>{
 						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = $scramjet;
 
-						setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
+						if (self.WASM) setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
 						delete self.WASM;
 
 						const sjconfig = ${JSON.stringify(this.controller.scramjetConfig)};

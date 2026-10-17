@@ -21,6 +21,7 @@ export type TransferRequest = {
 	rawReferrer: string | null;
 	destination: ScramjetDestination;
 	mode: RequestMode;
+	credentials?: RequestCredentials;
 	referrer: string;
 	method: string;
 	body: BodyType | null;

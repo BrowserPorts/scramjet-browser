@@ -12,9 +12,8 @@ import { String } from "@/shared/snapshot";
  */
 function rewriteUrlOptionsForFetch(init: RequestInit | undefined) {
 	return {
-		// `fetch()` and `new Request()` both default mode to "cors" per spec.
 		mode: init?.mode ?? "cors",
-		credentials: init?.credentials === "include" ? "include" : undefined,
+		credentials: init?.credentials ?? "same-origin",
 	};
 }
 

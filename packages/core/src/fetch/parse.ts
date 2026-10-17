@@ -22,6 +22,8 @@ export const QP = {
 	fetchSite: "$fs",
 	crossSiteRedirect: "$csr",
 	fakeDataURL: "$fakedataurl",
+	workerName: "$wname",
+	workerCorrelation: "$wcorr",
 } as const;
 
 export type QueryParamKey = keyof typeof QP;
@@ -132,11 +134,18 @@ export function parseRequest(
 			? params.fetchSite
 			: undefined;
 
+	const nativeSharedWorker = request.rawDestination === "sharedworker";
 	const fetchMode = ["cors", "no-cors", "same-origin", "navigate"].includes(
 		params.mode
 	)
 		? params.mode
-		: undefined;
+		: nativeSharedWorker ? request.mode : undefined;
+	const fetchCredentials =
+		params.credentials === "include" ||
+		params.credentials === "omit" ||
+		params.credentials === "same-origin"
+			? params.credentials
+			: nativeSharedWorker ? request.rawCredentials : undefined;
 	const destination =
 		(params.destination as ScramjetDestination | undefined) ||
 		request.rawDestination;
@@ -160,12 +169,14 @@ export function parseRequest(
 		crossSiteRedirect: params.crossSiteRedirect === "1",
 		fetchSiteState,
 		fetchInitiatorOrigin: params.initiatorOrigin || undefined,
-		// TODO: should really just be a boolean
-		fetchCredentialsInclude: params.credentials === "include",
+		fetchCredentials,
+		fetchCredentialsInclude: fetchCredentials === "include",
 		fetchMode,
 		destination,
 		isIframe: params.isIframe === "1",
 		isFakeDataURL: params.fakeDataURL === "1",
+		workerName: params.workerName,
+		workerCorrelation: params.workerCorrelation,
 	};
 
 	if (request.rawClientUrl) {

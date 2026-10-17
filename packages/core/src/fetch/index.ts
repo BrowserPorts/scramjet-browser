@@ -26,6 +26,7 @@ export interface ScramjetFetchRequest {
 	rawReferrer: string | null;
 	// use parsed.destination instead
 	rawDestination: ScramjetDestination;
+	rawCredentials?: RequestCredentials;
 	mode: RequestMode;
 	referrer: string;
 	method: string;
@@ -58,6 +59,8 @@ export interface ScramjetFetchParsed {
 	// specifically for tracking Sec-Fetch-Site, don't use for anything else, it will diverge from clientUrl in some cases
 	fetchInitiatorOrigin?: string;
 
+	fetchCredentials?: "include" | "omit" | "same-origin";
+
 	// was the request made with credentials=include?
 	fetchCredentialsInclude?: boolean;
 
@@ -76,6 +79,13 @@ export interface ScramjetFetchParsed {
 	referrerPolicy?: string;
 	trackedClient?: ScramjetFetchTrackedClient;
 
+	/** `WorkerOptions.name` stamped by the client Worker constructor seam. */
+	workerName?: string;
+	/**
+	 * Construct-time transport correlation for host-engine
+	 * `Worker.prototype.terminate` → `DedicatedWorkerHost` destruction.
+	 */
+	workerCorrelation?: string;
 }
 
 export interface ScramjetFetchResponse {

@@ -28,6 +28,8 @@ export type RewriteUrlOptions = {
 	mode?: string;
 	credentials?: string;
 	destination?: ScramjetDestination;
+	workerName?: string;
+	workerCorrelation?: string;
 };
 
 export type URLMeta = {
@@ -190,6 +192,10 @@ export function rewriteUrl(
 			paramsInit.set(QP.credentials, options.credentials);
 		if (options?.destination)
 			paramsInit.set(QP.destination, options.destination);
+		if (options?.workerName !== undefined)
+			paramsInit.set(QP.workerName, options.workerName);
+		if (options?.workerCorrelation !== undefined)
+			paramsInit.set(QP.workerCorrelation, options.workerCorrelation);
 
 		// specific tracking for sec-fetch-site
 		// don't send for the top level controller calling it in go()
