@@ -1,0 +1,699 @@
+diff -ruN upstream/client/exported_funcs.txt patched/client/exported_funcs.txt
+--- upstream/client/exported_funcs.txt	2026-09-20 02:10:45
++++ patched/client/exported_funcs.txt	2026-09-20 02:10:45
+@@ -10,6 +10,12 @@
+ request_cleanup
+ create_request
+ request_set_proxy
++request_set_trust_profile
++request_trust_profile
++trust_profile_create
++trust_profile_release
++trust_profile_live_count
++trust_profile_refs
+ get_version
+ get_cacert
+ get_error_str
+diff -ruN upstream/client/javascript/http.js patched/client/javascript/http.js
+--- upstream/client/javascript/http.js	2026-09-20 02:10:45
++++ patched/client/javascript/http.js	2026-09-20 02:10:45
+@@ -1,6 +1,6 @@
+ class HTTPSession extends CurlSession {
+   constructor(options={}) {
+-    super();
++    super(options);
+     this.options = options;
+     this.base_url = undefined;
+ 
+@@ -79,20 +79,49 @@
+         http_handle = null;
+       }
+       
++      //Decide about scope BEFORE anything is allocated. A scoped request must not
++      //let curl follow redirects internally, so an incompatible redirect mode is
++      //an error here, while there is nothing to clean up.
++      let needs_trust = this.trust_required_for(url);
++      if (needs_trust && params.redirect !== "manual" && params.redirect !== "error") {
++        throw new TypeError(
++          "scoped CA trust requires redirect \"manual\" or \"error\": letting curl " +
++          "follow redirects internally would carry the scoped anchor set to " +
++          "another host"
++        );
++      }
++
+       body_ptr = body ? allocate_array(body) : null;
+       let body_length = body ? body.length : 0;
+       let params_json = JSON.stringify(params);
+-      
++
+       http_handle = this.stream_response(url, headers_callback, finish_callback, params.signal);
+-      c_func(_http_set_options, [http_handle, params_json, body_ptr, body_length]);
+-      if (this.cookie_filename && params.credentials !== "omit") {
+-        c_func(_http_set_cookie_jar, [http_handle, this.cookie_filename]);
++      try {
++        c_func(_http_set_options, [http_handle, params_json, body_ptr, body_length]);
++        if (this.cookie_filename && params.credentials !== "omit") {
++          c_func(_http_set_cookie_jar, [http_handle, this.cookie_filename]);
++        }
++        if (params.proxy) {
++          c_func_str(_request_set_proxy, [http_handle, params.proxy]);
++        }
++        if (needs_trust) {
++          this._apply_trust_profile(http_handle, url);
++        }
++        this.start_request(http_handle);
+       }
+-      if (params.proxy) {
+-        c_func_str(_request_set_proxy, [http_handle, params.proxy]);
++      catch (setup_error) {
++        //The handle is not in requests_list until start_request, so nothing else
++        //can reclaim it. Release it here, with the native header list and the
++        //body buffer, and drop the callback registration.
++        let failed_handle = http_handle;
++        http_handle = null;
++        this.remove_request_now(failed_handle);
++        if (body_ptr) {
++          _free(body_ptr);
++          body_ptr = null;
++        }
++        throw setup_error;
+       }
+-
+-      this.start_request(http_handle);
+     });
+   }
+ 
+diff -ruN upstream/client/javascript/session.js patched/client/javascript/session.js
+--- upstream/client/javascript/session.js	2026-09-20 02:10:45
++++ patched/client/javascript/session.js	2026-09-20 02:10:45
+@@ -1,9 +1,120 @@
++//Canonical host form, shared by the allowlist and every request hostname so the
++//two cannot disagree.
++//
++//Bare-host syntax is checked BEFORE any URL parsing. That ordering is the fix for
++//a real hole: `new URL("https://host:8443").hostname` silently discards the port,
++//so a configured "host:8443" used to normalise to the bare host and be accepted
++//as though the port had never been written.
++function normalize_trust_host(value) {
++  if (typeof value !== "string" || value.length === 0) return null;
++  if (value.includes("\0")) return null;
++  //No scheme, path, query, fragment, userinfo or whitespace.
++  if (/[\/\\?#@\s]/.test(value)) return null;
++
++  if (value.startsWith("[")) {
++    //Bracketed IPv6 only, and the bracket must close the whole value: "[::1]" is
++    //a host, "[::1]:8443" carries a port.
++    if (value.indexOf("]") !== value.length - 1) return null;
++    if (value.includes("[", 1)) return null;
++  }
++  else if (value.includes(":")) {
++    //A bare host may not carry a port, and an unbracketed IPv6 literal is not a
++    //valid host here either.
++    return null;
++  }
++
++  let host;
++  try {
++    let parsed = new URL(`https://${value}`);
++    //Anything the parser would have moved elsewhere means the input was not a
++    //bare host.
++    if (parsed.port !== "" || parsed.username !== "" || parsed.password !== "") return null;
++    if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "") return null;
++    host = parsed.hostname;
++  }
++  catch {
++    return null;
++  }
++  if (host.length === 0) return null;
++  return host.toLowerCase().replace(/\.$/, "");
++}
++
++//Extracts the host to check from an already-parsed request URL. Separate from the
++//bare-host validator: here a port is legitimate and simply not part of scope.
++function request_trust_host(parsed) {
++  let host = parsed.hostname;
++  if (typeof host !== "string" || host.length === 0) return null;
++  if (host.startsWith("[")) {
++    if (host.indexOf("]") !== host.length - 1) return null;
++  }
++  return host.toLowerCase().replace(/\.$/, "");
++}
++
++//Throws on anything ambiguous. Returns null when no trust was requested.
++//`cacert: ""` throws: an explicitly empty bundle is a mistake, not a request for
++//default trust.
++function validate_trust_options(options) {
++  let has_cacert = Object.prototype.hasOwnProperty.call(options, "cacert");
++  let has_hosts = Object.prototype.hasOwnProperty.call(options, "cacert_hosts");
++  if (!has_cacert && !has_hosts) return null;
++  if (has_cacert !== has_hosts) {
++    throw new TypeError("cacert and cacert_hosts must be supplied together");
++  }
++
++  let cacert = options.cacert;
++  if (typeof cacert !== "string") throw new TypeError("cacert must be a PEM string");
++  if (cacert.length === 0) throw new TypeError("cacert must not be empty");
++  if (cacert.includes("\0")) throw new TypeError("cacert must not contain NUL bytes");
++  if (!/-----BEGIN CERTIFICATE-----/.test(cacert)) {
++    throw new TypeError("cacert must contain at least one PEM certificate");
++  }
++
++  let raw_hosts = options.cacert_hosts;
++  if (!Array.isArray(raw_hosts)) {
++    throw new TypeError("cacert_hosts must be an array of hostnames");
++  }
++  if (raw_hosts.length === 0) throw new TypeError("cacert_hosts must not be empty");
++  let hosts = new Set();
++  for (let entry of raw_hosts) {
++    let host = normalize_trust_host(entry);
++    if (host === null) {
++      throw new TypeError(`cacert_hosts contains an invalid hostname: ${String(entry)}`);
++    }
++    hosts.add(host);
++  }
++  return { cacert: cacert, hosts: Object.freeze([...hosts]) };
++}
++
+ class CurlSession {
++  #trust = null;
++  #pending_removal = new Set();
++  #closing = false;
++
+   constructor(options={}) {
+     check_loaded(true);
+ 
+     this.options = options;
++
++    //Validate everything before any allocation, so a bad host or an empty PEM
++    //cannot leave a session or a registered profile behind.
++    let trust = validate_trust_options(options);
++
+     this.session_ptr = _session_create();
++
++    //Private: a writable field or an exposed Set would let a caller widen scope
++    //after construction.
++    if (trust === null) {
++      this.#trust = null;
++    }
++    else {
++      let profile_id = c_func(_trust_profile_create, [trust.cacert]);
++      if (!profile_id) {
++        _session_cleanup(this.session_ptr);
++        this.session_ptr = null;
++        throw new Error("libcurl.js: could not register the supplied CA bundle");
++      }
++      this.#trust = { profile_id: profile_id, hosts: trust.hosts };
++    }
+     this.active_requests = 0;
+     this.event_loop = null;
+     this.requests_list = [];
+@@ -51,6 +162,55 @@
+     this.request_callbacks[request_id].headers(chunk);
+   }
+ 
++  //Read-only attestation: callers may ask what is scoped, not change it.
++  get trust_scope() {
++    if (this.#trust === null) return null;
++    return Object.freeze({ hosts: this.#trust.hosts });
++  }
++
++  get trust_profile_id() {
++    return this.#trust === null ? 0 : this.#trust.profile_id;
++  }
++
++  //Exact canonical membership; never suffix matching. An unparseable URL is an
++  //error, not a silent fall back to default trust.
++  trust_profile_for(url) {
++    if (this.#trust === null) return 0;
++    let parsed;
++    try {
++      parsed = new URL(url);
++    }
++    catch {
++      throw new TypeError(`invalid request URL: ${String(url)}`);
++    }
++    if (parsed.protocol !== "https:" && parsed.protocol !== "wss:") return 0;
++    let host = request_trust_host(parsed);
++    if (host === null) throw new TypeError(`invalid request hostname: ${parsed.hostname}`);
++    return this.#trust.hosts.includes(host) ? this.#trust.profile_id : 0;
++  }
++
++  //Whether this URL needs scope. Call BEFORE allocating anything, so an
++  //incompatible request fails without leaving resources behind.
++  trust_required_for(url) {
++    return this.trust_profile_for(url) !== 0;
++  }
++
++  //Applies scope to an unstarted handle owned by this session. The native side
++  //enforces once-only and unstarted-only; this is the ordinary path, not the
++  //security boundary.
++  _apply_trust_profile(http_handle, url) {
++    let profile_id = this.trust_profile_for(url);
++    if (!profile_id) return 0;
++    let applied = c_func(_request_set_trust_profile, [http_handle, profile_id]);
++    if (!applied) {
++      throw new Error(
++        "libcurl.js: scoped CA trust could not be applied (already started, " +
++        "already scoped, or unknown profile)"
++      );
++    }
++    return applied;
++  }
++
+   create_request(url, js_data_callback, js_end_callback, js_headers_callback) {
+     this.assert_ready();
+     let request_id = this.last_request_id++;
+@@ -66,24 +226,43 @@
+     return request_ptr;
+   }
+ 
++  //Idempotent. A handle is cleaned up at most once no matter how many paths ask:
++  //a deferred removal, an error path and close can all race.
+   remove_request_now(request_ptr) {
+-    if (this.session_ptr) {
+-      _session_remove_request(this.session_ptr, request_ptr);
+-    }
+-    _request_cleanup(request_ptr);
+-    
++    if (!request_ptr) return;
+     let request_index = this.requests_list.indexOf(request_ptr);
++    let was_pending = this.#pending_removal.delete(request_ptr);
++    if (request_index === -1 && !was_pending) {
++      //Already cleaned up, or never owned by this session.
++      return;
++    }
+     if (request_index !== -1) {
+       this.requests_list.splice(request_index, 1);
+     }
++    if (this.session_ptr) {
++      _session_remove_request(this.session_ptr, request_ptr);
++    }
++    _request_cleanup(request_ptr);
+   }
+ 
+-  //remove the request on the next iteration of the loop
++  //Remove on a later turn. The deferred callback re-checks membership and close
++  //state: without that it could fire after the session was freed and free the
++  //same handle twice.
+   remove_request(request_ptr) {
+-    this.assert_ready();
++    if (!request_ptr) return;
++    if (this.#closing || !this.session_ptr) {
++      this.remove_request_now(request_ptr);
++      return;
++    }
++    this.#pending_removal.add(request_ptr);
+     setTimeout(() => {
++      if (!this.#pending_removal.has(request_ptr)) return;
++      if (!this.session_ptr) {
++        this.#pending_removal.delete(request_ptr);
++        return;
++      }
+       this.remove_request_now(request_ptr);
+-    }, 1)
++    }, 1);
+   }
+ 
+   start_request(request_ptr) {
+@@ -115,8 +294,31 @@
+   }
+ 
+   close_now() {
+-    for (let request_ptr of this.requests_list) {
++    this.#closing = true;
++
++    //Stop the loop before the session is freed: event_loop_func dereferences
++    //session_ptr and would run against a freed session otherwise.
++    if (this.event_loop) {
++      clearInterval(this.event_loop);
++      this.event_loop = null;
++    }
++
++    //Iterate a copy: remove_request_now splices requests_list, which made the
++    //original loop skip every second handle.
++    for (let request_ptr of [...this.requests_list]) {
+       this.remove_request_now(request_ptr);
++    }
++    //Anything still only scheduled for removal is owned here now.
++    for (let request_ptr of [...this.#pending_removal]) {
++      this.remove_request_now(request_ptr);
++    }
++    this.requests_list.length = 0;
++    this.active_requests = 0;
++    //Release the session's reference last: every borrowing handle has been
++    //cleaned up above, so the bytes cannot go while curl still holds them.
++    if (this.#trust !== null) {
++      c_func(_trust_profile_release, [this.#trust.profile_id]);
++      this.#trust = null;
+     }
+     _session_cleanup(this.session_ptr);
+     this.session_ptr = null;
+diff -ruN upstream/client/javascript/tls_socket.js patched/client/javascript/tls_socket.js
+--- upstream/client/javascript/tls_socket.js	2026-09-20 02:10:45
++++ patched/client/javascript/tls_socket.js	2026-09-20 02:10:45
+@@ -1,6 +1,6 @@
+ class TLSSocket extends CurlSession {
+   constructor(hostname, port, options={}) {
+-    super();
++    super(options);
+ 
+     this.hostname = hostname;
+     this.port = port;
+@@ -43,12 +43,29 @@
+       }
+     }
+ 
++    //Decide before allocating: an out-of-scope or malformed host fails with
++    //nothing to clean up. `this.url` carries the port, which is not part of
++    //scope; the hostname is what is matched, and it is also what SNI and
++    //certificate verification use.
++    let needs_trust = this.trust_required_for(this.url);
++
+     this.http_handle = this.create_request(this.url, data_callback, finish_callback, headers_callback);
+-    _tls_socket_set_options(this.http_handle, +this.options.verbose);
+-    if (this.options.proxy) {
+-      c_func_str(_request_set_proxy, [this.http_handle, this.options.proxy]);
++    try {
++      _tls_socket_set_options(this.http_handle, +this.options.verbose);
++      if (this.options.proxy) {
++        c_func_str(_request_set_proxy, [this.http_handle, this.options.proxy]);
++      }
++      if (needs_trust) {
++        this._apply_trust_profile(this.http_handle, this.url);
++      }
++      this.start_request(this.http_handle);
+     }
+-    this.start_request(this.http_handle);
++    catch (setup_error) {
++      let failed_handle = this.http_handle;
++      this.http_handle = null;
++      this.remove_request_now(failed_handle);
++      throw setup_error;
++    }
+   }
+ 
+   recv() {
+diff -ruN upstream/client/javascript/websocket.js patched/client/javascript/websocket.js
+--- upstream/client/javascript/websocket.js	2026-09-20 02:10:45
++++ patched/client/javascript/websocket.js	2026-09-20 02:10:45
+@@ -3,7 +3,7 @@
+     if (!url.startsWith("wss://") && !url.startsWith("ws://")) {
+       throw new SyntaxError("invalid url");
+     }
+-    super();
++    super(options);
+     
+     this.url = url;
+     this.protocols = protocols;
+@@ -60,6 +60,9 @@
+ 
+     this.http_handle = this.create_request(this.url, data_callback, finish_callback, headers_callback);
+     c_func(_http_set_options, [this.http_handle, JSON.stringify(request_options), null, 0]);
++    //Scope the handshake itself. See cleanup(): a handshake that never
++    //completes must still release this.
++    this._apply_trust_profile(this.http_handle, this.url);
+     _websocket_set_options(this.http_handle);
+     if (this.options.proxy) {
+       c_func_str(_request_set_proxy, [this.http_handle, this.options.proxy]);
+@@ -111,11 +114,17 @@
+   }
+ 
+   cleanup(error=0) {
+-    if (!this.connected)
+-      return;
+-    if (this.recv_loop) 
++    //A failed handshake never sets `connected`, and returning here leaked the
++    //easy handle, the session and the trust profile every time. Only a second
++    //cleanup should be a no-op.
++    if (this.cleaned_up) return;
++    this.cleaned_up = true;
++
++    if (this.recv_loop) {
+       clearInterval(this.recv_loop);
+-    
++      this.recv_loop = null;
++    }
++
+     super.close();
+     this.connected = false;
+ 
+diff -ruN upstream/client/libcurl/certs.c patched/client/libcurl/certs.c
+--- upstream/client/libcurl/certs.c	2026-09-20 02:10:45
++++ patched/client/libcurl/certs.c	2026-09-20 02:10:45
+@@ -50,6 +50,119 @@
+   cacert_pem[cacert_pem_len-1] = '\0';
+ }
+ 
++//---- scoped trust profiles -------------------------------------------------
++//
++// An additional CA bundle a caller may scope to specific hosts. Verification is
++// not weakened: CURLOPT_CAINFO_BLOB substitutes the trust ANCHOR SET only, so
++// mbedTLS still builds the chain, enforces the validity period and matches
++// hostname and SNI. VERIFYPEER and VERIFYHOST are never touched.
++//
++// Lifetime. Profiles are immutable. The session that created one holds a
++// reference and each easy handle that uses it borrows another, so the bytes
++// outlive every handle that verified against them. CURL_BLOB_COPY is used, so
++// curl keeps its own copy and nothing depends on our buffer surviving a handle.
++//
++// The byte bound below covers THIS REGISTRY ONLY. It does not bound the copies
++// curl makes per handle, nor the allocations mbedTLS makes per connection.
++
++#define MAX_TRUST_PROFILES 8
++#define MAX_TRUST_PEM_BYTES (1 << 20)
++#define MAX_TRUST_REGISTRY_BYTES (4 << 20)
++
++struct TrustProfile {
++  int id;
++  unsigned char* pem;
++  int pem_len;
++  int refs;
++  struct curl_blob blob;
++};
++
++static struct TrustProfile trust_profiles[MAX_TRUST_PROFILES];
++static int trust_next_id = 1;
++static int trust_registry_bytes = 0;
++
++static struct TrustProfile* trust_profile_find(int profile_id) {
++  if (profile_id <= 0) return NULL;
++  for (int i = 0; i < MAX_TRUST_PROFILES; i++) {
++    if (trust_profiles[i].id == profile_id && trust_profiles[i].refs > 0) {
++      return &trust_profiles[i];
++    }
++  }
++  return NULL;
++}
++
++//Returns a monotonic profile id owned by the caller (one reference), or 0.
++int trust_profile_create(const char* pem) {
++  if (pem == NULL) return 0;
++  size_t len = strlen(pem);
++  if (len == 0 || len > MAX_TRUST_PEM_BYTES) return 0;
++  if (trust_registry_bytes + (int) len > MAX_TRUST_REGISTRY_BYTES) return 0;
++
++  struct TrustProfile* slot = NULL;
++  for (int i = 0; i < MAX_TRUST_PROFILES; i++) {
++    if (trust_profiles[i].refs == 0) {
++      slot = &trust_profiles[i];
++      break;
++    }
++  }
++  if (slot == NULL) return 0;
++
++  unsigned char* owned = malloc(len + 1);
++  if (owned == NULL) return 0;
++  memcpy(owned, pem, len);
++  owned[len] = 0;
++
++  slot->id = trust_next_id++;
++  slot->pem = owned;
++  slot->pem_len = (int) len;
++  slot->refs = 1;
++  slot->blob.data = owned;
++  slot->blob.len = len;
++  slot->blob.flags = CURL_BLOB_COPY;
++  trust_registry_bytes += (int) len;
++
++  return slot->id;
++}
++
++struct curl_blob* trust_profile_blob(int profile_id) {
++  struct TrustProfile* profile = trust_profile_find(profile_id);
++  return profile == NULL ? NULL : &profile->blob;
++}
++
++int trust_profile_retain(int profile_id) {
++  struct TrustProfile* profile = trust_profile_find(profile_id);
++  if (profile == NULL) return 0;
++  profile->refs++;
++  return profile_id;
++}
++
++//Drops one reference. Frees and reclaims the slot at zero; ids are never reused.
++int trust_profile_release(int profile_id) {
++  struct TrustProfile* profile = trust_profile_find(profile_id);
++  if (profile == NULL) return 0;
++  if (--profile->refs == 0) {
++    trust_registry_bytes -= profile->pem_len;
++    free(profile->pem);
++    profile->pem = NULL;
++    profile->pem_len = 0;
++    profile->id = 0;
++  }
++  return 1;
++}
++
++int trust_profile_live_count() {
++  int live = 0;
++  for (int i = 0; i < MAX_TRUST_PROFILES; i++) {
++    if (trust_profiles[i].refs > 0) live++;
++  }
++  return live;
++}
++
++int trust_profile_refs(int profile_id) {
++  struct TrustProfile* profile = trust_profile_find(profile_id);
++  return profile == NULL ? 0 : profile->refs;
++}
++
+ void init_curl() {
+   curl_global_init(CURL_GLOBAL_DEFAULT);
+   generate_pem();
+diff -ruN upstream/client/libcurl/request.c patched/client/libcurl/request.c
+--- upstream/client/libcurl/request.c	2026-09-20 02:10:45
++++ patched/client/libcurl/request.c	2026-09-20 02:10:45
+@@ -14,6 +14,9 @@
+ void forward_headers(struct RequestInfo *request_info);
+ 
+ extern struct curl_blob cacert_blob;
++extern struct curl_blob* trust_profile_blob(int profile_id);
++extern int trust_profile_retain(int profile_id);
++extern int trust_profile_release(int profile_id);
+ 
+ size_t write_function(char *data, size_t size, size_t nmemb, struct RequestInfo *request_info) {
+   size_t real_size = size * nmemb;
+@@ -39,10 +42,14 @@
+   request_info->end_callback = end_callback;
+   request_info->data_callback = data_callback;
+   request_info->headers_callback = headers_callback;
++  request_info->trust_profile = 0;
++  request_info->started = 0;
+ 
+   curl_easy_setopt(http_handle, CURLOPT_PRIVATE, request_info);
+   curl_easy_setopt(http_handle, CURLOPT_URL, url);
+-  curl_easy_setopt(http_handle, CURLOPT_CAINFO_BLOB, cacert_blob);
++  //CURLOPT_CAINFO_BLOB takes a struct curl_blob*; this passed the struct by
++  //value, which is not the documented contract.
++  curl_easy_setopt(http_handle, CURLOPT_CAINFO_BLOB, &cacert_blob);
+   curl_easy_setopt(http_handle, CURLOPT_BUFFERSIZE, 512*1024);
+ 
+   //emscripten doesn't support tcp nodelay anyways
+@@ -61,10 +68,30 @@
+ 
+ void request_cleanup(CURL* http_handle) {
+   struct RequestInfo *request_info = get_request_info(http_handle);
++
++  //An unstarted or failed handle never reaches finish_request, which was the
++  //only place this list was freed.
++  if (request_info->headers_list != NULL) {
++    curl_slist_free_all(request_info->headers_list);
++    request_info->headers_list = NULL;
++  }
++  if (request_info->trust_profile > 0) {
++    trust_profile_release(request_info->trust_profile);
++    request_info->trust_profile = 0;
++  }
+   curl_easy_cleanup(http_handle);
+   free(request_info);
+ }
+ 
++//Called when the handle is handed to a multi handle. After this, trust is fixed.
++void request_mark_started(CURL* http_handle) {
++  get_request_info(http_handle)->started = 1;
++}
++
++int request_trust_profile(CURL* http_handle) {
++  return get_request_info(http_handle)->trust_profile;
++}
++
+ void finish_request(CURLMsg *curl_msg) {
+   CURL *http_handle = curl_msg->easy_handle;
+   struct RequestInfo *request_info = get_request_info(http_handle);
+@@ -74,8 +101,44 @@
+   //clean up curl
+   if (request_info->headers_list != NULL) {
+     curl_slist_free_all(request_info->headers_list);
++    request_info->headers_list = NULL;
+   }
+   (*request_info->end_callback)(request_info->request_id, error);
++}
++
++//Scopes one UNSTARTED handle to an additional CA bundle, at most once.
++//
++//Returns the profile id on success, or 0 on any failure, having changed nothing:
++//no option is touched and no reference is taken until every precondition holds,
++//so a failure leaves the caller with only the unstarted handle to destroy.
++//
++//Refusals: unknown profile; a handle that is already started, because its
++//connection may exist and its trust must not change under it; and a handle that
++//already carries a profile, because reassigning would leak the first reference
++//and silently widen or narrow trust.
++int request_set_trust_profile(CURL* http_handle, int profile_id) {
++  struct RequestInfo *request_info = get_request_info(http_handle);
++  if (request_info->started) return 0;
++  if (request_info->trust_profile != 0) return 0;
++
++  struct curl_blob* blob = trust_profile_blob(profile_id);
++  if (blob == NULL) return 0;
++
++  //Replaces the anchor set for this handle only; every other check stays on.
++  if (curl_easy_setopt(http_handle, CURLOPT_CAINFO_BLOB, blob) != CURLE_OK) {
++    return 0;
++  }
++  //A scoped handle must not follow redirects internally: curl would carry the
++  //anchor set to whatever host the response points at. This is a deliberate
++  //restriction on scoped requests, not a reproduction of fetch semantics; the
++  //caller drives the hops.
++  if (curl_easy_setopt(http_handle, CURLOPT_FOLLOWLOCATION, 0L) != CURLE_OK) {
++    return 0;
++  }
++
++  if (!trust_profile_retain(profile_id)) return 0;
++  request_info->trust_profile = profile_id;
++  return profile_id;
+ }
+ 
+ void request_set_proxy(CURL* http_handle, const char* proxy_url) {
+diff -ruN upstream/client/libcurl/session.c patched/client/libcurl/session.c
+--- upstream/client/libcurl/session.c	2026-09-20 02:10:45
++++ patched/client/libcurl/session.c	2026-09-20 02:10:45
+@@ -33,7 +33,11 @@
+   curl_multi_setopt(session->multi_handle, CURLMOPT_MAX_HOST_CONNECTIONS, host_conn_limit);
+ }
+ 
++extern void request_mark_started(CURL* http_handle);
++
+ void session_add_request(struct SessionInfo *session, CURL* http_handle) {
++  //Trust is frozen from here on.
++  request_mark_started(http_handle);
+   curl_multi_add_handle(session->multi_handle, http_handle);
+ }
+ 
+diff -ruN upstream/client/libcurl/types.h patched/client/libcurl/types.h
+--- upstream/client/libcurl/types.h	2026-09-20 02:10:45
++++ patched/client/libcurl/types.h	2026-09-20 02:10:45
+@@ -11,6 +11,13 @@
+   DataCallback data_callback;
+   DataCallback headers_callback;
+   EndCallback end_callback;
++  //0 = default CA bundle; >0 = a scoped profile this handle holds one reference
++  //to, released in request_cleanup. Assigned at most once, and only while the
++  //handle is still unstarted (see request_set_trust_profile).
++  int trust_profile;
++  //Set when the handle is added to a multi handle. A started handle's trust must
++  //not change: the connection may already be established.
++  int started;
+ };
+ 
+ struct WSResult {

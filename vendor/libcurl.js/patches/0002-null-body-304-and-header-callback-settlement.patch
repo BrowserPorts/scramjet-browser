@@ -1,0 +1,47 @@
+diff --git a/client/javascript/http.js b/client/javascript/http.js
+index 62843c4..12cd925 100644
+--- a/client/javascript/http.js
++++ b/client/javascript/http.js
+@@ -45,8 +45,25 @@ class HTTPSession extends CurlSession {
+       let body_ptr = null; 
+ 
+       let headers_callback = (stream) => {
+-        let response_json = c_func_str(_http_get_info, [http_handle]);
+-        let response = this.constructor.create_response(stream, JSON.parse(response_json));
++        let response;
++        try {
++          let response_json = c_func_str(_http_get_info, [http_handle]);
++          response = this.constructor.create_response(stream, JSON.parse(response_json));
++        }
++        catch (e) {
++          //this runs inside a native data/end callback, so an exception unwinds
++          //into wasm and this promise is never settled. settle it and return.
++          //the request is deliberately NOT torn down here: active_requests and
++          //request_callbacks are decremented and deleted only by the session's
++          //native end callback, keyed by request id, while remove_request works
++          //on the request pointer and touches neither. calling it from here on
++          //the first-chunk path would free the handle while the session still
++          //counted and retained the request. letting the native end callback
++          //arrive keeps teardown exactly once and identical to a normal finish;
++          //rejecting an already settled promise there is a no-op.
++          reject(e);
++          return;
++        }
+         
+         if (params.redirect === "error" && response.status >= 300 && response.status < 400) {
+           finish_callback(-2);
+@@ -131,7 +148,13 @@ class HTTPSession extends CurlSession {
+   static create_response(response_data, response_info) {
+     response_info.ok = response_info.status >= 200 && response_info.status < 300;
+     response_info.statusText = status_messages[response_info.status] || "";
+-    if (response_info.status === 204 || response_info.status === 205) {
++    //a null body status cannot carry a body: the Response constructor throws if
++    //one is supplied. 304 belongs to that set and was missing, and it is also the
++    //case that arrives with no body bytes at all, so the empty stream still threw.
++    //101 and 103 are null body statuses too, but the constructor rejects those
++    //status codes outright, so they are not representable here either way.
++    if (response_info.status === 204 || response_info.status === 205 ||
++        response_info.status === 304) {
+       response_data = null;
+     }
+ 

@@ -1,0 +1,50 @@
+diff --git a/client/libcurl/http.c b/client/libcurl/http.c
+index 12cf1d3..9ba2153 100644
+--- a/client/libcurl/http.c
++++ b/client/libcurl/http.c
+@@ -10,6 +10,7 @@
+ 
+ void http_set_options(CURL* http_handle, const char* json_params, const char* body, int body_length) {
+   struct RequestInfo *request_info = get_request_info(http_handle);
++  int is_head = 0;
+ 
+   //some default options
+   curl_easy_setopt(http_handle, CURLOPT_FOLLOWLOCATION, 1);
+@@ -43,6 +44,10 @@ void http_set_options(CURL* http_handle, const char* json_params, const char* bo
+     }
+ 
+     if (strcmp(key, "method") == 0 && cJSON_IsString(item)) {
++      //HTTP methods are case sensitive, so only an exact "HEAD" is a HEAD.
++      //recorded here rather than applied, because the body options below would
++      //otherwise undo it, and because valuestring dies with request_json.
++      is_head = strcmp(item->valuestring, "HEAD") == 0;
+       curl_easy_setopt(http_handle, CURLOPT_CUSTOMREQUEST, item->valuestring);
+     }
+     
+@@ -77,6 +82,26 @@ void http_set_options(CURL* http_handle, const char* json_params, const char* bo
+     curl_easy_setopt(http_handle, CURLOPT_POSTFIELDSIZE, body_length);
+   }
+ 
++  //CURLOPT_CUSTOMREQUEST only replaces the method string: it does not tell curl
++  //that no response body follows. Without this, curl waits for the body that the
++  //response's Content-Length advertises but which a HEAD response never sends,
++  //so the transfer never completes and no end callback is ever delivered.
++  //
++  //Set after the body options above, because CURLOPT_POSTFIELDS puts the handle
++  //back into a body-bearing request. No reset is needed for other methods:
++  //create_request() calls curl_easy_init() per request, so this handle is fresh
++  //and CURLOPT_NOBODY is already 0. If easy handles are ever pooled and reused,
++  //this has to become an unconditional set of both 1 and 0.
++  //
++  //Deliberately unchecked, like every other setopt in this function: the ABI of
++  //http_set_options is void and fixed in exported_funcs.txt, there is no
++  //pre-start error channel to JS (end_callback only carries a CURLcode from a
++  //started transfer), and CURLOPT_NOBODY with a long cannot fail on a valid
++  //handle in a build that has HTTP enabled.
++  if (is_head) {
++    curl_easy_setopt(http_handle, CURLOPT_NOBODY, 1L);
++  }
++
+   request_info->headers_list = headers_list;
+ }
+ 
