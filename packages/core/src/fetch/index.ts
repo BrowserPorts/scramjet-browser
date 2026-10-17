@@ -9,7 +9,6 @@ import type { URLMeta } from "@rewriters/url";
 import type { ScramjetRequestMode } from "./parse";
 
 export { QP } from "./parse";
-export { REWRITTEN_HEADER } from "./util";
 
 import type {
 	HtmlRewriterHooks,
@@ -20,7 +19,7 @@ import type { ScramjetHeaders } from "@/shared/headers";
 import { _Map, type _URL } from "@/shared/snapshot";
 import { Tap, type TapInstance } from "@/Tap";
 import type { ScramjetDestination } from "@/types";
-import { doHandleFetch, doHandleServiceWorkerResponse } from "./fetch";
+import { doHandleFetch } from "./fetch";
 
 export interface ScramjetFetchRequest {
 	rawUrl: URL;
@@ -77,9 +76,6 @@ export interface ScramjetFetchParsed {
 	referrerPolicy?: string;
 	trackedClient?: ScramjetFetchTrackedClient;
 
-	// scope an emulated service worker realm is registered for, only set on
-	// requests for a serviceworker destination script
-	swScope?: string;
 }
 
 export interface ScramjetFetchResponse {
@@ -175,12 +171,6 @@ export class ScramjetFetchHandler extends EventTarget {
 		return doHandleFetch(this, request);
 	}
 
-	async handleServiceWorkerResponse(
-		request: ScramjetFetchRequest,
-		response: BareResponse,
-	): Promise<ScramjetFetchResponse> {
-		return doHandleServiceWorkerResponse(this, request, response);
-	}
 }
 export type FetchHooks = {
 	intercept: {

@@ -12,9 +12,7 @@ export * from "./headers";
 export * from "./htmlRules";
 export * from "./mime";
 export * from "./providers";
-export * from "./realmchannel";
 export * from "./rewriters";
-export * from "./serviceworker";
 export * from "./storage";
 
 export function flagEnabled(
@@ -47,8 +45,6 @@ export type ScramjetInterface = {
     isModule: boolean,
     script: (src: string) => string,
   ): string;
-  getWorkerFinalizeScript?(): string;
-  nativeServiceWorkerPath?: string;
 };
 
 export type ScramjetContext = {

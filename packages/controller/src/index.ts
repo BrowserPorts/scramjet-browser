@@ -10,8 +10,6 @@ import {
 	type FetchHooks,
 	Plugin,
 	providers,
-	QP,
-	REWRITTEN_HEADER,
 	rewriteUrl,
 	type ScramjetConfig,
 	type ScramjetContext,
@@ -19,13 +17,10 @@ import {
 	ScramjetHeaders,
 	type ScramjetInterface,
 	type ScramjetStorageManager,
-	type ServiceWorkerFetchRequestInit,
 	defaultConfig as scramjetDefaultConfig,
 	setWasm,
 	Tap,
-	unrewriteUrl,
 } from "@mercuryworkshop/scramjet";
-import { ServiceWorkerRegistry } from "./serviceworker";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
 	Controllerbound,
@@ -36,8 +31,6 @@ import type {
 	FrameInitHooks,
 	SerializedCookieSyncEntry,
 	SWbound,
-	TransferRequest,
-	TransferResponse,
 	TransportToController,
 	WebSocketMessage,
 } from "./types";
@@ -51,7 +44,6 @@ export type Config = {
 	injectPath: string;
 	wasmPath: string;
 	virtualWasmPath: string;
-	nativeServiceWorkerPath: string;
 	codec: Record<"encode" | "decode", (input: string) => string>;
 };
 
@@ -61,7 +53,6 @@ export const config: Config = {
 	injectPath: "/controller/controller.inject.js",
 	wasmPath: "/scramjet/scramjet.wasm",
 	virtualWasmPath: "scramjet.wasm.js",
-	nativeServiceWorkerPath: "/controller/controller.native-sw.js",
 	codec: {
 		encode: (url: string) => {
 			if (!url) return url;
@@ -264,17 +255,6 @@ type FrameOptions = {
 	plugins?: ManagedPlugin[];
 };
 
-// the emulated service worker realm is a worker whose script url carries the
-// scope it was spawned for, which is what tells its traffic apart from a page's
-function isServiceWorkerRealmRequest(data: TransferRequest): boolean {
-	if (!data.rawClientUrl) return false;
-	try {
-		return new URL(data.rawClientUrl).searchParams.has(QP.swScope);
-	} catch {
-		return false;
-	}
-}
-
 export class Controller {
 	id: string;
 	config: Config;
@@ -445,8 +425,6 @@ export class Controller {
 
 				// the virtual wasm payload isn't a site url, so an emulated worker only
 				// gets a say once that's been ruled out
-				const intercepted = await this.routeThroughServiceWorker(frame, data);
-				if (intercepted) return intercepted;
 
 				const sjheaders = ScramjetHeaders.fromRawHeaders(data.initialHeaders);
 
@@ -471,12 +449,6 @@ export class Controller {
 						? {}
 						: { resultingClientId: data.resultingClientId }),
 				});
-
-				// only an emulated service worker realm has any use for the marker,
-				// and it reads native headers, so nothing else should ever see it
-				if (!isServiceWorkerRealmRequest(data)) {
-					fetchresponse.headers.delete(REWRITTEN_HEADER);
-				}
 
 				return [
 					{
@@ -509,106 +481,9 @@ export class Controller {
 				throw e;
 			}
 		},
-		initRemoteTransport: async ({ port, prefix }) => {
-			const pathname = new URL(prefix, location.href).pathname;
-			const frameForChannel = () => {
-				const frame = this.frames.find((f) => pathname.startsWith(f.prefix));
-				if (!frame) throw new Error("no frame owns this transport channel");
-				return frame;
-			};
-			const registry = () => frameForChannel().serviceWorkers;
-
-			// the page owns at most one container at a time; a reload replaces it
-			let detachPage: (() => unknown) | undefined;
-
+		initRemoteTransport: async ({ port }) => {
 			const rpc = new RpcHelper<TransportToController, ControllerToTransport>(
 				{
-					nativeServiceWorkerRequest: async (metadata) => {
-						const frame = frameForChannel();
-						const request = metadata.request;
-						const fetchRequest = {
-							initialHeaders: ScramjetHeaders.fromRawHeaders(
-								request.initialHeaders,
-							),
-							rawClientUrl: request.rawClientUrl
-								? new URL(request.rawClientUrl)
-								: undefined,
-							rawUrl: new URL(request.rawUrl),
-							rawReferrer: request.rawReferrer,
-							rawDestination: request.destination,
-							method: request.method,
-							mode: request.mode,
-							referrer: request.referrer,
-							body: request.body,
-							cache: request.cache,
-							clientId: request.clientId ?? "",
-							...(request.sourceClientId === undefined
-								? {}
-								: { sourceClientId: request.sourceClientId }),
-							...(request.resultingClientId === undefined
-								? {}
-								: { resultingClientId: request.resultingClientId }),
-						};
-						const result =
-							metadata.kind === "request"
-								? await frame.fetchHandler.handleFetch(fetchRequest)
-								: await frame.fetchHandler.handleServiceWorkerResponse(
-										fetchRequest,
-										BareResponse.fromNativeResponse(
-											new Response(metadata.response.body, {
-												status: metadata.response.status,
-												statusText: metadata.response.statusText,
-												headers: metadata.response.headers,
-											}),
-										),
-									);
-						result.headers.delete(REWRITTEN_HEADER);
-						return [
-							{
-								body: result.body,
-								status: result.status,
-								statusText: result.statusText,
-								headers: result.headers.toRawHeaders(),
-							},
-							result.body instanceof ArrayBuffer ||
-							result.body instanceof ReadableStream
-								? [result.body]
-								: [],
-						];
-					},
-					swRegister: async (options) => [
-						await registry().register(options),
-						[],
-					],
-					swGetRegistrations: async ({ clientUrl }) => [
-						await registry().getRegistrations(clientUrl),
-						[],
-					],
-					swGetController: async ({ clientUrl }) => [
-						await registry().getController(clientUrl),
-						[],
-					],
-					swUnregister: async ({ id }) => [await registry().unregister(id), []],
-					swUpdate: async ({ id }) => [await registry().update(id), []],
-					swPostMessage: async ({ id, data, ports, clientUrl }) => {
-						await registry().postMessage(id, data, ports, clientUrl);
-					},
-					swAttachClient: async ({ clientUrl }) => {
-						detachPage?.();
-						detachPage = registry().attachPage({
-							clientUrl,
-							openWindow: (url) => rpc.call("swOpenWindow", { url }, []),
-							focus: async () => {
-								await rpc.call("swFocus", {}, []);
-								return undefined;
-							},
-							navigate: (url) => rpc.call("swNavigate", { url }, []),
-							showNotification: async (title, options) => {
-								await rpc.call("swShowNotification", { title, options }, []);
-								return undefined;
-							},
-						});
-					},
 					request: async ({ remote, method, body, headers, proxy }) => {
 						const transport = this.transport as ProxyAwareTransport;
 						const url = new URL(remote);
@@ -718,19 +593,6 @@ export class Controller {
 				rpc.recieve(e.data);
 			};
 
-			try {
-				registry().subscribe((event) => {
-					rpc
-						.call("swEvent", event, event.type === "message" ? event.ports : [])
-						.catch(() => {
-							// the page is gone, nothing to deliver to
-						});
-				});
-			} catch {
-				// no frame owns this channel, so there's no service worker state to
-				// report to it
-			}
-
 			rpc.call("ready", undefined, []);
 		},
 	};
@@ -796,161 +658,6 @@ export class Controller {
 			"message",
 			this.onServiceWorkerMessage,
 		);
-	}
-
-	// hand the request to the frame's emulated service worker, if one controls
-	// the client that made it. returns undefined when nothing intercepted it and
-	// the normal pipeline should run
-	private async routeThroughServiceWorker(
-		frame: Frame,
-		data: TransferRequest,
-	): Promise<[TransferResponse, Transferable[]] | undefined> {
-		// a worker never sees the request for its own script, and requests the
-		// realm itself makes go straight to the network
-		if (data.destination === "serviceworker") return undefined;
-
-		const rawUrl = new URL(data.rawUrl);
-		if (rawUrl.searchParams.has(QP.swScope)) return undefined;
-
-		const clientUrl = data.rawClientUrl
-			? unrewriteUrl(data.rawClientUrl, frame.context)
-			: undefined;
-		if (
-			data.rawClientUrl &&
-			new URL(data.rawClientUrl).searchParams.has(QP.swScope)
-		) {
-			return undefined;
-		}
-
-		const url = unrewriteUrl(rawUrl, frame.context);
-		// an embedder registration (`launchEmbedder`) may own the extension
-		// scheme; rewriteUrl never encodes those urls, so the logical url routes
-		// as-is and the registry's controllee owner decides
-		if (
-			!url.startsWith("http:") &&
-			!url.startsWith("https:") &&
-			!url.startsWith("chrome-extension:")
-		) {
-			return undefined;
-		}
-
-		const isNavigation =
-			data.destination === "document" || data.destination === "iframe";
-		const sourceClientId = data.sourceClientId ?? data.clientId ?? "";
-		const resultingClientId = data.resultingClientId ?? data.clientId ?? "";
-		if (clientUrl) {
-			frame.serviceWorkers.noteClient(sourceClientId, clientUrl);
-		} else if (isNavigation) {
-			// a navigation reports the id the document will have once it loads, and
-			// it's the only chance to learn about a client before it asks for
-			// anything - which is what clients.claim() needs
-			frame.serviceWorkers.noteClient(resultingClientId, url);
-		}
-
-		// reading the body is destructive, so don't touch it until a registration
-		// that would actually see this request has been found
-		if (!(await frame.serviceWorkers.wouldRoute(url, clientUrl))) {
-			return undefined;
-		}
-
-		if (data.body instanceof ReadableStream) {
-			// hand the same bytes to whichever side ends up sending them
-			data.body = await new Response(data.body).arrayBuffer();
-		}
-
-		const init: ServiceWorkerFetchRequestInit = {
-			url,
-			method: data.method,
-			headers: data.initialHeaders,
-			body: data.body instanceof ArrayBuffer ? data.body : null,
-			destination: data.destination as RequestDestination,
-			mode: data.mode,
-			credentials: "same-origin",
-			cache: data.cache,
-			redirect: "follow",
-			referrer: data.referrer,
-			referrerPolicy: "",
-			integrity: "",
-			keepalive: false,
-			isReloadNavigation: false,
-			isHistoryNavigation: false,
-			clientId: sourceClientId,
-			resultingClientId,
-		};
-
-		const result = await frame.serviceWorkers.routeFetch(init, clientUrl);
-		if (!result.handled) return undefined;
-
-		if (result.error || !result.response) {
-			// a handler that threw or resolved to nothing is a network error
-			return [
-				{
-					body: "",
-					status: 0,
-					statusText: "",
-					headers: [],
-				},
-				[],
-			];
-		}
-
-		const response = result.response;
-
-		if (response.rewritten) {
-			return [
-				{
-					body: response.body ?? "",
-					status: response.status,
-					statusText: response.statusText,
-					headers: response.headers,
-				},
-				response.body instanceof ReadableStream ||
-				response.body instanceof ArrayBuffer
-					? [response.body]
-					: [],
-			];
-		}
-
-		const rewritten = await frame.fetchHandler.handleServiceWorkerResponse(
-			{
-				initialHeaders: ScramjetHeaders.fromRawHeaders(data.initialHeaders),
-				rawClientUrl: data.rawClientUrl
-					? new URL(data.rawClientUrl)
-					: undefined,
-				rawUrl,
-				rawReferrer: data.rawReferrer,
-				rawDestination: data.destination,
-				method: data.method,
-				mode: data.mode,
-				referrer: data.referrer,
-				body: null,
-				cache: data.cache,
-				clientId: data.clientId ?? "",
-			},
-			BareResponse.fromNativeResponse(
-				new Response(response.body, {
-					status: response.status === 0 ? 200 : response.status,
-					statusText: response.statusText,
-					headers: response.headers,
-				}),
-			),
-		);
-
-		// this response is on its way to a page, never to a realm
-		rewritten.headers.delete(REWRITTEN_HEADER);
-
-		return [
-			{
-				body: rewritten.body,
-				status: rewritten.status,
-				statusText: rewritten.statusText,
-				headers: rewritten.headers.toRawHeaders(),
-			},
-			rewritten.body instanceof ReadableStream ||
-			rewritten.body instanceof ArrayBuffer
-				? [rewritten.body]
-				: [],
-		];
 	}
 
 	private setupMessagePort(): Promise<undefined> {
@@ -1073,12 +780,6 @@ export class Controller {
 		const remainingFrames: Frame[] = [];
 		for (const frame of this.frames) {
 			let frameFailed = false;
-			try {
-				await frame.serviceWorkers.close();
-			} catch (error) {
-				failures.push(error);
-				frameFailed = true;
-			}
 			try {
 				if (frame.element[CONTROLLERFRAME] === frame) {
 					frame.element.removeAttribute("srcdoc");
@@ -1374,7 +1075,6 @@ export class Frame {
 	id: string;
 	prefix: string;
 	fetchHandler: ScramjetFetchHandler;
-	serviceWorkers: ServiceWorkerRegistry;
 	hooks: {
 		fetch: FetchHooks;
 		init: FrameInitHooks;
@@ -1399,7 +1099,11 @@ export class Frame {
 					this.controller.config.codec.decode,
 					this.controller.init.storagePartitionKey,
 				),
-				getWorkerInjectScripts: (meta, type, script) => {
+				getWorkerInjectScripts: (
+					meta,
+					type,
+					script,
+				) => {
 					let str = "";
 
 					str += script(this.controller.config.scramjetPath);
@@ -1444,9 +1148,6 @@ export class Frame {
 
 					return str;
 				},
-				getWorkerFinalizeScript: () =>
-					`globalThis.$scramjet$finalizeNativeServiceWorker?.();`,
-				nativeServiceWorkerPath: this.controller.config.nativeServiceWorkerPath,
 				codecEncode: this.controller.config.codec.encode,
 				codecDecode: this.controller.config.codec.decode,
 			},
@@ -1462,6 +1163,7 @@ export class Frame {
 		this.id = makeId();
 		this.prefix = this.controller.prefix + this.id + "/";
 		syncFrameName(element);
+		this.plugins = options.plugins ?? [];
 
 		this.fetchHandler = new ScramjetFetchHandler({
 			crossOriginIsolated: self.crossOriginIsolated,
@@ -1485,8 +1187,6 @@ export class Frame {
 			},
 		});
 
-		this.serviceWorkers = new ServiceWorkerRegistry(this);
-
 		this.hooks = {
 			fetch: this.fetchHandler.hooks.fetch,
 			init: Tap.create<FrameInitHooks>(),
@@ -1495,7 +1195,6 @@ export class Frame {
 
 		element[CONTROLLERFRAME] = this;
 
-		this.plugins = options.plugins ?? [];
 		for (const plugin of this.plugins) {
 			for (const dependency of plugin.dependencies) {
 				const dependencyPlugin = this.plugins.find(

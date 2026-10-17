@@ -32,7 +32,6 @@ export type BootstrapOptions = {
   bareClientPath: string;
   scramjetControllerApiPath: string;
   scramjetControllerInjectPath: string;
-  scramjetControllerNativeSwPath: string;
   scramjetControllerSwPath: string;
 
   bootstrapApiPath: string;
@@ -58,7 +57,6 @@ export const defaultConfig: Partial<BootstrapOptions> = {
 
   scramjetControllerApiPath: "/controller/controller.api.js",
   scramjetControllerInjectPath: "/controller/controller.inject.js",
-  scramjetControllerNativeSwPath: "/controller/controller.native-sw.js",
   scramjetControllerSwPath: "/controller/controller.sw.js",
   scramjetBundlePath: "/scram/scramjet.js",
   scramjetWasmPath: "/scram/scramjet.wasm",

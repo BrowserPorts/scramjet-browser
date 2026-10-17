@@ -102,7 +102,6 @@ export async function rewriteResponseHeaders(
 			"iframe",
 			"worker",
 			"sharedworker",
-			"serviceworker",
 			"style",
 			"script",
 		].includes(parsed.destination)
@@ -315,7 +314,7 @@ function requestIncludesCredentials(
 	if (parsed.isModule) return false;
 	// Other destinations (image, classic-script, style, audio, video, track,
 	// font, iframe, frame, document, embed, object, manifest, classic worker,
-	// sharedworker, serviceworker, ...) default to credentials="include".
+	// sharedworker, ...) default to credentials="include".
 	return true;
 }
 

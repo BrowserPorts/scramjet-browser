@@ -809,7 +809,6 @@ const controllerConfig = createGenericConfig({
   entry: {
     api: join(controllerdir, "src/index.ts"),
     inject: join(controllerdir, "src/inject.ts"),
-    "native-sw": join(controllerdir, "src/native-sw.ts"),
     sw: join(controllerdir, "src/sw.ts"),
   },
   output: {

@@ -31,20 +31,6 @@ export default function (client: ScramjetClient, self: any) {
 	if (!iswindow) return;
 	// DOM specific ones below here
 
-	// navigator.serviceWorker itself is emulated in dom/serviceworker.ts so it
-	// stays, but these hang off a registration with nothing behind them yet and
-	// would hand the site an object whose every method throws
-	del("ServiceWorkerRegistration.prototype.sync");
-	del("ServiceWorkerRegistration.prototype.periodicSync");
-	del("ServiceWorkerRegistration.prototype.pushManager");
-	del("ServiceWorkerRegistration.prototype.navigationPreload");
-	del("ServiceWorkerRegistration.prototype.backgroundFetch");
-	del("ServiceWorkerRegistration.prototype.paymentManager");
-	del("ServiceWorkerRegistration.prototype.cookies");
-	del("ServiceWorkerRegistration.prototype.index");
-	del("ServiceWorkerRegistration.prototype.showNotification");
-	del("ServiceWorkerRegistration.prototype.getNotifications");
-
 	del("MediaDevices.prototype.setCaptureHandleConfig");
 
 	// web bluetooth api

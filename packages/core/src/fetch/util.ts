@@ -3,12 +3,6 @@ import { providers } from "@/shared/providers";
 import { BareResponse } from "@mercuryworkshop/proxy-transports";
 import { ScramjetFetchParsed } from ".";
 
-// marks a body that already went through the rewriter. an emulated service
-// worker can respond with something it fetched (rewritten) or something it built
-// itself (not), and there's no other way to tell them apart. a header survives
-// Cache round-trips, unlike anything attached to the Response object
-export const REWRITTEN_HEADER = "x-scramjet-rewritten";
-
 export function normalizeContentType(
 	parsed: ScramjetFetchParsed,
 	headers: ScramjetHeaders

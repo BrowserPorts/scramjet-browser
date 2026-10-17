@@ -19,7 +19,11 @@ export function rewriteWorkers(
   };
   const b64 = (script: string) =>
     `data:text/javascript;charset=utf-8;base64,${base64Encode(script)}`;
-  let str = context.interface.getWorkerInjectScripts(meta, isModule, script);
+  let str = context.interface.getWorkerInjectScripts(
+    meta,
+    isModule,
+    script,
+  );
 
   let rewritten = rewriteJs(js, url, context, meta, isModule);
   if (typeof rewritten !== "string") {
@@ -33,9 +37,6 @@ export function rewriteWorkers(
   } else {
     str += rewritten;
   }
-
-  const finalize = context.interface.getWorkerFinalizeScript?.();
-  if (finalize) str += `\n${finalize}\n`;
 
   return str;
 }

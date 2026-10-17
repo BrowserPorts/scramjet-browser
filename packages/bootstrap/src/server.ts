@@ -74,9 +74,6 @@ addEventListener("fetch", (e) => {
     [config.scramjetControllerInjectPath]:
       config.downloadedFilesDir +
       "controller/package/dist/controller.inject.js",
-    [config.scramjetControllerNativeSwPath]:
-      config.downloadedFilesDir +
-      "controller/package/dist/controller.native-sw.js",
     [config.scramjetControllerSwPath]:
       config.downloadedFilesDir + "controller/package/dist/controller.sw.js",
     [config.scramjetBundlePath]:
@@ -95,11 +92,7 @@ addEventListener("fetch", (e) => {
     const contentType = requestPath.endsWith(".wasm")
       ? "application/wasm"
       : "application/javascript";
-    const headers =
-      requestPath === config.scramjetControllerNativeSwPath
-        ? { "Service-Worker-Allowed": "/" }
-        : undefined;
-    sendFile(res, filePath, contentType, headers);
+    sendFile(res, filePath, contentType);
     return true;
   }
 

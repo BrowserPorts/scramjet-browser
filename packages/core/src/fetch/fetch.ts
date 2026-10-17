@@ -17,7 +17,6 @@ import {
 	isDocument,
 	isRedirect,
 	normalizeContentType,
-	REWRITTEN_HEADER,
 } from "./util";
 import { rewriteBody } from "./body";
 import { Tap } from "@/Tap";
@@ -188,7 +187,6 @@ async function handleParsedFetch(
 		// the browser doesn't try to decode UTF-8 bytes with the original encoding.
 		normalizeContentType(parsed, responseHeaders);
 
-		responseHeaders.set(REWRITTEN_HEADER, "1");
 	}
 
 	const respcontext: typeof handler.hooks.fetch.response.context = {
@@ -207,38 +205,6 @@ async function handleParsedFetch(
 	await Tap.dispatch(handler.hooks.fetch.response, respcontext, respprops);
 
 	return respprops.response;
-}
-
-// an emulated service worker can respond with something it built itself, which
-// has never been near the rewriter. run it through the same tail end of the
-// pipeline a network response gets so the page receives equivalent content
-export async function doHandleServiceWorkerResponse(
-	handler: ScramjetFetchHandler,
-	request: ScramjetFetchRequest,
-	response: BareResponse
-): Promise<ScramjetFetchResponse> {
-	const parsed = parseRequest(request, handler);
-
-	const responseHeaders = await rewriteResponseHeaders(
-		handler,
-		request,
-		parsed,
-		response.rawHeaders
-	);
-
-	let responseBody: BodyType = response.body;
-	if (response.body && !isRedirect(response)) {
-		responseBody = await rewriteBody(handler, request, parsed, response);
-		normalizeContentType(parsed, responseHeaders);
-		responseHeaders.set(REWRITTEN_HEADER, "1");
-	}
-
-	return {
-		body: responseBody,
-		headers: responseHeaders,
-		status: response.status,
-		statusText: response.statusText,
-	};
 }
 
 export async function doNetworkFetch(

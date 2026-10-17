@@ -141,14 +141,6 @@ export async function rewriteBody(
 			);
 			return rewriteCss(decoded.text, handler.context, parsed.meta);
 		}
-		case "serviceworker":
-			return rewriteWorkers(
-				new _Uint8Array(await response.arrayBuffer()),
-				response.url,
-				handler.context,
-				parsed.meta,
-				parsed.isModule,
-			);
 		case "sharedworker":
 		case "worker": {
 			const bytes = new _Uint8Array(await response.arrayBuffer());

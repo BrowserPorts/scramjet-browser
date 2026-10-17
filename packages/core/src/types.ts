@@ -65,7 +65,4 @@ export interface ScramjetInitConfig
 //eslint-disable-next-line
 export type AnyFunction = Function;
 
-// the platform's RequestDestination has no "serviceworker" member because a page
-// never sees that destination, but we route emulated service worker scripts
-// through the same pipeline and need to tell them apart
-export type ScramjetDestination = RequestDestination | "serviceworker";
+export type ScramjetDestination = RequestDestination;

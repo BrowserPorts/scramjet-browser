@@ -35,7 +35,6 @@ export async function loadRest(sw: ServiceWorker, cfg: BootstrapOptions) {
   const { Controller, config } = (window as any)
     .$scramjetController as typeof ControllerApi;
   config.injectPath = cfg.scramjetControllerInjectPath;
-  config.nativeServiceWorkerPath = cfg.scramjetControllerNativeSwPath;
   config.wasmPath = cfg.scramjetWasmPath;
   config.scramjetPath = cfg.scramjetBundlePath;
 

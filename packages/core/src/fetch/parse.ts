@@ -22,7 +22,6 @@ export const QP = {
 	fetchSite: "$fs",
 	crossSiteRedirect: "$csr",
 	fakeDataURL: "$fakedataurl",
-	swScope: "$swscope",
 } as const;
 
 export type QueryParamKey = keyof typeof QP;
@@ -35,6 +34,7 @@ export type QueryParams = Partial<Record<QueryParamKey, string>>;
 // raw `$mode` query value (and `request.mode` for shared workers), so the
 // type admits arbitrary strings while keeping literal completions.
 export type ScramjetRequestMode = RequestMode | (string & {});
+
 const QP_INVERSE: Record<string, QueryParamKey> = (() => {
 	const inv: Record<string, QueryParamKey> = {};
 	for (const key of Object_keys(QP) as QueryParamKey[]) {
@@ -166,7 +166,6 @@ export function parseRequest(
 		destination,
 		isIframe: params.isIframe === "1",
 		isFakeDataURL: params.fakeDataURL === "1",
-		swScope: params.swScope || undefined,
 	};
 
 	if (request.rawClientUrl) {

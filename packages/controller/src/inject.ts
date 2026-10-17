@@ -8,7 +8,6 @@ import { RpcHelper } from "@mercuryworkshop/rpc";
 import {
 	CookieJar,
 	type CookieSyncOptions,
-	type NativeServiceWorkerGatewayMetadata,
 	SCRAMJETCLIENT,
 	ScramjetClient,
 	type ScramjetConfig,
@@ -17,9 +16,6 @@ import {
 	ScramjetStorageJar,
 	type ScramjetStorageManager,
 	type ScramjetStorageMutation,
-	type ServiceWorkerHost,
-	type ServiceWorkerHostEvent,
-	type ServiceWorkerPageOps,
 	setWasm,
 	Tap,
 	type TrackedHistoryState,
@@ -56,68 +52,9 @@ class RemoteTransport implements ProxyTransport {
 		this.ready = true;
 	}
 
-	private swListeners = new Set<(event: ServiceWorkerHostEvent) => unknown>();
-	private swOps: ServiceWorkerPageOps | null = null;
-	private swAttachFailure: Error | null = null;
-
 	fail(error: Error): undefined {
 		this.readyReject(error);
 		return undefined;
-	}
-
-	// the emulated navigator.serviceWorker talks to the controller over this
-	// same channel
-	public serviceWorkerHost: ServiceWorkerHost = {
-		register: (options) => this.rpc.call("swRegister", options),
-		getRegistrations: (clientUrl) =>
-			this.rpc.call("swGetRegistrations", { clientUrl }),
-		getController: (clientUrl) =>
-			this.rpc.call("swGetController", { clientUrl }),
-		unregister: (id) => this.rpc.call("swUnregister", { id }),
-		update: (id) => this.rpc.call("swUpdate", { id }),
-		postMessage: (id, workerId, data, transfer, clientUrl) =>
-			this.rpc.call(
-				"swPostMessage",
-				{ id, workerId, data, ports: transfer as MessagePort[], clientUrl },
-				transfer,
-			),
-		subscribe: (listener) => {
-			this.swListeners.add(listener);
-
-			return () => this.swListeners.delete(listener);
-		},
-		serve: (ops) => {
-			this.swOps = ops;
-			this.swAttachFailure = null;
-			// only now is there a browsing context behind this channel that can run
-			// a realm's client operations
-			this.rpc
-				.call("swAttachClient", { clientUrl: ops.clientUrl() })
-				.catch((cause) => {
-					if (this.swOps !== ops) return;
-					this.swOps = null;
-					this.swAttachFailure =
-						cause instanceof Error ? cause : new Error(String(cause));
-				});
-
-			return () => {
-				if (this.swOps === ops) this.swOps = null;
-			};
-		},
-	};
-
-	private swOp<T>(run: (ops: ServiceWorkerPageOps) => Promise<T>): Promise<T> {
-		if (this.swAttachFailure !== null) {
-			return Promise.reject(this.swAttachFailure);
-		}
-		const ops = this.swOps;
-		if (!ops) {
-			return Promise.reject(
-				new Error("no service worker container is listening in this context"),
-			);
-		}
-
-		return run(ops);
 	}
 
 	private rpc: RpcHelper<ControllerToTransport, TransportToController>;
@@ -126,29 +63,6 @@ class RemoteTransport implements ProxyTransport {
 			{
 				ready: async () => {
 					this.readyResolve(undefined);
-				},
-				swEvent: async (event) => {
-					for (const listener of this.swListeners) {
-						try {
-							listener(event);
-						} catch (error) {
-							console.error("service worker event listener threw:", error);
-						}
-					}
-				},
-				swOpenWindow: async ({ url }) => [
-					await this.swOp((ops) => ops.openWindow(url)),
-					[],
-				],
-				swFocus: async () => {
-					await this.swOp((ops) => ops.focus());
-				},
-				swNavigate: async ({ url }) => [
-					await this.swOp((ops) => ops.navigate(url)),
-					[],
-				],
-				swShowNotification: async ({ title, options }) => {
-					await this.swOp((ops) => ops.showNotification(title, options));
 				},
 			},
 			"transport",
@@ -233,12 +147,6 @@ class RemoteTransport implements ProxyTransport {
 		];
 	}
 
-	async nativeServiceWorkerRequest(
-		metadata: NativeServiceWorkerGatewayMetadata,
-	) {
-		return await this.rpc.call("nativeServiceWorkerRequest", metadata);
-	}
-
 	async request(
 		remote: URL,
 		method: string,
@@ -278,15 +186,17 @@ class RemoteTransport implements ProxyTransport {
 	}
 }
 
+// Keep host plumbing private: guest hooks remove the public native accessor.
+const hostServiceWorker = navigator.serviceWorker;
 // A parent may have hooked this frame before its document scripts arrive
 // Its existing client only needs the navigation metadata refreshed by load
 const rootServiceWorker = SCRAMJETCLIENT in globalThis
 	? Promise.resolve(null)
-	: navigator.serviceWorker
+	: hostServiceWorker
 			.getRegistration(new URL("/", document.baseURI).href)
 			.then(
 				(registration) =>
-					registration?.active ?? navigator.serviceWorker.controller,
+					registration?.active ?? hostServiceWorker.controller,
 			);
 
 type Init = {
@@ -391,27 +301,6 @@ class ExecutionContextWrapper {
 			: undefined;
 
 		this.handleServiceWorkerCookieMessage = (event: MessageEvent) => {
-			const nativeRequest = event.data?.$scramjet$nativeServiceWorker;
-			if (nativeRequest && typeof nativeRequest === "object") {
-				const port = event.ports[0];
-				if (!port) return;
-				this.transport
-					.nativeServiceWorkerRequest(
-						nativeRequest as NativeServiceWorkerGatewayMetadata,
-					)
-					.then((response) => {
-						postMessage(
-							port,
-							response,
-							response.body instanceof ArrayBuffer ? [response.body] : [],
-						);
-					})
-					.catch((error) => {
-						postMessage(port, { error: String(error?.message ?? error) });
-					});
-				return;
-			}
-
 			if (
 				!event.data?.$controller$setCookie ||
 				typeof event.data.$controller$setCookie !== "object"
@@ -466,7 +355,7 @@ class ExecutionContextWrapper {
 			}
 		};
 
-		navigator.serviceWorker?.addEventListener(
+		hostServiceWorker?.addEventListener(
 			"message",
 			this.handleServiceWorkerCookieMessage,
 		);
@@ -531,15 +420,13 @@ class ExecutionContextWrapper {
 				await this.transport.sendSetCookie(cookies, options);
 			},
 			shouldBlockMessageEvent: (event) => {
-				// the proxy's own worker shares navigator.serviceWorker with the
-				// emulated one, so its internal traffic must not reach the site
+				// The proxy's internal traffic must not reach the site.
 				const data = event.data;
 				if (!data || typeof data !== "object") return false;
 
 				return (
 					"$controller$setCookie" in data ||
 					"$controller$swrevive" in data ||
-					"$scramjet$nativeServiceWorker" in data ||
 					"$sw$setCookieDone" in data ||
 					"$sw$initRemoteTransport" in data
 				);
@@ -554,7 +441,6 @@ class ExecutionContextWrapper {
 			},
 			initHeaders: this.init.initHeaders,
 			history: this.init.history,
-			serviceWorkerHost: this.transport.serviceWorkerHost,
 		});
 		const frameInitContext = {
 			window: this.global.window,

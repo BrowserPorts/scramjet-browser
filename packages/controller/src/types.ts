@@ -1,11 +1,12 @@
-import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import type {
-	NativeServiceWorkerGatewayMetadata,
+	RawHeaders,
+	TransferrableResponse,
+} from "@mercuryworkshop/proxy-transports";
+import type {
+	CookieSyncOptions,
+	ScramjetClient,
 	ScramjetDestination,
 	ScramjetStorageMutation,
-	ServiceWorkerHostEvent,
-	ServiceWorkerRegisterOptions,
-	ServiceWorkerRegistrationSnapshot,
 } from "@mercuryworkshop/scramjet";
 import type { Frame } from ".";
 import type { CONTROLLERFRAME } from "./symbols";
@@ -69,33 +70,6 @@ export type SWbound = {
 };
 
 export type TransportToController = {
-	nativeServiceWorkerRequest: [
-		NativeServiceWorkerGatewayMetadata,
-		TransferResponse,
-	];
-	swRegister: [ServiceWorkerRegisterOptions, ServiceWorkerRegistrationSnapshot];
-	swGetRegistrations: [
-		{ clientUrl: string },
-		ServiceWorkerRegistrationSnapshot[],
-	];
-	swGetController: [
-		{ clientUrl: string },
-		ServiceWorkerRegistrationSnapshot | null,
-	];
-	swUnregister: [{ id: string }, boolean];
-	swUpdate: [{ id: string }, ServiceWorkerRegistrationSnapshot];
-	swPostMessage: [
-		{
-			id: string;
-			workerId: string;
-			data: unknown;
-			ports: MessagePort[];
-			clientUrl: string;
-		},
-	];
-	// tells the controller this channel belongs to a live browsing context it can
-	// run a realm's client operations in
-	swAttachClient: [{ clientUrl: string }];
 	request: [
 		{
 			remote: string;
@@ -142,13 +116,6 @@ export type TransportToController = {
 
 export type ControllerToTransport = {
 	ready: [];
-	swEvent: [ServiceWorkerHostEvent];
-	// the client half of ServiceWorkerPageOps, run in whichever page the
-	// controller picked for the realm that asked
-	swOpenWindow: [{ url: string }, string | null];
-	swFocus: [Record<string, never>];
-	swNavigate: [{ url: string }, string | null];
-	swShowNotification: [{ title: string; options: unknown }];
 };
 export type WebSocketData = string | ArrayBuffer | Blob;
 export type WebSocketMessage =
