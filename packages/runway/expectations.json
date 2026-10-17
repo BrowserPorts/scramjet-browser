@@ -1,0 +1,2012 @@
+{
+	"version": 1,
+	"expectedFailures": {
+		"native:broadcastchannel-cross-origin-isolated": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cachestorage-add-and-addall": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cachestorage-keys-not-namespaced": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cachestorage-request-keys-urls": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cookies-twitter": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cssurls-author-string-preserved": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cssurls-computed-style": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cssurls-cssom-write-serialization": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:cssurls-cssrule-style-property": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:domattr-attributes-namednodemap": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:domattr-integrity-property": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:domattr-mutationobserver-records": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:domattr-selector-literal-value": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:domattr-shadow-innerhtml-urls": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:elurls-anchor-component-setters": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:elurls-anchor-stringifier": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:elurls-img-currentsrc": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:elurls-svg-use-baseval": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:elurls-unproxied-properties": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-audioworklet-blob-client": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-audioworklet-data-client": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-document-parsehtmlunsafe-static-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-domparser-xhtml-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-object-assign-window-location-javascript": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-paintworklet-blob-client": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-paintworklet-data-client": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-postmessage-source-eval": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-reflect-set-document-location-javascript": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-reflect-set-location-javascript": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-append-string": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-appendchild-textnode": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-insertadjacenttext": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-prepend-string": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-replacechildren-string": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-text": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-appenddata": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-data": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-insertdata": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-nodevalue": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-replacedata": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-script-textnode-textcontent": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setattribute-onclick": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setattributenode-iframe-srcdoc": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setattributenode-onclick": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setattributenode-script-src-data": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setattributens-onclick": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setnameditem-iframe-srcdoc": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setnameditem-onclick": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-setnameditem-script-src-data": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-shadowroot-innerhtml-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-shadowroot-sethtmlunsafe-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-svg-script-setattributens-href-data": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-svg-script-textcontent": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-xhr-response-document-html-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-xhr-response-document-xhtml-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-xhr-responsexml-xhtml-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-xslt-transformtodocument-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:escapes-xslt-transformtofragment-img-onerror": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-callee-comment": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-callee-whitespace": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-delete-property": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-gopd-leak": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-overwritten-global": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-parenthesized-is-direct": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-reflect-get-leak": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:eval-shadowed-binding": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:events-duplicate-listener-element": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:events-duplicate-listener-global": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:events-duplicate-listener-options": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:foreigncontext-document-parsehtmlunsafe-body-svg": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:foreigncontext-domparser-parsefromstring-html-svg": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:foreigncontext-innerhtml-nested-svg": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:foreigncontext-outerhtml-not-inside-svg": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:functionctor-async-flavor": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:functionctor-asyncgenerator-flavor": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:functionctor-generator-flavor": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:http-credentials-omit": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-cross-promise": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-crossrealm": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-eval": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-eval-functioncall": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-event-listener": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-functioncall": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-functionctor": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-promise-cb": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-settimeout-cb": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:incumbent-window-open-settimeout-cb-eval": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:location-ancestororigins": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:location-own-property-names": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-document-domain-getter-brand": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-document-domain-invalid-setter": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-document-domain-setter-brand": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-gethtml-serializable-boolean-attribute": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-parsehtmlunsafe-secondary-document-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-performance-getentriesbyname-author-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-performance-navigation-tojson-name": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-performance-resource-tojson-name": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-performance-user-mark-masked-name": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-register-cross-origin-template": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-register-forbidden-scheme": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-register-invalid-scheme": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-register-missing-arguments": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-register-missing-placeholder": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-unregister-invalid-scheme": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-protocol-unregister-missing-arguments": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-svgdocument-embed-blob": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-svgdocument-object-blob": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-typed-om-background-image-readback": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-typed-om-background-shorthand-readback": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:longtail-api-typed-om-custom-property-readback": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:modules-import-meta-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:modules-importmap": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:originisolation-cross-site-frame-access": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:platform-error-stack-urls": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:platform-indexeddb-databases": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:platform-objecturl-revoke": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:platform-resource-timing-no-proxy-internals": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-delete": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-detached-loses-receiver": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-function-shape": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-getter-invocation-count": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-identity": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:pmwrap-prototype-method": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:referer-document-referrer-is-not-current-location": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:referer-iframe-document-cross-origin-uses-origin-only": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:referer-iframe-document-same-origin-uses-full-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-block-comment-should-not-rewrite-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-unrewrite-import-string": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-unrewrite-import-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-unrewrite-regression-import-layer-supports-media": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-unrewrite-uppercase-url-function": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:rewriter-css-unrewrite-url": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:serialization-xmlserializer-live": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:serialization-xmlserializer-parsed-and-svg": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-arrow": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-closure": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-declare-then-assign": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-for-loop": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-function-ctor": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-multi-declarator": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:shadowing-var-location-nested-block": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-clear": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-delete-property": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-event-child-frame": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-event-parent-listens": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-key-by-index": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:storage-missing-property-is-undefined": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:stylesheets-constructable-url-readback": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:stylesheets-document-stylesheets-href": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-delete": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-frozen-strict-assign": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-null-prototype": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-proxy-get-trap-key": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-proxy-set-trap-key": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:unsafeprops-super": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:urlfidelity-empty-query": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:websocketstream-sanity": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:workers-module-with-static-import": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:workers-self-origin": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-audioworklet-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-a-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-a-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-area-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-area-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-audio-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-audio-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-embed-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-embed-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-frame-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-frame-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-iframe-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-iframe-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-img-environment-change-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-img-environment-change-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-img-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-img-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-input-image-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-input-image-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-link-icon-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-link-icon-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-link-prefetch-https-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-link-prefetch-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-meta-refresh-https-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-meta-refresh-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-picture-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-picture-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-script-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-script-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-video-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-video-poster-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-video-poster-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-element-video-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-fetch-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-fetch-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-fetch-via-serviceworker-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-form-submission-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-form-submission-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-header-link-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-header-link-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-header-refresh-https-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-header-refresh-optional-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-json-module-import-static-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-json-module-import-static-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-module-import-dynamic-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-module-import-dynamic-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-module-import-static-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-module-import-static-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-text-module-import-static-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-script-text-module-import-static-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-serviceworker-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-svg-image-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-svg-image-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-window-history-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-window-history-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-window-location-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-window-location-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-worker-dedicated-constructor-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-worker-dedicated-constructor-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-worker-dedicated-importscripts-https-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-fetch-metadata-generated-worker-dedicated-importscripts-sub-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-referrer-policy-generic-inheritance-iframe-inheritance-about-blank-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		},
+		"native:wpt-referrer-policy-generic-inheritance-iframe-inheritance-srcdoc-html": {
+			"lanes": [
+				"scramjet"
+			],
+			"outcomes": [
+				"assertionFailure"
+			],
+			"reason": "known failure carried over when the v2 protocol replaced the pre-v2 failing-test list"
+		}
+	}
+}

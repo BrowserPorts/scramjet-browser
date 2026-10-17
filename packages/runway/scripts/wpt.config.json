@@ -1,0 +1,24 @@
+{
+  "browser_host": "localhost",
+  "alternate_hosts": {
+    "alt": "127.0.0.1"
+  },
+  "server_host": "127.0.0.1",
+  "check_subdomains": false,
+  "ports": {
+    "http": [8000, 8001],
+    "https": [8443, 8444],
+    "http-local": [],
+    "http-public": [],
+    "https-local": [],
+    "https-public": [],
+    "h2": [],
+    "ws": [8888],
+    "wss": [8889],
+    "webtransport-h3": [],
+    "dns": []
+  },
+  "logging": {
+    "level": "warning"
+  }
+}

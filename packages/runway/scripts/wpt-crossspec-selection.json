@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "purpose": "Engine-neutral examples of consumer-owned upstream WPT selections.",
+  "groups": {
+    "url": {
+      "tier": "primary",
+      "rationale": "URL parsing and serialization contracts used by rewriters.",
+      "paths": ["url"]
+    },
+    "cookies": {
+      "tier": "primary",
+      "rationale": "Cookie behavior exposed through the proxy.",
+      "paths": ["cookies"]
+    },
+    "storage": {
+      "tier": "primary",
+      "rationale": "Storage contracts that runtime plugins may implement.",
+      "paths": ["webstorage", "IndexedDB"]
+    },
+    "workers": {
+      "tier": "supporting",
+      "rationale": "Worker execution and messaging contracts.",
+      "paths": ["workers"]
+    }
+  },
+  "presets": {
+    "url": { "suite": "url", "groups": ["url"] },
+    "storage": { "suite": "storage", "groups": ["storage", "cookies"] },
+    "workers": { "suite": "workers", "groups": ["workers"] }
+  }
+}

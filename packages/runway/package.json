@@ -1,35 +1,82 @@
 {
 	"name": "runway",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
+	"version": "2.0.0",
+	"description": "Runway: Playwright-driven Scramjet conformance runner with versioned result records",
 	"type": "module",
+	"license": "AGPL-3.0-only",
+	"author": "Mercury Workshop",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/MercuryWorkshop/scramjet.git",
+		"directory": "packages/runway"
+	},
+	"engines": {
+		"node": ">=22.6.0"
+	},
+	"bin": {
+		"runway": "./dist/cli/bin.js"
+	},
+	"main": "./dist/public.js",
+	"types": "./dist/public.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/public.d.ts",
+			"default": "./dist/public.js"
+		},
+		"./testkit": {
+			"types": "./dist/testkit.d.ts",
+			"default": "./dist/testkit.js"
+		},
+		"./plugin-api": {
+			"types": "./dist/plugin-api.d.ts",
+			"default": "./dist/plugin-api.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"examples/plugins",
+		"examples/tests",
+		"expectations.json",
+		"CONSUMER_GUIDE.md",
+		"PLUGIN_TESTING.md"
+	],
 	"scripts": {
-		"test": "node --experimental-strip-types --no-warnings src/index.ts",
-		"test:headed": "HEADED=1 node --experimental-strip-types --no-warnings src/index.ts",
-		"inspect": "node --experimental-strip-types --no-warnings src/inspect.ts",
-		"test:coverage": "SCRAMJET_COVERAGE=1 node --experimental-strip-types --no-warnings src/index.ts",
-		"generate:wpt": "node --experimental-strip-types --no-warnings scripts/generate-wpt.ts"
+		"build": "node build.mjs",
+		"check-package": "node scripts/check-package.mjs",
+		"cli": "node --experimental-strip-types --no-warnings src/cli/bin.ts",
+		"list": "node --experimental-strip-types --no-warnings src/cli/bin.ts list",
+		"preflight": "node --experimental-strip-types --no-warnings src/cli/bin.ts preflight",
+		"prepack": "node build.mjs",
+		"run:tests": "node --experimental-strip-types --no-warnings src/cli/bin.ts run",
+		"test": "node --experimental-strip-types --no-warnings src/cli/bin.ts run --suite native",
+		"typecheck": "tsc --noEmit",
+		"test:unit": "node --experimental-strip-types --no-warnings --test test/*.test.mjs"
 	},
 	"dependencies": {
-		"@mercuryworkshop/libcurl-transport": "catalog:",
 		"@mercuryworkshop/scramjet": "workspace:*",
 		"@mercuryworkshop/scramjet-controller": "workspace:*",
 		"@mercuryworkshop/wisp-js": "catalog:",
-		"playwright": "^1.61.0",
-		"express": "^4.18.2",
-		"ws": "^8.18.3",
-		"istanbul-lib-coverage": "^3.2.2",
-		"v8-to-istanbul": "^9.3.0"
+		"commander": "^14.0.2",
+		"playwright": "1.61.0",
+		"send": "^0.19.0",
+		"serve-static": "^1.16.2",
+		"ws": "^8.18.3"
 	},
 	"devDependencies": {
-		"@types/express": "^4.17.21",
+		"@arethetypeswrong/cli": "^0.18.5",
 		"@types/node": "^22.0.0",
-		"@types/istanbul-lib-coverage": "^2.0.6",
-		"@types/ws": "^8.18.1"
+		"@types/send": "^0.17.6",
+		"@types/serve-static": "^1.15.10",
+		"@types/ws": "^8.18.1",
+		"publint": "^0.3.24",
+		"typescript": "^5.9.3"
 	},
-	"keywords": [],
-	"author": "",
-	"license": "AGPL-3.0-only",
+	"keywords": [
+		"scramjet",
+		"wpt",
+		"playwright",
+		"conformance"
+	],
 	"packageManager": "pnpm@10.12.1"
 }

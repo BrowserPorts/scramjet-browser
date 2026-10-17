@@ -144,7 +144,21 @@ class RunwayCleartextHttpsTransport {
 		return { url: out, logicalHostname: null };
 	}
 
-	request(remote, method, body, headers, signal) {
+	async request(remote, method, body, headers, signal) {
+		if (window.__runwayWptTransport) {
+			// Chromium rejects streaming fetch uploads to this HTTP/1.1 relay.
+			// Preserve the bytes; upload timing/backpressure needs a separate H2 path.
+			const upload = body instanceof ReadableStream
+				? await new Response(body).arrayBuffer()
+				: body;
+			const response = await fetch(`/__runway_wpt_transport?url=${encodeURIComponent(remote.href)}`, {
+				method, body: upload, signal,
+				headers: { "x-runway-headers": JSON.stringify(headers ?? []) },
+			});
+			const metadata = response.headers.get("x-runway-response");
+			if (!metadata) throw new TypeError(await response.text());
+			return { ...JSON.parse(metadata), body: response.body };
+		}
 		const { url: wire, logicalHostname } = this.#rewriteWithMeta(remote);
 		const hdrs =
 			logicalHostname != null

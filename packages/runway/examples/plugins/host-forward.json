@@ -1,0 +1,8 @@
+{
+  "name": "host-forward",
+  "plugins": [{ "entry": "./forward.mjs" }],
+  "serviceWorker": {
+    "entry": "../../dist/harness/scramjet/public/sw.js",
+    "type": "classic"
+  }
+}
