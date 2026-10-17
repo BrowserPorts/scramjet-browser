@@ -60,44 +60,69 @@ impl Rewriter {
 			.try_borrow_mut()
 			.map_err(|_| RewriterError::AlreadyRewriting)?;
 
-		slot.take()
-			.ok_or(RewriterError::AlreadyRewriting)
-			.and_then(|x| {
-				let mut x = unsafe {
-					std::mem::transmute::<JsChanges<'static, 'static>, JsChanges<'alloc, 'data>>(x)
-				};
-				x.set_alloc(alloc)?;
-				Ok(x)
-			})
+		let taken = slot.take().ok_or(RewriterError::AlreadyRewriting)?;
+		let mut taken = unsafe {
+			std::mem::transmute::<JsChanges<'static, 'static>, JsChanges<'alloc, 'data>>(taken)
+		};
+
+		match taken.set_alloc(alloc) {
+			Ok(()) => Ok(taken),
+			Err(error) => {
+				drop(taken);
+				slot.replace(JsChanges::new());
+
+				Err(error)
+			}
+		}
 	}
 
 	fn put_changes<'alloc: 'data, 'data>(
 		&'data self,
 		mut changes: JsChanges<'alloc, 'data>,
 	) -> Result<(), RewriterError> {
-		if !changes.empty() {
-			return Err(RewriterError::Leftover);
-		}
-
 		let mut slot = self
 			.changes
 			.try_borrow_mut()
 			.map_err(|_| RewriterError::AlreadyRewriting)?;
 
 		if slot.is_some() {
-			Err(RewriterError::NotRewriting)
+			return Err(RewriterError::NotRewriting);
+		}
+
+		let detached = if changes.empty() {
+			changes.take_alloc()
 		} else {
-			changes.take_alloc()?;
+			Err(RewriterError::Leftover)
+		};
 
-			let changes = unsafe {
-				std::mem::transmute::<JsChanges<'alloc, 'data>, JsChanges<'static, 'static>>(
-					changes,
-				)
-			};
+		match detached {
+			Ok(()) => {
+				let changes = unsafe {
+					std::mem::transmute::<JsChanges<'alloc, 'data>, JsChanges<'static, 'static>>(
+						changes,
+					)
+				};
 
-			slot.replace(changes);
+				slot.replace(changes);
 
-			Ok(())
+				Ok(())
+			}
+			Err(error) => {
+				drop(changes);
+				slot.replace(JsChanges::new());
+
+				Err(error)
+			}
+		}
+	}
+
+	fn discard_changes<'alloc: 'data, 'data>(&'data self, changes: JsChanges<'alloc, 'data>) {
+		drop(changes);
+
+		if let Ok(mut slot) = self.changes.try_borrow_mut() {
+			if slot.is_none() {
+				slot.replace(JsChanges::new());
+			}
 		}
 	}
 
@@ -150,11 +175,21 @@ impl Rewriter {
 		};
 		visitor.visit_program(&parsed.program);
 		if let Some(error) = visitor.error {
+			self.discard_changes(visitor.jschanges);
+
 			return Err(RewriterError::Url(error));
 		}
 		let mut jschanges = visitor.jschanges;
 
-		let changed = jschanges.perform(js, &config, &visitor.flags)?;
+		let performed = jschanges.perform(js, &config, &visitor.flags);
+		let changed = match performed {
+			Ok(changed) => changed,
+			Err(error) => {
+				self.discard_changes(jschanges);
+
+				return Err(error);
+			}
+		};
 
 		self.put_changes(jschanges)?;
 
