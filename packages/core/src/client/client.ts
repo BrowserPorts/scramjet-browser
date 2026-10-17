@@ -83,6 +83,16 @@ export type ScramjetClientInit = {
 	// the api is left off the global entirely
 	serviceWorkerHost?: ServiceWorkerHost;
 };
+/**
+ * `window.frameElement` is typed `Element`, because any embedding element can be
+ * one, but the embedding elements that carry a name (`iframe`, `frame`,
+ * `object`) are the only ones the frame-name lookups below care about — and a
+ * Scramjet frame is always an iframe. Type-level narrowing only: the runtime
+ * read is the same descriptor call, and a nameless element still takes the
+ * "no frame name" path.
+ */
+type NamedFrameElement = Element & { name?: string };
+
 type NativeStore = {
 	store: Record<string, any>;
 	construct: <T extends string>(
@@ -409,7 +419,7 @@ export class ScramjetClient {
 				const frame = curclient.descriptors.get(
 					"window.frameElement",
 					currentWin
-				);
+				) as NamedFrameElement;
 				if (!frame) {
 					// we're inside an iframe, but the top frame is scramjet-controlled and top level, so we can't get a top frame name
 					// or we're cross-origin and frameElement doesn't exist. that's a TODO because this won't work
@@ -448,7 +458,7 @@ export class ScramjetClient {
 						const frame = parentClient.descriptors.get(
 							"window.frameElement",
 							parentWin
-						);
+						) as NamedFrameElement;
 
 						if (!frame) {
 							// parent is scramjet controlled and top-level. there is no parent frame name
@@ -471,7 +481,7 @@ export class ScramjetClient {
 						const frame = client.descriptors.get(
 							"window.frameElement",
 							client.global
-						);
+						) as NamedFrameElement;
 						if (!frame.name) {
 							// the parent frame is not scramjet-controlled, so we can't get a parent frame name
 							dbg.error(

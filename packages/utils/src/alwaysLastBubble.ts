@@ -99,7 +99,10 @@ export function setupAlwaysLastBubble(
 			"EventTarget.prototype.addEventListener",
 			target,
 			eventName,
-			(e: T) => {
+			// The native `addEventListener` hands back an `Event`; `T` is the
+			// concrete subtype the caller declared for its own listener, and the
+			// narrowing happens where the value is handed on to `callListener`.
+			(e: Event) => {
 				let lastlistener;
 				const path = e.composedPath();
 
@@ -116,11 +119,11 @@ export function setupAlwaysLastBubble(
 				// TODO: if a listener is added to a lower level of the dom inside the listener of a higher level, our lastlistener will not be correct
 				if (!lastlistener) {
 					// there are no other event listeners! great
-					callListener(e);
+					callListener(e as T);
 				} else {
 					// we know what the last listener is. run this to inject after it
 					lastlistener.injectafter = (e) => {
-						callListener(e);
+						callListener(e as T);
 					};
 				}
 

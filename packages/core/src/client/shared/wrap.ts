@@ -11,7 +11,11 @@ export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 		try {
 			if (SCRAMJETCLIENT in self.parent) {
 				// ... then we're in a subframe, and the parent frame is also in a proxy context, so we should return its proxy
-				wrappedParent = self.parent;
+				// `parent` is typed `Window`, which does not structurally overlap
+				// `typeof globalThis`, but the branch is only taken when that window is
+				// a hooked Scramjet realm — i.e. a real global object. The step through
+				// `unknown` states that the runtime check above is what establishes it.
+				wrappedParent = self.parent as unknown as GlobalThis;
 			} else {
 				// ... then we should pretend we aren't nested and return the current window
 				wrappedParent = self;

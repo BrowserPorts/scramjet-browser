@@ -121,7 +121,11 @@ export function rewriteJs(
 			} else {
 				// TODO: how do we check instanceof here?
 				if (typeof newjs !== "string") {
-					newjs = TextDecoder_decode(newjs);
+					// `TextDecoder_decode` is a bound snapshot, so without
+					// `strictBindCallApply` its return type is `any` — annotating the
+					// assignment is what keeps `newjs` narrowed to `string` for the
+					// source-map splicing below.
+					newjs = TextDecoder_decode(newjs) as string;
 				}
 				const sourcemapfn = `${context.config.globals.pushsourcemapfn}([${res.map.join(",")}], "${res.tag}");`;
 

@@ -29,6 +29,12 @@ export type QueryParamKey = keyof typeof QP;
 
 export type QueryParams = Partial<Record<QueryParamKey, string>>;
 
+// The page's intended RequestInit.mode, captured client-side (fetch/Request
+// proxies stamp `init.mode ?? "cors"` onto the proxy URL) and read back by
+// parseRequest. Besides the standard modes, parseRequest passes through the
+// raw `$mode` query value (and `request.mode` for shared workers), so the
+// type admits arbitrary strings while keeping literal completions.
+export type ScramjetRequestMode = RequestMode | (string & {});
 const QP_INVERSE: Record<string, QueryParamKey> = (() => {
 	const inv: Record<string, QueryParamKey> = {};
 	for (const key of Object_keys(QP) as QueryParamKey[]) {

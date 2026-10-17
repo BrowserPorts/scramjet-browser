@@ -495,7 +495,7 @@ class ExecutionContextWrapper {
 				const currentFrame = currentclient.descriptors.get(
 					"window.frameElement",
 					currentwin,
-				);
+				) as HTMLIFrameElement | null;
 				if (currentFrame && currentFrame[CONTROLLERFRAME]) {
 					controllerFrame = currentFrame[CONTROLLERFRAME];
 					break;

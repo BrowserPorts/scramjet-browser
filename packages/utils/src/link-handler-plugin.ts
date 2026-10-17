@@ -18,7 +18,7 @@ export class LinkHandlerPlugin extends ManagedPlugin {
 		super("link-handler", ["event-handler"]);
 	}
 
-	install(frame: Frame): void {
+	install(frame: Frame): undefined {
 		this.tap(
 			frame.hooks.init.post,
 			(_context) => {
@@ -71,5 +71,7 @@ export class LinkHandlerPlugin extends ManagedPlugin {
 			},
 			{ after: ["event-handler"] }
 		);
+
+		return undefined;
 	}
 }

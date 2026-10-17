@@ -16,7 +16,7 @@ export class UrlWatcherPlugin extends ManagedPlugin {
 		super("url-watcher", []);
 	}
 
-	install(frame: Frame): void {
+	install(frame: Frame): undefined {
 		this.tap(frame.hooks.init.post, (context) => {
 			if (!context.isTopLevel) return;
 
@@ -33,5 +33,7 @@ export class UrlWatcherPlugin extends ManagedPlugin {
 			// TODO: this will probably make it fire twice if it was triggered by location.hash
 			context.window.addEventListener("hashchange", notify, { capture: true });
 		});
+
+		return undefined;
 	}
 }

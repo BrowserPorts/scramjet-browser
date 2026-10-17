@@ -2,7 +2,16 @@
 // as such it exports everything in scramjet
 // the entry point for scramjet.all.js (what most sites wil use) is entry.ts
 
-import "./global.d";
+/// <reference path="./global.d.ts" />
+// A path reference, not `import "./global.d"`. The ambient file is a
+// declaration, so importing it emitted `import "./global.d"` into
+// `dist/types/index.d.ts`, and that specifier names no file the package
+// contains: there is no `global.d.js`, and `./global.d` only resolves through
+// the compiler's own extension probing. `tsc` drops a path reference from
+// declaration emit (it assumes ambient types are simply available), so the
+// declaration step re-adds it to the emitted entry next to the copied file — see
+// `declarationReferences` in the root `rspack.config.ts`. The reference here is
+// what keeps the ambient globals in the source program itself.
 import { atob } from "@/shared/snapshot";
 import { setWasm } from "@rewriters/wasm";
 import { ScramjetVersionInfo, ScramjetConfig } from "./types";

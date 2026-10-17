@@ -26,7 +26,7 @@ export class EventHandlerPlugin extends ManagedPlugin {
 		super("event-handler", []);
 	}
 
-	install(frame: Frame): void {
+	install(frame: Frame): undefined {
 		super.install(frame);
 
 		this.tap(frame.hooks.init.post, (context) => {
@@ -35,6 +35,8 @@ export class EventHandlerPlugin extends ManagedPlugin {
 				setupAlwaysLastBubble(context.client, this.eventsToCapture)
 			);
 		});
+
+		return undefined;
 	}
 
 	addEventToCapture(eventName: string): void {
