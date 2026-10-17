@@ -171,6 +171,13 @@ jobs:
       - name: Install pnpm dependencies
         run: pnpm install
 
+      # Guards the rewriter's freshness gate and its error propagation before
+      # anything is packed. It stubs cargo/wasm-bindgen/wasm-opt/wasm-snip, so
+      # it deliberately runs before the toolchain is installed: it must not
+      # depend on one.
+      - name: Test rewriter build script
+        run: pnpm test:rewriter-build
+
       - name: Setup Rewriter Toolchain
         uses: ./.github/actions/setup-rewriter-toolchain
         with:
