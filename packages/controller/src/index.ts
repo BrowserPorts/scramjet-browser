@@ -117,6 +117,18 @@ const COOKIE_DB_NAME = "__scramjet_controller";
 const COOKIE_STORE_NAME = "state";
 const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
 const CONTROLLER_DETACH_TIMEOUT_MS = 5000;
+const CONTROLLER_READY_TIMEOUT_MS = 5000;
+
+function serviceWorkerScriptsMatch(
+	left: ServiceWorker,
+	right: ServiceWorker,
+): boolean {
+	const leftUrl = new URL(left.scriptURL);
+	const rightUrl = new URL(right.scriptURL);
+	return (
+		leftUrl.origin === rightUrl.origin && leftUrl.pathname === rightUrl.pathname
+	);
+}
 
 let cookieDbPromise: Promise<IDBDatabase> | null = null;
 
@@ -262,11 +274,18 @@ export class Controller {
 	prefix: string;
 	frames: Frame[] = [];
 	serviceWorkerController: ServiceWorker;
-	guardServiceWorkerRevive = true;
 
 	private ready: Promise<undefined>;
 	private readyResolve: ((value: undefined) => unknown) | null = null;
-	private serviceWorkerReadyResolve: (() => unknown) | null = null;
+	private readyReject: ((reason?: unknown) => unknown) | null = null;
+	private serviceWorkerReady: {
+		worker: ServiceWorker;
+		expectedWorkerId: string | undefined;
+		connectionId: string;
+		resolve: () => undefined;
+		reject: (reason?: unknown) => undefined;
+		timeout: ReturnType<typeof setTimeout>;
+	} | null = null;
 	public isReady: boolean = false;
 	rpc: RpcHelper<Controllerbound, SWbound>;
 	private port: MessagePort | null = null;
@@ -278,12 +297,15 @@ export class Controller {
 	private cookieSyncPromise: Promise<undefined> | null = null;
 	private cookieSyncDirty = true;
 	private cookieSyncChannel: BroadcastChannel;
+	private initializationComplete = false;
 	private closed = false;
 	private detached = false;
 	private closing: Promise<undefined> | null = null;
-	private serviceWorkerReviveGuardTimer: ReturnType<typeof setTimeout> | null =
-		null;
-	private serviceWorkerReconnectPromise: Promise<undefined> | null = null;
+	private serviceWorkerReconnect: {
+		worker: ServiceWorker;
+		expectedWorkerId: string | undefined;
+		promise: Promise<undefined>;
+	} | null = null;
 	private transportChannels = new Set<{
 		port: MessagePort;
 		rpc: RpcHelper<TransportToController, ControllerToTransport>;
@@ -344,12 +366,25 @@ export class Controller {
 		}
 
 		if (event.data?.$controller$swrevive) {
-			// if we just spawned the service worker, it will send this even though it's not actually dead
-			// TODO: pretty jank, fix at some point
-			if (this.guardServiceWorkerRevive) {
+			const revive = event.data.$controller$swrevive as {
+				workerId?: unknown;
+				revivalId?: unknown;
+			};
+			const worker = event.source;
+			if (
+				!(worker instanceof ServiceWorker) ||
+				worker.state === "redundant" ||
+				typeof revive.workerId !== "string" ||
+				typeof revive.revivalId !== "string" ||
+				!serviceWorkerScriptsMatch(this.serviceWorkerController, worker)
+			) {
 				return;
 			}
-			this.reconnectServiceWorker().catch((error) => {
+			this.reconnectServiceWorker(
+				worker,
+				revive.workerId,
+				revive.revivalId,
+			).catch((error) => {
 				console.error("Scramjet Controller reconnection failed:", error);
 			});
 		}
@@ -366,27 +401,33 @@ export class Controller {
 	}
 
 	private methods: MethodsDefinition<Controllerbound> = {
-		ready: async () => {
+		ready: async (payload) => {
 			const readyResolve = this.readyResolve;
-			const serviceWorkerReadyResolve = this.serviceWorkerReadyResolve;
-			if (serviceWorkerReadyResolve === null) {
+			const serviceWorkerReady = this.serviceWorkerReady;
+			const legacyReady =
+				payload === undefined &&
+				serviceWorkerReady?.expectedWorkerId === undefined;
+			if (
+				serviceWorkerReady === null ||
+				(!legacyReady &&
+					(typeof payload?.workerId !== "string" ||
+						payload.connectionId !== serviceWorkerReady.connectionId ||
+						(serviceWorkerReady.expectedWorkerId !== undefined &&
+							serviceWorkerReady.expectedWorkerId !== payload.workerId)))
+			) {
 				throw new Error(
 					"Scramjet Controller received an unexpected ready acknowledgement",
 				);
 			}
-			this.serviceWorkerReadyResolve = null;
+			clearTimeout(serviceWorkerReady.timeout);
+			this.serviceWorkerReady = null;
+			this.serviceWorkerController = serviceWorkerReady.worker;
 			if (readyResolve !== null) {
 				this.readyResolve = null;
+				this.readyReject = null;
 				readyResolve(undefined);
 			}
-			serviceWorkerReadyResolve();
-			if (this.serviceWorkerReviveGuardTimer !== null) {
-				clearTimeout(this.serviceWorkerReviveGuardTimer);
-			}
-			this.serviceWorkerReviveGuardTimer = setTimeout(() => {
-				this.guardServiceWorkerRevive = false;
-				this.serviceWorkerReviveGuardTimer = null;
-			}, 5000);
+			serviceWorkerReady.resolve();
 		},
 		request: async (data) => {
 			const path = new URL(data.rawUrl).pathname;
@@ -623,8 +664,9 @@ export class Controller {
 		);
 
 		this.ready = Promise.all([
-			new Promise<undefined>((resolve) => {
+			new Promise<undefined>((resolve, reject) => {
 				this.readyResolve = resolve;
+				this.readyReject = reject;
 			}),
 			this.loadScramjetWasm(),
 			this.loadSavedCookies(true),
@@ -632,6 +674,7 @@ export class Controller {
 			if (this.closed || this.closing) {
 				throw new Error("Scramjet Controller closed before becoming ready");
 			}
+			this.initializationComplete = true;
 			this.isReady = true;
 			return undefined;
 		});
@@ -652,7 +695,15 @@ export class Controller {
 			"message",
 			this.onCookieSyncMessage,
 		);
-		this.setupMessagePort();
+		this.reconnectServiceWorker(this.serviceWorkerController).catch((error) => {
+			if (this.readyResolve === null || this.serviceWorkerReady !== null) {
+				return;
+			}
+			const readyReject = this.readyReject;
+			this.readyResolve = null;
+			this.readyReject = null;
+			readyReject?.(error);
+		});
 
 		navigator.serviceWorker.addEventListener(
 			"message",
@@ -660,9 +711,19 @@ export class Controller {
 		);
 	}
 
-	private setupMessagePort(): Promise<undefined> {
+	private setupMessagePort(
+		worker: ServiceWorker,
+		expectedWorkerId?: string,
+		revivalId?: string,
+	): Promise<undefined> {
 		if (this.closed || this.closing) {
 			throw new Error("Scramjet Controller is closed");
+		}
+		if (this.serviceWorkerReady !== null) {
+			const pending = this.serviceWorkerReady;
+			this.serviceWorkerReady = null;
+			clearTimeout(pending.timeout);
+			pending.reject(new Error("Scramjet Controller connection was replaced"));
 		}
 		if (this.port) {
 			this.port.removeEventListener("message", this.onTabChannelMessage);
@@ -675,53 +736,113 @@ export class Controller {
 		}
 
 		const channel = new MessageChannel();
+		const connectionId = makeId();
 		this.port = channel.port1;
 		this.port.addEventListener("message", this.onTabChannelMessage);
 		this.port.start();
 
-		this.serviceWorkerController.postMessage(
-			{
-				$controller$init: {
-					prefix: this.prefix,
-					id: this.id,
-				},
-			},
-			[channel.port2],
-		);
-
-		return new Promise<undefined>((resolve) => {
-			this.serviceWorkerReadyResolve = () => {
-				resolve(undefined);
+		return new Promise<undefined>((resolve, reject) => {
+			const finishReject = (reason?: unknown): undefined => {
+				reject(reason);
 				return undefined;
 			};
+			const timeout = setTimeout(() => {
+				if (this.serviceWorkerReady?.connectionId !== connectionId) return;
+				this.serviceWorkerReady = null;
+				finishReject(
+					new Error("Scramjet Controller ready acknowledgement expired"),
+				);
+			}, CONTROLLER_READY_TIMEOUT_MS);
+			this.serviceWorkerReady = {
+				worker,
+				expectedWorkerId,
+				connectionId,
+				resolve: () => {
+					resolve(undefined);
+					return undefined;
+				},
+				reject: finishReject,
+				timeout,
+			};
+			try {
+				worker.postMessage(
+					{
+						$controller$init: {
+							prefix: this.prefix,
+							id: this.id,
+							connectionId,
+							...(expectedWorkerId === undefined
+								? {}
+								: { workerId: expectedWorkerId }),
+							...(revivalId === undefined ? {} : { revivalId }),
+						},
+					},
+					[channel.port2],
+				);
+			} catch (error) {
+				if (this.serviceWorkerReady?.connectionId === connectionId) {
+					this.serviceWorkerReady = null;
+				}
+				clearTimeout(timeout);
+				finishReject(error);
+			}
 		});
 	}
 
-	private async reconnectServiceWorker(): Promise<undefined> {
-		if (this.serviceWorkerReconnectPromise !== null) {
-			return this.serviceWorkerReconnectPromise;
+	private async reconnectServiceWorker(
+		worker: ServiceWorker,
+		expectedWorkerId?: string,
+		revivalId?: string,
+	): Promise<undefined> {
+		const pendingReconnect = this.serviceWorkerReconnect;
+		if (
+			pendingReconnect !== null &&
+			pendingReconnect.worker === worker &&
+			(expectedWorkerId === undefined ||
+				pendingReconnect.expectedWorkerId === expectedWorkerId)
+		) {
+			return pendingReconnect.promise;
 		}
 		this.isReady = false;
 		const reconnectPromise = (async () => {
-			await this.setupMessagePort();
+			await this.setupMessagePort(worker, expectedWorkerId, revivalId);
 			if (this.closed || this.closing) {
 				throw new Error("Scramjet Controller closed during reconnection");
 			}
-			this.isReady = true;
+			if (this.initializationComplete) this.isReady = true;
 			return undefined;
 		})();
-		this.serviceWorkerReconnectPromise = reconnectPromise;
+		this.serviceWorkerReconnect = {
+			worker,
+			expectedWorkerId,
+			promise: reconnectPromise,
+		};
 		try {
 			return await reconnectPromise;
 		} finally {
-			if (this.serviceWorkerReconnectPromise === reconnectPromise) {
-				this.serviceWorkerReconnectPromise = null;
+			if (this.serviceWorkerReconnect?.promise === reconnectPromise) {
+				this.serviceWorkerReconnect = null;
 			}
 		}
 	}
 
-	refreshServiceWorkerConnection(): Promise<undefined> {
-		return this.reconnectServiceWorker();
+	async refreshServiceWorkerConnection(): Promise<undefined> {
+		let worker = this.serviceWorkerController;
+		const registration = await navigator.serviceWorker.getRegistration(
+			new URL(this.prefix, location.href),
+		);
+		const active = registration?.active;
+		if (
+			active &&
+			active.state !== "redundant" &&
+			serviceWorkerScriptsMatch(worker, active)
+		) {
+			worker = active;
+		}
+		if (worker.state === "redundant") {
+			throw new Error("No active Scramjet service worker is available");
+		}
+		return await this.reconnectServiceWorker(worker);
 	}
 
 	private detachFromServiceWorker(): Promise<undefined> {
@@ -833,9 +954,11 @@ export class Controller {
 			"message",
 			this.onServiceWorkerMessage,
 		);
-		if (this.serviceWorkerReviveGuardTimer !== null) {
-			clearTimeout(this.serviceWorkerReviveGuardTimer);
-			this.serviceWorkerReviveGuardTimer = null;
+		if (this.serviceWorkerReady !== null) {
+			const pending = this.serviceWorkerReady;
+			this.serviceWorkerReady = null;
+			clearTimeout(pending.timeout);
+			pending.reject(channelError);
 		}
 
 		if (failures.length > 0) {

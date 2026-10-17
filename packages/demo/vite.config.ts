@@ -4,6 +4,7 @@ export default {
 	server: {
 		headers: {
 			"Origin-Agent-Cluster": "?1",
+			"Service-Worker-Allowed": "/",
 		},
 	},
 	plugins: [

@@ -54,8 +54,13 @@ export type ControllerDetachResponse = {
 	detached: boolean;
 };
 
+export type ControllerReadyPayload = {
+	workerId: string;
+	connectionId?: string;
+};
+
 export type Controllerbound = {
-	ready: [];
+	ready: [ControllerReadyPayload | undefined];
 	request: [TransferRequest, TransferResponse];
 	initRemoteTransport: [{ port: MessagePort; prefix: string }];
 };

@@ -17,7 +17,112 @@ function makeId(): string {
 	);
 }
 
+function messageClientId(event: {
+	source: ExtendableMessageEvent["source"];
+}): string | null {
+	const source = event.source;
+	if (!source || typeof source !== "object" || !("id" in source)) return null;
+	return typeof source.id === "string" ? source.id : null;
+}
+
 const cookieResolvers: Record<string, () => undefined> = {};
+const workerId = makeId();
+const REVIVAL_CLAIM_TIMEOUT_MS = 1000;
+const controllerClaimResolvers = new Map<
+	string,
+	Set<(controller: ControllerReference) => undefined>
+>();
+let activeRevival:
+	| {
+			expiresAt: number;
+			promise: Promise<undefined>;
+	  }
+	| undefined;
+
+function controllerPrefixFromPath(pathname: string): string | null {
+	const match =
+		/\/([0-9a-f]{32})\/[0-9a-f]{32}\/https?(?:%3A%2F%2F|%253A%252F%252F)/.exec(
+			pathname,
+		);
+	if (!match || match.index === undefined || !match[1]) return null;
+	return pathname.slice(0, match.index + match[1].length + 2);
+}
+
+function currentController(prefix: string): ControllerReference | undefined {
+	return tabs.find((tab) => prefix === tab.prefix && !tab.isClosed());
+}
+
+function requestControllerRevival(): Promise<undefined> {
+	if (activeRevival && activeRevival.expiresAt > Date.now()) {
+		return activeRevival.promise;
+	}
+
+	const revivalId = makeId();
+	const expiresAt = Date.now() + REVIVAL_CLAIM_TIMEOUT_MS;
+	const promise = (async () => {
+		const liveClients = await clients.matchAll({
+			includeUncontrolled: true,
+			type: "window",
+		});
+		for (const client of liveClients) {
+			client.postMessage({
+				$controller$swrevive: { workerId, revivalId },
+			});
+		}
+		await new Promise<undefined>((resolve) => {
+			setTimeout(() => resolve(undefined), REVIVAL_CLAIM_TIMEOUT_MS);
+		});
+		return undefined;
+	})();
+	activeRevival = { expiresAt, promise };
+	promise.then(
+		() => {
+			if (activeRevival?.promise === promise) activeRevival = undefined;
+			return undefined;
+		},
+		() => {
+			if (activeRevival?.promise === promise) activeRevival = undefined;
+			return undefined;
+		},
+	);
+	return promise;
+}
+
+async function waitForController(
+	prefix: string,
+): Promise<ControllerReference | undefined> {
+	const existing = currentController(prefix);
+	if (existing) return existing;
+
+	let resolveClaim:
+		| ((controller: ControllerReference) => undefined)
+		| undefined;
+	const claimed = new Promise<ControllerReference>((resolve) => {
+		resolveClaim = (controller) => {
+			resolve(controller);
+			return undefined;
+		};
+		const resolvers = controllerClaimResolvers.get(prefix) ?? new Set();
+		resolvers.add(resolveClaim);
+		controllerClaimResolvers.set(prefix, resolvers);
+	});
+	try {
+		await Promise.race([claimed, requestControllerRevival()]);
+		return currentController(prefix);
+	} finally {
+		if (resolveClaim) {
+			const resolvers = controllerClaimResolvers.get(prefix);
+			resolvers?.delete(resolveClaim);
+			if (resolvers?.size === 0) controllerClaimResolvers.delete(prefix);
+		}
+	}
+}
+
+// A service worker can be terminated and restarted without another activation.
+// Begin a bounded ownership handshake whenever this worker global is created.
+requestControllerRevival().catch((error) => {
+	console.error("Controller revival request failed:", error);
+});
 addEventListener("message", (e) => {
 	if (!e.data) return;
 	if (typeof e.data != "object") return;
@@ -61,6 +166,8 @@ class ControllerReference {
 	constructor(
 		public prefix: string,
 		public id: string,
+		public ownerClientId: string,
+		private connectionId: string | undefined,
 		private port: MessagePort,
 	) {
 		this.rpc = new RpcHelper(
@@ -94,19 +201,18 @@ class ControllerReference {
 						}
 
 						if (promises.length > 0) {
-							const timeoutPromise = new Promise<never>((_resolve, reject) => {
+							const timeoutPromise = new Promise<undefined>((resolve) => {
 								timeoutId = setTimeout(() => {
 									const pending = ids.filter(
 										(id) => cookieResolvers[id] !== undefined,
 									);
-									reject(
-										new Error(
-											"timed out waiting for set cookie responses: " +
-												`cookies=${cookies.length} clients=${clients.length} ` +
-												`pending=${pending.length}/${ids.length} ` +
-												`clientUrls=${clients.map((client) => client.url).join(",")}`,
-										),
+									// A frame can navigate away during delivery. The controller's
+									// cookie jar is already updated; a missed frame acknowledgement
+									// must not turn a successful upstream response into a failure.
+									console.warn(
+										`Cookie sync acknowledgement expired for ${pending.length} frame(s)`,
 									);
+									resolve(undefined);
 								}, 1000);
 							});
 
@@ -130,11 +236,13 @@ class ControllerReference {
 		};
 		port.onmessageerror = console.error;
 
-		this.rpc.call("ready", undefined).catch((error) => {
-			if (!this.closed) {
-				console.error("Controller ready acknowledgement failed:", error);
-			}
-		});
+		this.rpc
+			.call("ready", { workerId, connectionId: this.connectionId })
+			.catch((error) => {
+				if (!this.closed) {
+					console.error("Controller ready acknowledgement failed:", error);
+				}
+			});
 	}
 
 	isClosed(): boolean {
@@ -175,11 +283,13 @@ addEventListener("message", (e) => {
 		const detach = e.data
 			.$controller$detach as Partial<ControllerDetachRequest>;
 		const responsePort = e.ports[0];
-		if (typeof detach.id !== "string" || !responsePort) return;
+		const ownerClientId = messageClientId(e);
+		if (typeof detach.id !== "string" || !responsePort || !ownerClientId)
+			return;
 
 		const existing = tabs.findIndex((tab) => tab.id === detach.id);
 		let detached = detachedControllerIds.has(detach.id);
-		if (existing !== -1) {
+		if (existing !== -1 && tabs[existing]?.ownerClientId === ownerClientId) {
 			const [reference] = tabs.splice(existing, 1);
 			reference.close();
 			detachedControllerIds.add(detach.id);
@@ -197,33 +307,87 @@ addEventListener("message", (e) => {
 	if (!e.data.$controller$init) return;
 	if (typeof e.data.$controller$init != "object") return;
 	const init = e.data.$controller$init;
+	const ownerClientId = messageClientId(e);
 	if (
 		typeof init.id !== "string" ||
+		!/^[0-9a-f]{32}$/.test(init.id) ||
 		typeof init.prefix !== "string" ||
+		(init.workerId !== undefined && init.workerId !== workerId) ||
+		!ownerClientId ||
 		!e.ports[0]
 	) {
+		return;
+	}
+	let prefix: string;
+	try {
+		const url = new URL(init.prefix, location.origin);
+		if (
+			url.origin !== location.origin ||
+			!url.pathname.endsWith(`/${init.id}/`)
+		) {
+			return;
+		}
+		prefix = url.pathname;
+	} catch {
 		return;
 	}
 
 	const existing = tabs.findIndex((t) => t.id === init.id);
 	if (existing !== -1) {
+		if (tabs[existing]?.ownerClientId !== ownerClientId) {
+			e.ports[0].close();
+			return;
+		}
 		const [reference] = tabs.splice(existing, 1);
 		reference.close();
 	}
 	detachedControllerIds.delete(init.id);
-	tabs.push(new ControllerReference(init.prefix, init.id, e.ports[0]));
+	const reference = new ControllerReference(
+		prefix,
+		init.id,
+		ownerClientId,
+		typeof init.connectionId === "string" ? init.connectionId : undefined,
+		e.ports[0],
+	);
+	tabs.push(reference);
+	for (const resolveClaim of controllerClaimResolvers.get(prefix) ?? []) {
+		resolveClaim(reference);
+	}
 });
 
 export function shouldRoute(event: FetchEvent): boolean {
 	const url = new URL(event.request.url);
-	const tab = tabs.find((tab) => url.pathname.startsWith(tab.prefix));
-	return tab !== undefined;
+	if (url.origin !== location.origin) return false;
+	if (tabs.some((tab) => url.pathname.startsWith(tab.prefix))) return true;
+	return Boolean(
+		(event.clientId || event.resultingClientId) &&
+			controllerPrefixFromPath(url.pathname),
+	);
 }
 
 export async function route(event: FetchEvent): Promise<Response> {
 	try {
 		const url = new URL(event.request.url);
-		const tab = tabs.find((tab) => url.pathname.startsWith(tab.prefix))!;
+		let tab = tabs.find((candidate) =>
+			url.pathname.startsWith(candidate.prefix),
+		);
+		if (!tab) {
+			const prefix = controllerPrefixFromPath(url.pathname);
+			if (!prefix || (!event.clientId && !event.resultingClientId)) {
+				return new Response(
+					"Scramjet Controller ownership was not established",
+					{
+						status: 503,
+					},
+				);
+			}
+			tab = await waitForController(prefix);
+			if (!tab) {
+				return new Response("Scramjet Controller revival expired", {
+					status: 503,
+				});
+			}
+		}
 		const client = await clients.get(event.clientId);
 
 		const rawheaders: RawHeaders = [...event.request.headers];
@@ -274,17 +438,10 @@ addEventListener("install", () => {
 });
 
 addEventListener("activate", (event: ExtendableEvent) => {
-	event.waitUntil(clients.claim());
+	event.waitUntil(
+		(async () => {
+			await clients.claim();
+			await requestControllerRevival();
+		})(),
+	);
 });
-
-// the only way to know if a service worker has suddenly died is if this code runs again
-// notify all clients to send over their messageports again
-setTimeout(async () => {
-	console.log("service worker activated, notifying clients to revive");
-	for (const client of await clients.matchAll()) {
-		client.postMessage({
-			$controller$swrevive: {},
-		});
-	}
-	// short delay is apparently needed
-}, 100);
