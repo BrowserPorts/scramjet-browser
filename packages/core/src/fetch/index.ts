@@ -105,6 +105,25 @@ export type CookieSyncOptions = {
 	destination?: ScramjetDestination;
 };
 
+/**
+ * The part of the original request a non-HTTP scheme fetch can faithfully carry.
+ *
+ * `data:` and `blob:` are served by delegating to the platform's own fetch, so
+ * the method has to travel with the URL: it is not cosmetic for these schemes.
+ * A `HEAD` of a `data:` URL yields an EMPTY body, and every non-`GET` method on
+ * a `blob:` URL is a network error. Dropping it silently turned both into an
+ * ordinary `GET`.
+ *
+ * Deliberately just the method. There is no abort signal on this boundary to
+ * forward -- the request crosses a structured-clone RPC, which cannot carry one
+ * -- and the request body is not included: the `data:` scheme fetch ignores it,
+ * and a non-`GET` `blob:` fetch fails before a body would be read, so sending it
+ * would consume or duplicate the stream for no observable effect.
+ */
+export type SchemeFetchInit = {
+	method: string;
+};
+
 export type FetchHandlerInit = {
 	transport: ProxyTransport;
 	context: ScramjetContext;
@@ -114,8 +133,14 @@ export type FetchHandlerInit = {
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions,
 	) => Promise<void>;
-	fetchDataUrl(dataUrl: string): Promise<BareResponse>;
-	fetchBlobUrl(blobUrl: string): Promise<BareResponse>;
+	fetchDataUrl(
+		dataUrl: string,
+		init: SchemeFetchInit,
+	): Promise<BareResponse>;
+	fetchBlobUrl(
+		blobUrl: string,
+		init: SchemeFetchInit,
+	): Promise<BareResponse>;
 };
 
 export type TrackedHistoryState = {
@@ -148,8 +173,14 @@ export class ScramjetFetchHandler extends EventTarget {
 		fetch: TapInstance<FetchHooks>;
 	};
 
-	public fetchDataUrl: (dataUrl: string) => Promise<Response>;
-	public fetchBlobUrl: (blobUrl: string) => Promise<Response>;
+	public fetchDataUrl: (
+		dataUrl: string,
+		init: SchemeFetchInit,
+	) => Promise<Response>;
+	public fetchBlobUrl: (
+		blobUrl: string,
+		init: SchemeFetchInit,
+	) => Promise<Response>;
 	public sendSetCookie: (
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions,

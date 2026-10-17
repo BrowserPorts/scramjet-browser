@@ -272,20 +272,104 @@ async function handleBlobOrDataUrlFetch(
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed
 ): Promise<ScramjetFetchResponse> {
-	let dataUrl = request.rawUrl.pathname.substring(
-		handler.context.prefix.pathname.length
-	);
 	let response: BareResponse;
 
-	if (dataUrl.startsWith("blob:")) {
-		dataUrl = unrewriteBlob(dataUrl, handler.context, parsed.meta);
+	// The platform owns what each scheme does with a method, so it travels with
+	// the URL instead of being flattened to a `GET` here.
+	const schemeInit = { method: request.method };
+
+	if (parsed.url.protocol === "data:") {
+		/*
+		 * The already-decoded logical URL, not a second read of the wire.
+		 *
+		 * `parseRequest` has run `unrewriteUrl` on this request, so the data: URL is
+		 * recovered once, by the codec that wrote it. Re-deriving it here from
+		 * `rawUrl.pathname` was the second adapter: `pathname` is normalized and
+		 * percent-encoded by the URL parser and carries neither query nor fragment,
+		 * so payload bytes were lost before the response was ever built.
+		 *
+		 * Served inline exactly as before — no network fetch, no http origin — so the
+		 * arrangement around a data: document's origin is unchanged (and unverified).
+		 */
 		response = BareResponse.fromNativeResponse(
-			await handler.fetchBlobUrl(dataUrl)
+			await handler.fetchDataUrl(parsed.url.href, schemeInit)
 		);
 	} else {
-		response = BareResponse.fromNativeResponse(
-			await handler.fetchDataUrl(dataUrl)
+		// blob: keeps its own raw-prefix wire format, untouched by this change.
+		let blobUrl = request.rawUrl.pathname.substring(
+			handler.context.prefix.pathname.length
 		);
+		blobUrl = unrewriteBlob(blobUrl, handler.context, parsed.meta);
+
+		if (parsed.isFakeDataURL) {
+			/*
+			 * A data: URL too large to survive on the wire, parked in a control blob.
+			 *
+			 * The blob holds the data: URL TEXT, so the logical request is still a
+			 * data: request and keeps data: semantics: `HEAD` answers with an empty
+			 * body and `POST` answers with the payload, rather than inheriting blob's
+			 * rule that every non-`GET` method is a network error.
+			 *
+			 * Reading our own backing storage is a `GET` — deliberately independent
+			 * of the method the page asked for, which belongs to the logical data:
+			 * fetch below. The read is bounded by a blob the browser already holds,
+			 * not by dereferencing some arbitrary external URL.
+			 *
+			 * Nothing here revokes the object URL. `$fakedataurl=1` is written by the
+			 * caller and the blob it names may belong to the page, so this request is
+			 * not authority to destroy it: revoking on the failure path let a forged
+			 * marker delete a page's own blob, and revoking on the success path was
+			 * the same defect with a validated payload in front of it. Validated
+			 * CONTENTS still do not make a caller-supplied marker an owner.
+			 *
+			 * Lifetime is left to whichever environment created the URL, and this
+			 * code does not establish which one that is. `URL.createObjectURL` is
+			 * absent in service workers, but that is an API fact, not a callgraph
+			 * fact: it does not prove where the producer actually runs, and the
+			 * rewriters it lives in are shared across several realms. Nor is the
+			 * release itself verified here.
+			 *
+			 * So: not disposing is a deliberate choice against caller-directed
+			 * destruction, and NOT a claim that these entries are released, or that
+			 * nothing accumulates. Both the release and this oversized producer path
+			 * as a whole remain unverified: this code never revokes the object URL,
+			 * and nothing here establishes that its producer does.
+			 */
+			const control = await handler.fetchBlobUrl(blobUrl, { method: "GET" });
+			const recovered = await control.text();
+
+			/*
+			 * The marker is a query parameter the page can write, pointing at a blob
+			 * the page may own, so this text is untrusted input that decides what
+			 * gets fetched next. Anything that is not a data: URL is refused —
+			 * otherwise a forged marker could make this branch fetch an arbitrary
+			 * http URL from the proxy's own origin.
+			 *
+			 * The parsed result is what gets used, so there is no gap between what
+			 * was checked and what is fetched. This bounds what a forged marker can
+			 * reach; it does NOT establish that the marker is ours, which remains an
+			 * existing unfixed gap.
+			 */
+			let recoveredUrl: _URL | null = null;
+			try {
+				recoveredUrl = new _URL(recovered);
+			} catch {
+				recoveredUrl = null;
+			}
+			if (!recoveredUrl || recoveredUrl.protocol !== "data:") {
+				throw new Error(
+					"fake data URL did not resolve to a data: URL, refusing to fetch it"
+				);
+			}
+
+			response = BareResponse.fromNativeResponse(
+				await handler.fetchDataUrl(recoveredUrl.href, schemeInit)
+			);
+		} else {
+			response = BareResponse.fromNativeResponse(
+				await handler.fetchBlobUrl(blobUrl, schemeInit)
+			);
+		}
 	}
 
 	let body: BodyType;
@@ -306,8 +390,6 @@ async function handleBlobOrDataUrlFetch(
 		headers.set("Cross-Origin-Opener-Policy", "same-origin");
 		headers.set("Cross-Origin-Embedder-Policy", "require-corp");
 	}
-
-	if (parsed.isFakeDataURL) URL.revokeObjectURL(dataUrl);
 
 	return {
 		body,

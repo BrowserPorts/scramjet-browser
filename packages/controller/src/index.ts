@@ -57,12 +57,17 @@ export const config: Config = {
 		encode: (url: string) => {
 			if (!url) return url;
 
-			return encodeURIComponent(url);
+			// Preserve the existing wire format for encoded proxy URLs.
+			return encodeURIComponent(encodeURIComponent(url));
 		},
 		decode: (url: string) => {
 			if (!url) return url;
 
-			return decodeURIComponent(url);
+			const decoded = decodeURIComponent(url);
+			// Retain links produced by the previous single-encoding codec.
+			return /^[a-z][a-z0-9+.-]*:/i.test(decoded)
+				? decoded
+				: decodeURIComponent(decoded);
 		},
 	},
 };
@@ -1303,11 +1308,11 @@ export class Frame {
 					options,
 				);
 			},
-			async fetchBlobUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchBlobUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
-			async fetchDataUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchDataUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
 		});
 

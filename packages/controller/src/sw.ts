@@ -425,12 +425,36 @@ export async function route(event: FetchEvent): Promise<Response> {
 		});
 	} catch (e) {
 		console.error("Service Worker error:", e);
-		return new Response(
-			"Internal Service Worker Error: " + (e as Error).message,
-			{
-				status: 500,
-			},
-		);
+		/*
+		 * Reaching here means the handler produced NO response, which is a network
+		 * error -- not an HTTP result.
+		 *
+		 * Answering with a synthetic 500 made the guest's `fetch()` RESOLVE with a
+		 * proxy error page, so a load that must fail looked like a successful one:
+		 * `fetch("data:;base64,a")` has to reject with `TypeError`, and instead the
+		 * page saw `status: 500`.
+		 *
+		 * This does not reclassify HTTP failures. A remote 4xx/5xx never arrives
+		 * here: `doNetworkFetch` returns it as an ordinary response, so only a load
+		 * that threw -- i.e. produced nothing -- is caught. The discriminant is the
+		 * existing structural one, threw vs returned.
+		 *
+		 * `Response.error()` is the platform's own way to say this from a fetch
+		 * handler: it "will cause the fetch() call in the main app code to reject
+		 * the promise" (MDN, Response.error()).
+		 */
+		if (event.request.mode === "navigate") {
+			// A navigation has no promise to reject, and the browser would replace
+			// the failure with its own generic error page. The readable diagnostic
+			// is kept here, where a human is the one reading it.
+			return new Response(
+				"Internal Service Worker Error: " + (e as Error).message,
+				{
+					status: 500,
+				},
+			);
+		}
+		return Response.error();
 	}
 }
 
