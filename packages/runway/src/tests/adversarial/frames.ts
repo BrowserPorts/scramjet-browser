@@ -1,4 +1,4 @@
-import { serverTest, basicTest } from "../../testcommon.ts";
+import { originTest, scriptTest } from "../../testkit.ts";
 
 // Same-origin frames are the trickiest shape for a proxy: each frame gets its
 // own client, and the page can reach across into another frame's document and
@@ -6,7 +6,7 @@ import { serverTest, basicTest } from "../../testcommon.ts";
 // for an area with no existing tests.
 
 const frameTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,
@@ -117,7 +117,7 @@ export default [
 			assertEqual(f.contentWindow.document, child, "contentWindow.document === contentDocument");
 		`
 	),
-	basicTest({
+	scriptTest({
 		name: "frames-srcdoc",
 		js: `
 			const f = document.createElement("iframe");
@@ -132,7 +132,7 @@ export default [
 			assert(!f.getAttribute("srcdoc").includes("/~/sj/"), "srcdoc must not expose the proxy URL");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "frames-document-write",
 		js: `
 			const f = document.createElement("iframe");
@@ -149,7 +149,7 @@ export default [
 				"serialization round trip in the written frame");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "frames-sandbox-attribute",
 		js: `
 			const f = document.createElement("iframe");

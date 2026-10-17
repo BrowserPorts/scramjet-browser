@@ -3,7 +3,7 @@ import {
 	rewriteUrl,
 	unrewriteCss,
 } from "@mercuryworkshop/scramjet/bundled";
-import { directTest, type Test } from "../testcommon.ts";
+import { nodeTest, type NativeTest } from "../testkit.ts";
 
 function createRewriteContext() {
 	const context = {
@@ -31,7 +31,7 @@ function cssRewriteTest(props: {
 	fn: (url: string, encoded: string) => [string, string];
 }) {
 	const { name, url, fn } = props;
-	return directTest({
+	return nodeTest({
 		name,
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -51,9 +51,9 @@ function cssRewriteMultiTest(props: {
 	name: string;
 	input: string;
 	urls: string[];
-}): Test {
+}): NativeTest {
 	const { name, input, urls } = props;
-	return directTest({
+	return nodeTest({
 		name,
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -77,7 +77,7 @@ function cssUnrewriteTest(props: {
 	fn: (url: string, encoded: string) => [string, string];
 }) {
 	const { name, url, fn } = props;
-	return directTest({
+	return nodeTest({
 		name,
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -238,7 +238,7 @@ export default [
 		url: "/late.css",
 		fn: (url, encoded) => [`@import "${url}" ;`, `@import "${encoded}" ;`],
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-data-url-prefixed-not-corrupted",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -253,7 +253,7 @@ export default [
 			);
 		},
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-quoted-data-url-close-paren-rewritten",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -266,7 +266,7 @@ export default [
 			);
 		},
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-multiple-quoted-url-same-rule-not-overmatched",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -279,7 +279,7 @@ export default [
 			);
 		},
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-about-url-left-unproxied",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -303,7 +303,7 @@ export default [
 			`b{background:uRl("${encoded}")}`,
 		],
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-block-comment-should-not-rewrite-url",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -320,7 +320,7 @@ export default [
 			`body{background:url(${encoded})}`,
 		],
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-empty-url-call-unchanged",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -328,7 +328,7 @@ export default [
 			assertEqual(rewriteCss(input, context, meta), input);
 		},
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-empty-url-var-fallback-unchanged",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -336,7 +336,7 @@ export default [
 			assertEqual(rewriteCss(input, context, meta), input);
 		},
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-empty-quoted-url-calls-unchanged",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();
@@ -373,7 +373,7 @@ export default [
 			`b{background:URL("${url}")}`,
 		],
 	}),
-	directTest({
+	nodeTest({
 		name: "rewriter-css-unrewrite-regression-import-layer-supports-media",
 		fn: ({ assertEqual }) => {
 			const { context, meta } = createRewriteContext();

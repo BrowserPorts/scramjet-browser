@@ -1,7 +1,8 @@
-import { playwrightTest } from "../../testcommon.ts";
+import { pageTest } from "../../testkit.ts";
 
 export default [
-	playwrightTest({
+	pageTest({
+		remoteNetwork: true,
 		name: "site-youtube-frontpage",
 		fn: async ({ frame, navigate }) => {
 			await navigate("https://www.youtube.com/");
@@ -12,7 +13,8 @@ export default [
 		},
 	}),
 
-	playwrightTest({
+	pageTest({
+		remoteNetwork: true,
 		name: "site-youtube-search",
 		fn: async ({ frame, navigate }) => {
 			await navigate("https://www.youtube.com/results?search_query=bad+apple");

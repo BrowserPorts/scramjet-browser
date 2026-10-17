@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // addEventListener is proxied so that handlers can be unwrapped and event
 // objects fixed up. The listener registry has to keep the spec's identity
@@ -10,7 +10,7 @@ import { basicTest } from "../../testcommon.ts";
 // analytics beacons, double network requests.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "events-once-and-signal",
 		js: `
 			const t = document.createElement("div");
@@ -28,7 +28,7 @@ export default [
 			assertEqual(aborted, 1, "an aborted signal removes the listener");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-remove",
 		js: `
 			const t = document.createElement("div");
@@ -50,7 +50,7 @@ export default [
 			assertEqual(n, 1, "capture removal via options");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-capture-and-bubble-are-distinct",
 		js: `
 			const t = document.createElement("div");
@@ -62,7 +62,7 @@ export default [
 			assertEqual(n, 2, "capture and bubble are separate registrations");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-handleevent-object",
 		js: `
 			const t = document.createElement("div");
@@ -77,7 +77,7 @@ export default [
 			assertEqual(n, 1, "and removable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-propagation",
 		js: `
 			const outer = document.createElement("div");
@@ -105,7 +105,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-stop-and-cancel",
 		js: `
 			const t = document.createElement("div");
@@ -121,7 +121,7 @@ export default [
 			assertEqual(ev.defaultPrevented, true, "defaultPrevented");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-handler-property",
 		js: `
 			const t = document.createElement("div");
@@ -136,7 +136,7 @@ export default [
 			assertEqual(n, 10, "nulling onclick removes it");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "events-unhandledrejection",
 		autoPass: false,
 		js: `
@@ -152,7 +152,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: a second registration of the same function is not
 		// recognised as a duplicate, so the handler runs twice.
 		name: "events-duplicate-listener-element",
@@ -166,7 +166,7 @@ export default [
 			assertEqual(n, 1, "duplicate listeners must be deduped");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same on the global targets, which is where idempotent
 		// init code usually registers.
 		name: "events-duplicate-listener-global",
@@ -187,7 +187,7 @@ export default [
 			assertEqual(d, 1, "document duplicate listeners must be deduped");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: also with an options bag, which is the common modern form.
 		name: "events-duplicate-listener-options",
 		js: `

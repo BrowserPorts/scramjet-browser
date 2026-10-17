@@ -1,7 +1,7 @@
-import { basicTest, multiFrameTest } from "../testcommon.ts";
+import { scriptTest, frameTreeTest } from "../testkit.ts";
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "postmessage-fake-target-sanity",
 		js: `
             const messages = [];
@@ -13,7 +13,7 @@ export default [
             assertEqual(messages[0], "test", "message should be correct");
         `,
 	}),
-	basicTest({
+	scriptTest({
 		name: "postmessage-sanity",
 		js: `
             addEventListener("message", (event) => {
@@ -24,7 +24,7 @@ export default [
         `,
 		autoPass: false,
 	}),
-	basicTest({
+	scriptTest({
 		name: "postmessage-event-meta-sanity",
 		js: `
             addEventListener("message", (event) => {
@@ -37,7 +37,7 @@ export default [
         `,
 		autoPass: false,
 	}),
-	basicTest({
+	scriptTest({
 		name: "postmessage-self-sanity",
 		js: `
             addEventListener("message", (event) => {
@@ -48,7 +48,7 @@ export default [
         `,
 		autoPass: false,
 	}),
-	basicTest({
+	scriptTest({
 		name: "postmessage-self-event-meta-sanity",
 		js: `
             addEventListener("message", (event) => {
@@ -61,7 +61,7 @@ export default [
         `,
 		autoPass: false,
 	}),
-	multiFrameTest({
+	frameTreeTest({
 		name: "postmessage-multi-frame-sanity",
 		root: {
 			js: () => `
@@ -80,7 +80,7 @@ export default [
 			],
 		},
 	}),
-	multiFrameTest({
+	frameTreeTest({
 		name: "postmessage-multi-frame-sanity-reverse",
 		root: {
 			js: () => `
@@ -101,7 +101,7 @@ export default [
 			],
 		},
 	}),
-	multiFrameTest({
+	frameTreeTest({
 		name: "postmessage-multi-frame-sanity-cross",
 		root: {
 			js: () => `
@@ -112,7 +112,7 @@ export default [
             `,
 			subframes: [
 				{
-					originid: "cross",
+					originId: "cross",
 					id: "child",
 					js: () => `
                         parent.postMessage("test", "*");
@@ -121,7 +121,7 @@ export default [
 			],
 		},
 	}),
-	multiFrameTest({
+	frameTreeTest({
 		name: "postmessage-multi-frame-sanity-reverse-cross",
 		root: {
 			js: () => `
@@ -131,7 +131,7 @@ export default [
             `,
 			subframes: [
 				{
-					originid: "cross",
+					originId: "cross",
 					id: "child",
 					js: () => `
                         addEventListener("message", (event) => {

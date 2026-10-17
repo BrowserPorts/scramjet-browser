@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // URL-bearing element properties are reflected: the attribute keeps the page's
 // literal value while the IDL property resolves against the *real* document
@@ -6,7 +6,7 @@ import { basicTest } from "../../testcommon.ts";
 // CORS checks, cache keys and `new URL(el.href)` comparisons.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "elurls-img-src",
 		js: `
 			const img = document.createElement("img");
@@ -22,7 +22,7 @@ export default [
 			assertEqual(img.getAttribute("src"), "https://example.com/abs.png", "absolute src attribute");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-anchor-components",
 		js: `
 			const a = document.createElement("a");
@@ -43,7 +43,7 @@ export default [
 			assertEqual(a.href, location.origin + "/p/q?x=1#g", "setting protocol");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-other-elements",
 		js: `
 			const f = document.createElement("form");
@@ -76,7 +76,7 @@ export default [
 			assertEqual(obj.data, location.origin + "/o.bin", "object.data");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-srcset",
 		js: `
 			const img = document.createElement("img");
@@ -86,7 +86,7 @@ export default [
 			assert(!img.srcset.includes("/~/sj/"), "no proxy URL in srcset");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-parsed-from-html",
 		js: `
 			const d = document.createElement("div");
@@ -97,7 +97,7 @@ export default [
 			assertEqual(d.querySelector("form").action, location.origin + "/z", "parsed form action");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-relative-forms",
 		js: `
 			const a = document.createElement("a");
@@ -113,7 +113,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-request-response",
 		js: `
 			assertEqual(new Request("/api").url, location.origin + "/api", "Request.url");
@@ -125,7 +125,7 @@ export default [
 			assert(!r.url.includes("/~/sj/"), "no proxy URL in Response.url");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-xhr-response-url",
 		js: `
 			const xhr = new XMLHttpRequest();
@@ -139,7 +139,7 @@ export default [
 			assertEqual(xhr.status, 200, "status");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-websocket-url",
 		js: `
 			const ws = new WebSocket("ws://localhost:1/nope");
@@ -149,7 +149,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: HTMLAnchorElement's stringifier is not proxied, so
 		// `String(a)` / `a + ""` / `a.toString()` return the proxy URL even
 		// though `a.href` is correct. Anchor stringification is common in
@@ -165,7 +165,7 @@ export default [
 			assertEqual(new URL(a).href, a.href, "usable as a URL argument");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: these reflected URL properties are not proxied at all,
 		// so they resolve the page's relative URL against the *proxy* document
 		// URL. video.poster hands back the whole /~/sj/… URL; the rest come back
@@ -189,7 +189,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: writing a URL *component* of an anchor goes through the
 		// unproxied setter. `search` is swallowed entirely and `pathname`/`host`
 		// rewrite href into the raw proxy URL. Stripping tracking parameters with
@@ -208,7 +208,7 @@ export default [
 			assertEqual(a.href, "http://example.com:" + location.port + "/p/q?x=1#f", "setting host");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: currentSrc reports the proxy URL. This was fixed in
 		// "fix currentsrc leaking proxy url" (#183, c8f0e3f6), which is not in
 		// this branch's history - regression test for that fix.
@@ -225,7 +225,7 @@ export default [
 				"currentSrc: " + img.currentSrc);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-base-href-resolution",
 		js: `
 			const b = document.createElement("base");
@@ -241,7 +241,7 @@ export default [
 			assertEqual(new URL("x", document.baseURI).href, location.origin + "/basedir/x", "new URL against baseURI");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "elurls-picture-source-selection",
 		js: `
 			const p = document.createElement("picture");
@@ -257,7 +257,7 @@ export default [
 				"the <source> candidate was selected over the fallback: " + img.currentSrc);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: SVGAnimatedString.baseVal is absolutized instead of
 		// returning the author's string. SVG sprite code reads use.href.baseVal to
 		// find or swap the referenced symbol.

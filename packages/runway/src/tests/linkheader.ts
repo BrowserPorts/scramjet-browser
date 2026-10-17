@@ -1,8 +1,20 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 
+/**
+ * `Link` response-header behaviour.
+ *
+ * The in-document assertions report through the harness helpers (`pass`/`fail`),
+ * which carry the attempt nonce. Calling the raw `__testPass`/`__testFail`
+ * bindings with a bare string reports a result the host cannot attribute to this
+ * attempt, so the verdict is discarded as an invalid record no matter what the
+ * proxy actually did with the header.
+ */
 export default [
-	serverTest({
+	originTest({
 		name: "linkheader-preload",
+		// The preload is observed host-side: the fixture serving the preloaded
+		// script is the result, and the document never reports one.
+		verdict: "host",
 		start: async (server, port, { pass, fail }) => {
 			server.on("request", (req, res) => {
 				if (req.url === "/") {
@@ -23,8 +35,10 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "linkheader-multiple-preloads",
+		// Both preloads are counted host-side; the document reports nothing.
+		verdict: "host",
 		start: async (server, port, { pass, fail }) => {
 			const loaded = new Set<string>();
 			server.on("request", (req, res) => {
@@ -56,7 +70,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "linkheader-next-prev",
 		start: async (server, port) => {
 			const link = `<http://localhost:${port}/page2>; rel="next", <http://localhost:${port}/page0>; rel="prev"`;
@@ -71,9 +85,9 @@ export default [
                             let next = res.headers.get("Link");
                             const expected = '${link}';
                             if (next === expected) {
-                                __testPass("next link header is correct");
+                                pass("next link header is correct");
                             } else {
-                                __testFail("next link header is incorrect", { actual: next, expected: expected });
+                                fail("next link header is incorrect", { actual: next, expected: expected });
                             }
                         });
                     </script>
@@ -90,7 +104,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "linkheader-next-prev-xhr",
 		start: async (server, port) => {
 			const link = `<http://localhost:${port}/page2>; rel="next", <http://localhost:${port}/page0>; rel="prev"`;
@@ -107,9 +121,9 @@ export default [
                             let next = xhr.getResponseHeader("Link");
                             const expected = '${link}';
                             if (next === expected) {
-                                __testPass("next link header is correct (xhr)");
+                                pass("next link header is correct (xhr)");
                             } else {
-                                __testFail("next link header is incorrect (xhr)", { actual: next, expected: expected });
+                                fail("next link header is incorrect (xhr)", { actual: next, expected: expected });
                             }
                         };
                         xhr.send();

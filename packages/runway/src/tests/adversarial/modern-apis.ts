@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // Newer platform APIs that sites reach for directly or feature-detect on:
 // streams (every incremental-response library), CookieStore (the async cookie
@@ -6,7 +6,7 @@ import { basicTest } from "../../testcommon.ts";
 // storage manager, AbortSignal statics and WebCrypto operations.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "modern-streams-response",
 		js: `
 			const rs = new ReadableStream({
@@ -24,7 +24,7 @@ export default [
 			assertEqual(await new Response(piped).text(), "abc", "pipeThrough a TransformStream");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-streams-decoding",
 		js: `
 			const reader = new Response("decoded-text").body.pipeThrough(new TextDecoderStream()).getReader();
@@ -36,7 +36,7 @@ export default [
 			assertEqual(new TextDecoder().decode(chunks[0]), "piped", "pipeTo a WritableStream");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-streams-request-body",
 		js: `
 			const rs = new ReadableStream({
@@ -48,7 +48,7 @@ export default [
 			assertEqual(await req.text(), "reqstream", "a streamed request body is readable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-cookiestore",
 		js: `
 			if (typeof cookieStore === "undefined") { pass(); return; }
@@ -67,7 +67,7 @@ export default [
 			assert(!document.cookie.includes("csname"), "cookieStore.delete: " + document.cookie);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-custom-element-upgrade",
 		js: `
 			// upgrading an element that was parsed before its definition existed
@@ -90,7 +90,7 @@ export default [
 			assert(el.matches(":defined"), ":defined matches after the upgrade");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-permissions-surface",
 		js: `
 			assertEqual(typeof Notification, "function", "Notification");
@@ -103,7 +103,7 @@ export default [
 			assertEqual(typeof navigator.clipboard, "object", "navigator.clipboard");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-media-surface",
 		js: `
 			assertEqual(typeof RTCPeerConnection, "function", "RTCPeerConnection");
@@ -117,7 +117,7 @@ export default [
 			assertEqual(typeof v.play, "function", "play()");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-storage-manager-and-locks",
 		js: `
 			assertEqual(typeof navigator.storage, "object", "navigator.storage");
@@ -127,7 +127,7 @@ export default [
 				"locks.request runs the callback");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-abortsignal-statics",
 		js: `
 			assertEqual(typeof AbortSignal.timeout, "function", "AbortSignal.timeout");
@@ -143,7 +143,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "modern-webcrypto-operations",
 		js: `
 			const data = new TextEncoder().encode("digest-me");

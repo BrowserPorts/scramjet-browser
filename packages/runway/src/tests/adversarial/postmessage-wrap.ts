@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // The rewriter rewrites *every* `.postMessage` member expression to
 // `$scramjet$wrappostmessage(obj).postMessage`, and that helper returns a
@@ -13,7 +13,7 @@ import { basicTest } from "../../testcommon.ts";
 // sites.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "pmwrap-call-plain-object",
 		js: `
 			const o = { postMessage(x) { return this === o ? x * 2 : "wrong this"; } };
@@ -23,7 +23,7 @@ export default [
 			assertEqual(nested.inner.postMessage(21), 42, "nested object");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "pmwrap-non-function-property",
 		js: `
 			const o = { postMessage: 5 };
@@ -33,7 +33,7 @@ export default [
 			assertEqual(null?.postMessage, undefined, "optional chain on null");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "pmwrap-messagechannel",
 		js: `
 			const mc = new MessageChannel();
@@ -42,7 +42,7 @@ export default [
 			assertDeepEqual(await received, { hello: "world" }, "MessageChannel round trip");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "pmwrap-worker-transfer",
 		autoPass: false,
 		js: `
@@ -66,7 +66,7 @@ export default [
 	// ------------------------------------------------------------------
 	// where the wrapper becomes observable
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: a fresh wrapper object with a fresh bound function is
 		// built on every property read.
 		name: "pmwrap-identity",
@@ -77,7 +77,7 @@ export default [
 			assertEqual(mc.port1.postMessage, mc.port1.postMessage, "MessagePort.postMessage identity");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the wrapper hands back a bound function, so name and
 		// length are the bound function's.
 		name: "pmwrap-function-shape",
@@ -87,7 +87,7 @@ export default [
 			assertEqual(o.postMessage.length, 2, "length");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: wrappostmessage reads obj.postMessage twice - once for
 		// the typeof guard and once for the bind - so a page-level accessor or a
 		// Proxy get trap fires twice.
@@ -99,7 +99,7 @@ export default [
 			assertEqual(gets, 1, "the postMessage getter must be read once");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the assignment target is the throwaway wrapper, so
 		// monkeypatching postMessage silently does nothing.
 		name: "pmwrap-assignment",
@@ -113,7 +113,7 @@ export default [
 			assertEqual(o2.postMessage(), "wrapped:a", "wrapping the original must stick");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: deletes a property of the throwaway wrapper.
 		name: "pmwrap-delete",
 		js: `
@@ -122,7 +122,7 @@ export default [
 			assertEqual("postMessage" in o, false, "delete must remove postMessage");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the wrapper binds to whatever the member expression's
 		// object was - here the prototype - so the later .call receiver is
 		// ignored and the call fails with an illegal invocation. Libraries reach
@@ -136,7 +136,7 @@ export default [
 			assertEqual(await received, "viaproto", "MessagePort.prototype.postMessage.call(port, …)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: detaching a method loses its receiver in real JS. The
 		// wrapper pre-binds it, so scramjet keeps working where the web throws -
 		// code that relies on the TypeError (feature detection, `this` guards)

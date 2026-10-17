@@ -1,4 +1,4 @@
-import { basicTest, htmlTest } from "../testcommon.ts";
+import { scriptTest, documentTest } from "../testkit.ts";
 
 // Coverage for packages/core/src/client/shared/eval.ts (the direct-eval
 // rewritefn and the indirect-eval proxy) plus the rewriter's `eval` call-site
@@ -12,33 +12,33 @@ import { basicTest, htmlTest } from "../testcommon.ts";
 //                 the bare harness and must agree.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "eval-direct-sanity",
 		autoPass: false,
 		js: `
     	eval("pass()");
     `,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-sanity",
 		autoPass: false,
 		js: `
 	    (0,eval)("pass()");
 	  `,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-rewritten",
 		js: `
     	eval("checkglobal(top)");
     `,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-rewritten",
 		js: `
 		  (0,eval)("checkglobal(top)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-is-direct",
 		js: `
 			window.local = 231;
@@ -49,7 +49,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-strict",
 		js: `
 			  function testStrictEval() {
@@ -76,7 +76,7 @@ export default [
 	// has to hand back the *same* object and it has to keep looking like the
 	// native eval. Fingerprinting scripts check all of this.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-identity-stable",
 		js: `
 			assertEqual((0,eval), (0,eval), "indirect eval must not be regenerated per access");
@@ -84,7 +84,7 @@ export default [
 			assertEqual(window.eval, (0,eval), "window.eval and (0,eval) must be the same object");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-identity-all-views",
 		js: `
 			// every one of these resolves through a different rewrite path
@@ -103,7 +103,7 @@ export default [
 			assertEqual(views.size, 1, "all views of eval must be the same object");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-function-shape",
 		js: `
 			assertEqual(typeof window.eval, "function", "typeof");
@@ -124,7 +124,7 @@ export default [
 			assertEqual(d.configurable, true, "name must be configurable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-not-a-constructor",
 		js: `
 			let threw = false;
@@ -132,7 +132,7 @@ export default [
 			assert(threw, "new eval() must throw a TypeError");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-call-apply-bind",
 		js: `
 			assertEqual((0,eval).call(undefined, "1+1"), 2, "Function.prototype.call");
@@ -142,7 +142,7 @@ export default [
 			assertEqual(["1+1"].map(window.eval)[0], 2, "used as a higher-order callback");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-tostring-native",
 		js: `
 			const s = String(window.eval);
@@ -153,7 +153,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// V8 renders Function.prototype.toString of a *proxied* function
 		// without the target's name, so the indirect eval has to be registered
 		// in box.unproxy for the toString trap in shared/sourcemaps.ts to swap
@@ -176,7 +176,7 @@ export default [
 	// Both the rewritefn and the proxy's apply trap have to bail out early
 	// without coercing, and they must not disturb the completion value.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-nonstring-passthrough",
 		js: `
 			const obj = {};
@@ -195,7 +195,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-nonstring-not-coerced",
 		js: `
 			const strObj = new String("1+1");
@@ -209,7 +209,7 @@ export default [
 			assertEqual((0,eval)(tricky), tricky, "indirect eval must not coerce");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-empty-completion-values",
 		js: `
 			// a rewriter that prepends anything (a sourcemap registration, say)
@@ -224,7 +224,7 @@ export default [
 			assertEqual((0,eval)("/* nothing */"), undefined, "indirect, comment only");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-directive-completion-value",
 		js: `
 			// a lone directive prologue is also an expression statement, so its
@@ -233,7 +233,7 @@ export default [
 			assertEqual((0,eval)("'use strict'"), "use strict", "indirect lone directive");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-completion-values",
 		js: `
 			assertEqual(eval("1;2;"), 2, "last expression statement wins");
@@ -250,7 +250,7 @@ export default [
 			assertEqual(eval("1+1\\n//# sourceURL=eval-test.js"), 2, "trailing sourceURL comment");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-extra-and-spread-args",
 		js: `
 			assertEqual(eval("1+1", "2+2"), 2, "extra arguments are ignored");
@@ -259,7 +259,7 @@ export default [
 			assertEqual((0,eval)("1+1", "2+2"), 2, "indirect, extra arguments ignored");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-debugger-statement",
 		js: `
 			// the rewriter deletes debugger statements outright; that must not
@@ -276,7 +276,7 @@ export default [
 	// bare, non-optional identifier, and it derives the argument span from the
 	// callee's end offset. Both of those are easy to get wrong.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the injected rewritefn call is placed at
 		// `callee.span.end + 1`, so any whitespace between `eval` and `(`
 		// leaves it outside the argument list: `eval $scramjet$rewrite(("x"))`.
@@ -288,7 +288,7 @@ export default [
 				("1+1"), 2, "newline between callee and argument list");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same offset arithmetic, except here the rewritefn
 		// lands *inside* the comment: `eval/$scramjet$rewrite(*c*/("x"))`.
 		name: "eval-callee-comment",
@@ -296,7 +296,7 @@ export default [
 			assertEqual(eval/* hi */("1+1"), 2, "comment between callee and argument list");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: parentheses around the callee are transparent, so this
 		// is still a direct eval per spec, but the rewriter sees a plain
 		// identifier reference and wraps it into the indirect eval instead.
@@ -311,7 +311,7 @@ export default [
 			delete window.pv;
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-optional-call-is-indirect",
 		js: `
 			// eval?.() is an indirect eval, so it must not see the block scope.
@@ -323,13 +323,13 @@ export default [
 			delete window.ov;
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-optional-call-rewritten",
 		js: `
 			eval?.("checkglobal(top)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-indirect-forms-rewritten",
 		js: `
 			// every way of reaching eval without a direct call still has to
@@ -355,7 +355,7 @@ export default [
 			fromArray("checkglobal(top)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-nested-forms-rewritten",
 		js: `
 			// the rewritefn and the wrapfn both have to be reachable from inside
@@ -368,7 +368,7 @@ export default [
 			eval("eval(\\"eval('checkglobal(top)')\\")");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-escaped-identifier-rewritten",
 		js: `
 			// unicode escapes in identifiers/property names are a classic way to
@@ -379,7 +379,7 @@ export default [
 			eval('window["' + bs + 'u0065val"]("checkglobal(top)")');
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-function-ctor-returns-eval",
 		js: `
 			new Function("return eval")()("checkglobal(top)");
@@ -387,7 +387,7 @@ export default [
 			eval("Function('checkglobal(top)')()");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: Reflect.get bypasses the $scramjet__eval accessor and
 		// hands out the realm's real eval, whose output is never rewritten.
 		name: "eval-reflect-get-leak",
@@ -395,7 +395,7 @@ export default [
 			Reflect.get(window, "eval")("checkglobal(top)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same leak through a property descriptor.
 		name: "eval-gopd-leak",
 		js: `
@@ -410,14 +410,14 @@ export default [
 	// code keeps the caller's variable environment, this-binding, new.target,
 	// super-binding and strictness.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-direct-arguments",
 		js: `
 			assertEqual((function () { return eval("arguments[0]"); })(42), 42, "arguments object");
 			assertEqual((function () { return eval("arguments.length"); })(1, 2, 3), 3, "arguments.length");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-this",
 		js: `
 			const obj = { m() { return eval("this"); } };
@@ -428,7 +428,7 @@ export default [
 			assertEqual((function () { return eval("this"); }).call(obj), obj, "explicit this");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-new-target",
 		js: `
 			function F() { this.nt = eval("new.target"); }
@@ -438,7 +438,7 @@ export default [
 			assertEqual(plain.nt, undefined, "new.target is undefined for a plain call");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-super",
 		js: `
 			class B { m() { return 1; } }
@@ -449,7 +449,7 @@ export default [
 			assertEqual(new D2().x, 7, "super() callable from direct eval");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-function-hoisting",
 		js: `
 			assertEqual((function () {
@@ -458,7 +458,7 @@ export default [
 			})(), 7, "function declarations hoist into the calling function scope");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-lexical-not-leaked",
 		js: `
 			eval("let lexLet = 1; const lexConst = 2; class LexClass {}");
@@ -468,7 +468,7 @@ export default [
 			assertEqual(eval("class C2 {}; typeof C2"), "function", "class usable within eval");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-tdz",
 		js: `
 			let threw = false;
@@ -479,7 +479,7 @@ export default [
 			assert(threw, "direct eval must observe the TDZ of an enclosing let");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-default-param",
 		js: `
 			function f(a = eval("1+1")) { return a; }
@@ -488,7 +488,7 @@ export default [
 			assertEqual(g(4), 5, "eval sees earlier parameters");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-class-body",
 		js: `
 			class C {
@@ -501,7 +501,7 @@ export default [
 			assertEqual(new C().inst, 6, "instance field initializer");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-strict-var-no-leak",
 		js: `
 			function f() { "use strict"; eval("var sv = 1"); return typeof sv; }
@@ -509,7 +509,7 @@ export default [
 			assertEqual(window.sv, undefined, "and definitely not on the global");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-with-scope",
 		js: `
 			const holder = { wv: 9 };
@@ -519,7 +519,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-direct-closure-mutation",
 		js: `
 			const fn = eval("(function () { return 'from-eval'; })");
@@ -530,7 +530,7 @@ export default [
 			assertEqual(counter, 1, "and actually mutates it");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-nested-scope-chain",
 		js: `
 			let outer = 1;
@@ -548,7 +548,7 @@ export default [
 	// front of "use strict"; if that ever slips, eval'd code silently becomes
 	// sloppy.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-directive-makes-strict",
 		js: `
 			assertEqual(eval("'use strict'; (function () { return this; })()"), undefined, "single-quoted directive");
@@ -558,7 +558,7 @@ export default [
 			assertEqual(eval("  'use strict'; (function () { return this; })()"), undefined, "leading whitespace");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-directive-after-comment",
 		js: `
 			// a comment before the prologue does not stop it being a directive
@@ -566,7 +566,7 @@ export default [
 			assertEqual(eval("// c\\n'use strict'; (function () { return this; })()"), undefined, "line comment first");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-strict-indirect-no-var-leak",
 		js: `
 			(0,eval)("'use strict'; var strictIndirect = 1");
@@ -576,7 +576,7 @@ export default [
 			delete window.sloppyIndirect;
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-strict-undeclared-assign-throws",
 		js: `
 			let threw = false;
@@ -585,7 +585,7 @@ export default [
 			assertEqual(window.undeclaredThing, undefined, "and must not create the global");
 		`,
 	}),
-	htmlTest({
+	documentTest({
 		name: "eval-module-context",
 		html: `<!DOCTYPE html><html><body><script type="module">
 			runTest(async () => {
@@ -609,7 +609,7 @@ export default [
 	// A rewriter that fails to parse must not swallow the failure, change the
 	// error type, or hand the original source through unrewritten.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-syntax-errors",
 		js: `
 			const cases = [
@@ -631,7 +631,7 @@ export default [
 			}
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-runtime-errors",
 		js: `
 			let e1;
@@ -655,7 +655,7 @@ export default [
 	// ------------------------------------------------------------------
 	// rewriting applied to the eval'd source itself
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-location-read",
 		js: `
 			assertEqual(eval("location.href"), location.href, "direct eval location.href");
@@ -666,7 +666,7 @@ export default [
 			assertEqual(eval("String(location)"), String(location), "stringified location");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-location-write",
 		js: `
 			eval("location.hash = 'direct'");
@@ -676,7 +676,7 @@ export default [
 			eval("location.hash = ''");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-this-and-globalthis",
 		js: `
 			assertEqual((0,eval)("this"), window, "indirect eval this is the global");
@@ -685,7 +685,7 @@ export default [
 			assertEqual(eval("typeof globalThis.eval"), "function", "so is globalThis.eval");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-function-tostring-no-leak",
 		js: `
 			// a function defined inside eval must not stringify back to
@@ -696,7 +696,7 @@ export default [
 			assert(s.includes("typeof top"), "eval'd function source must round-trip: " + s);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-async-and-generators",
 		js: `
 			const p = (0,eval)("(async () => 1)()");
@@ -707,7 +707,7 @@ export default [
 			assertDeepEqual([...g], [1, 2], "generator created inside eval");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-dynamic-import",
 		js: `
 			const p = eval("import('./eval-nonexistent-module.js')");
@@ -726,7 +726,7 @@ export default [
 	// $scramjet__eval accessor on Object.prototype - including accesses on
 	// objects that have nothing to do with the global eval.
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-plain-object-property",
 		js: `
 			const o = { eval: (s) => s + "!" };
@@ -745,7 +745,7 @@ export default [
 			assertEqual(Object.keys(o2).join(), "eval", "and stores under the real key");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: `delete o.eval` is rewritten to
 		// `delete o.$scramjet__eval`, which deletes nothing and reports success.
 		name: "eval-delete-property",
@@ -755,7 +755,7 @@ export default [
 			assertEqual("eval" in o, false, "delete o.eval must actually remove the property");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: a direct call is rewritten to
 		// `eval($scramjet$rewrite(...))` without checking whether `eval` still
 		// refers to the global, so a shadowing binding receives rewritten
@@ -769,7 +769,7 @@ export default [
 			assertEqual(got, "location = 1", "and it must receive the source unmodified");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: wrapfn compares the incoming value against
 		// `self.eval`, which is whatever the page last assigned, so an
 		// overwritten window.eval still reads back as the indirect eval proxy.
@@ -788,14 +788,14 @@ export default [
 	// ------------------------------------------------------------------
 	// TrustedScript
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-trustedscript-direct",
 		js: `
 			const policy = window.trustedTypes.createPolicy("eval-direct", { createScript: (s) => s });
 			eval(policy.createScript("checkglobal(top)"));
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-trustedscript-indirect",
 		js: `
 			const policy = window.trustedTypes.createPolicy("eval-indirect", { createScript: (s) => s });
@@ -806,7 +806,7 @@ export default [
 	// ------------------------------------------------------------------
 	// other realms and other global scopes
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "eval-iframe-realm",
 		js: `
 			const f = document.createElement("iframe");
@@ -814,7 +814,7 @@ export default [
 			f.contentWindow.eval("checkglobal(top)");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "eval-worker",
 		autoPass: false,
 		js: `

@@ -1,8 +1,20 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 
+/**
+ * `<meta http-equiv="refresh">` rewriting.
+ *
+ * The navigation cases are settled host-side by the fixture's `pass` hook; the
+ * time-only case is settled in the document and therefore reports through the
+ * harness helpers, which attach the attempt nonce. The raw bindings do not.
+ */
 function refreshNavigationServerTest(props: { name: string; content: string }) {
-	return serverTest({
+	return originTest({
 		name: props.name,
+		// The refresh navigation is observed by the fixture, not reported by the
+		// document: the origin server seeing the request *is* the result. A page
+		// verdict cannot be satisfied here, and the attempt would only ever time out
+		// waiting for a document that never reports.
+		verdict: "host",
 		start: async (server, _port, { pass }) => {
 			let seenRefreshRequest = false;
 			server.on("request", (req, res) => {
@@ -55,7 +67,7 @@ export default [
 		name: "rewriter-refresh-quoted-url",
 		content: "0; URL='/next/page.html'",
 	}),
-	serverTest({
+	originTest({
 		name: "rewriter-refresh-time-only",
 		start: async (server) => {
 			server.on("request", (req, res) => {
@@ -72,9 +84,9 @@ export default [
 									const meta = document.querySelector('meta[http-equiv="refresh" i]');
 									const actual = meta?.getAttribute("content") || "";
 									if (actual === "300") {
-										__testPass("time-only refresh unchanged");
+										pass("time-only refresh unchanged");
 									} else {
-										__testFail("time-only refresh should be unchanged", { actual, expected: "300" });
+										fail("time-only refresh should be unchanged", { actual, expected: "300" });
 									}
 								</script>
 							</body>

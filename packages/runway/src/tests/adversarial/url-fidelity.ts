@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // Every URL a page requests is encoded into the proxy's own URL and decoded
 // again on the way out, so the origin has to receive exactly what the page asked
@@ -9,7 +9,7 @@ import { serverTest } from "../../testcommon.ts";
 // The server echoes its raw request line, so these compare byte for byte.
 
 const rawTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

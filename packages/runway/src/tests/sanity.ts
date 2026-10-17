@@ -1,6 +1,6 @@
-import { basicTest } from "../testcommon.ts";
+import { scriptTest } from "../testkit.ts";
 
-export default basicTest({
+export default scriptTest({
 	name: "sanity-01",
 	js: `
 		runTest(async () => {

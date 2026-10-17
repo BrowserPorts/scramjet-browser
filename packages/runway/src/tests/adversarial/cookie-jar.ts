@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // document.cookie is emulated against the proxy's own jar, so a script write
 // has to be reflected in two places: back through document.cookie, and in the
@@ -15,7 +15,7 @@ import { serverTest } from "../../testcommon.ts";
 // after a short delay, and after any intervening request.
 
 const jarTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,

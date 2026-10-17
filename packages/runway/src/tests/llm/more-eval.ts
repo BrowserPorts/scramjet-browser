@@ -1,7 +1,7 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "moreeval-modify-locals",
 		js: `
 			let x = 10;
@@ -9,14 +9,14 @@ export default [
 			assertEqual(x, 20, "eval should modify local variable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "moreeval-return-value",
 		js: `
 			let result = eval("1 + 1");
 			assertEqual(result, 2, "eval should return the result of the expression");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "moreeval-nested",
 		js: `
 			let x = 1;
@@ -24,7 +24,7 @@ export default [
 			assertEqual(x, 2, "nested eval should modify local variable");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "moreeval-indirect-var-leak",
 		js: `
 			(0,eval)("var leakedGlobal = 'yes'");
@@ -32,7 +32,7 @@ export default [
 			delete window.leakedGlobal;
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "moreeval-direct-var-scope",
 		js: `
 			eval("var leakedLocal = 'yes'");

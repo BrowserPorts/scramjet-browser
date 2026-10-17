@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // `location`, `top`, `parent` and `eval` are the rewriter's UNSAFE_GLOBALS, so
 // *every* `.location` / `.top` / `.parent` / `.eval` property access in a page
@@ -11,7 +11,7 @@ import { basicTest } from "../../testcommon.ts";
 // invisible to the page.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-read-write-plain-object",
 		js: `
 			const o = { location: "paris", top: 1, parent: 2, eval: 3, safe: 4 };
@@ -30,7 +30,7 @@ export default [
 			assertEqual(JSON.stringify(o), '{"location":"london","top":2,"parent":12,"eval":3,"safe":4}', "JSON round trip");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-dynamic-assignment",
 		js: `
 			const bag = {};
@@ -43,7 +43,7 @@ export default [
 			assertDeepEqual(seen, ["location", "top", "parent", "eval", "safe"], "for-in");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-json-parse",
 		js: `
 			const o = JSON.parse('{"location":"paris","top":1}');
@@ -55,7 +55,7 @@ export default [
 			assertDeepEqual(Object.keys(c), ["location", "top"], "structuredClone keys");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-accessor-invocation-count",
 		js: `
 			// the $scramjet__location getter reads this.location, so a page-level
@@ -72,7 +72,7 @@ export default [
 			assertEqual(lastSet, "s", "setter received the value");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-defineproperty",
 		js: `
 			const o = {};
@@ -83,7 +83,7 @@ export default [
 			assertEqual(o.top, 8, "defined getter");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-optional-chaining",
 		js: `
 			const o = { location: { href: "h" } };
@@ -93,7 +93,7 @@ export default [
 			assertEqual(o.top?.deep, undefined, "missing intermediate");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-class-members",
 		js: `
 			class C {
@@ -110,7 +110,7 @@ export default [
 			assertEqual(c.parent, 1, "getter named parent");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "unsafeprops-host-objects",
 		js: `
 			// DOMRect.top and CSSStyleDeclaration.top are on hot paths for every
@@ -131,7 +131,7 @@ export default [
 	// ------------------------------------------------------------------
 	// where the redirection becomes observable
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the trap sees $scramjet__location instead of location,
 		// and is entered twice (once for the mangled name, once for the read the
 		// accessor performs). Every Proxy-based reactivity system - Vue 3, MobX,
@@ -149,7 +149,7 @@ export default [
 			assertDeepEqual(log, ["other", "location", "top"], "get trap must see the real keys");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same, for writes.
 		name: "unsafeprops-proxy-set-trap-key",
 		js: `
@@ -164,7 +164,7 @@ export default [
 			assertEqual(p.location, 2, "value round trips");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the accessor lives on Object.prototype, so an object
 		// with a null prototype never reaches it - the write lands in an own
 		// property literally called $scramjet__location. Null-prototype
@@ -180,7 +180,7 @@ export default [
 			assertDeepEqual(Object.keys({ ...o }), ["location", "top"], "spread copies the real keys");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: rewritten to `delete o.$scramjet__location`, which
 		// removes nothing and still reports success. `delete node.parent` is a
 		// standard way to break reference cycles before serializing a tree.
@@ -194,7 +194,7 @@ export default [
 			assertDeepEqual(Object.keys(o), ["keep"], "delete must actually remove the properties");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the write is absorbed by the Object.prototype setter,
 		// which reassigns in sloppy mode, so the strict-mode TypeError is lost.
 		name: "unsafeprops-frozen-strict-assign",
@@ -207,7 +207,7 @@ export default [
 			assertEqual(o.location, 1, "value unchanged");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: `super.location` becomes `super.$scramjet__location`,
 		// which finds the Object.prototype accessor; its getter then reads
 		// `this.location`, so the lookup collapses onto the instance's own

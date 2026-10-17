@@ -1,4 +1,4 @@
-import { serverTest, basicTest } from "../../testcommon.ts";
+import { originTest, scriptTest } from "../../testkit.ts";
 import { gzipSync } from "zlib";
 
 // Every request a page makes is re-issued by the proxy, so the whole HTTP
@@ -8,7 +8,7 @@ import { gzipSync } from "zlib";
 // showing up in Headers or getAllResponseHeaders() is a direct leak.
 
 const httpTest = (name: string, js: string) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: true,
 		js,
@@ -435,7 +435,7 @@ export default [
 	// ------------------------------------------------------------------
 	// the fetch object model, no server needed
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "http-headers-object",
 		js: `
 			const h = new Headers({ "X-A": "1" });
@@ -453,7 +453,7 @@ export default [
 			assertEqual(new Headers(h2).get("a"), "2", "copy construction");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "http-response-object",
 		js: `
 			const r = new Response("body", { status: 201, statusText: "Created", headers: { "X-A": "1" } });
@@ -471,7 +471,7 @@ export default [
 				"Response.redirect location: " + rd.headers.get("location"));
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "http-eventsource-url",
 		js: `
 			assertEqual(typeof EventSource, "function", "EventSource exists");

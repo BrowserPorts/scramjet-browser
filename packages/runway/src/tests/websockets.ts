@@ -1,4 +1,4 @@
-import { serverTest } from "../testcommon.ts";
+import { originTest } from "../testkit.ts";
 import { WebSocketServer } from "ws";
 import { Server } from "http";
 
@@ -15,7 +15,7 @@ function echo(server: Server) {
 }
 
 export default [
-	serverTest({
+	originTest({
 		name: "websockets-sanity",
 		autoPass: false,
 		js: `
@@ -38,7 +38,7 @@ export default [
 			echo(server);
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websockets-binary",
 		autoPass: false,
 		js: `
@@ -67,7 +67,7 @@ export default [
 			echo(server);
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websockets-blob",
 		autoPass: false,
 		js: `
@@ -93,7 +93,7 @@ export default [
 			echo(server);
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websockets-origin-header",
 		autoPass: false,
 		js: `
@@ -113,7 +113,7 @@ export default [
 			});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websockets-relative-url",
 		autoPass: false,
 		js: `
@@ -130,7 +130,7 @@ export default [
 			wss.on("connection", () => {});
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websocketstream-sanity",
 		autoPass: false,
 		js: `
@@ -160,7 +160,7 @@ export default [
 			echo(server);
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websocketstream-binary",
 		autoPass: false,
 		js: `
@@ -190,10 +190,10 @@ export default [
 			echo(server);
 		},
 	}),
-	serverTest({
+	originTest({
 		name: "websocketstream-origin-header",
 		autoPass: false,
-		scramjetOnly: true,
+		candidateOnly: true,
 		js: `
 			assert(typeof WebSocketStream === "function", "WebSocketStream should exist");
 

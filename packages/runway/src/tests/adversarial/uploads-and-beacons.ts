@@ -1,4 +1,4 @@
-import { serverTest } from "../../testcommon.ts";
+import { originTest } from "../../testkit.ts";
 
 // Two request paths that only fail loudly in production: file uploads, where
 // the multipart body has to reach the origin byte for byte, and beacons, which
@@ -15,7 +15,7 @@ const uploadTest = (
 		onRequest?: (req: any, body: string, ctx: any) => void;
 	} = {}
 ) =>
-	serverTest({
+	originTest({
 		name,
 		autoPass: opts.autoPass ?? true,
 		js,

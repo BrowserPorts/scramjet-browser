@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // The window/document surface a page reads on startup: readiness and lifecycle
 // events, the Navigation API that modern routers prefer over history, media
@@ -7,7 +7,7 @@ import { basicTest } from "../../testcommon.ts";
 // behaviour long before anything visibly breaks.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "windoc-lifecycle",
 		js: `
 			assertEqual(document.readyState, "loading", "readyState while a body script runs");
@@ -22,7 +22,7 @@ export default [
 				"readyState is complete by load: " + JSON.stringify(seen));
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-lifecycle-listeners",
 		js: `
 			// registering these must not throw; sites attach them for session
@@ -38,7 +38,7 @@ export default [
 			assertEqual(typeof document.hasFocus(), "boolean", "hasFocus");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-document-properties",
 		js: `
 			document.title = "adversarial-title";
@@ -53,7 +53,7 @@ export default [
 			assertEqual(document.ownerDocument, null, "document.ownerDocument");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-window-name",
 		js: `
 			const before = window.name;
@@ -63,7 +63,7 @@ export default [
 			assertEqual(window.name, before, "restored");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-navigation-api",
 		js: `
 			if (typeof navigation === "undefined") { pass(); return; }
@@ -78,7 +78,7 @@ export default [
 			assertEqual(typeof navigation.canGoBack, "boolean", "canGoBack");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-navigation-api-follows-pushstate",
 		js: `
 			if (typeof navigation === "undefined") { pass(); return; }
@@ -88,7 +88,7 @@ export default [
 			assert(!navigation.currentEntry.url.includes("/~/sj/"), "no proxy URL: " + navigation.currentEntry.url);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-matchmedia",
 		js: `
 			const mq = matchMedia("(min-width: 1px)");
@@ -102,7 +102,7 @@ export default [
 			assertEqual(CSS.supports("display: grid"), true, "CSS.supports single-argument form");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-viewport-metrics",
 		js: `
 			assertEqual(typeof window.innerWidth, "number", "innerWidth");
@@ -117,7 +117,7 @@ export default [
 			assertEqual(typeof window.scrollTo, "function", "scrollTo");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-graphics-contexts",
 		js: `
 			const cv = document.createElement("canvas");
@@ -128,7 +128,7 @@ export default [
 			assertEqual(typeof createImageBitmap, "function", "createImageBitmap");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-animations",
 		js: `
 			const d = document.createElement("div");
@@ -141,7 +141,7 @@ export default [
 			await new Promise((r) => requestIdleCallback(r));
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "windoc-structured-clone-complex",
 		js: `
 			const obj = { m: new Map([["a", 1]]), s: new Set([1]), d: new Date(0), r: /x/g, b: new Uint8Array([1]) };

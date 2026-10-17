@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // The location proxy is the single most-read API on the web: every router,
 // analytics tag and CDN loader decomposes it. It has to look like a real
@@ -8,7 +8,7 @@ import { basicTest } from "../../testcommon.ts";
 // avoid asserting an absolute href and check internal consistency instead.
 
 const setForm = (name: string, code: string) =>
-	basicTest({
+	scriptTest({
 		name: `location-set-${name}`,
 		js: `
 			location.hash = "start";
@@ -22,7 +22,7 @@ const setForm = (name: string, code: string) =>
 	});
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "location-components",
 		js: `
 			assertEqual(location.protocol, "http:", "protocol");
@@ -41,7 +41,7 @@ export default [
 			assert(!location.href.includes(":4500"), "href must not expose the harness origin");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-stringify",
 		js: `
 			assertEqual(location.toString(), location.href, "toString");
@@ -52,7 +52,7 @@ export default [
 			assertEqual([location].join(), location.href, "Array.join coercion");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-brand",
 		js: `
 			assertEqual(Object.prototype.toString.call(location), "[object Location]", "brand check");
@@ -66,7 +66,7 @@ export default [
 			assert("href" in location, "href in location");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-descriptors",
 		js: `
 			assert(Object.prototype.hasOwnProperty.call(location, "href"), "href is an own property");
@@ -78,7 +78,7 @@ export default [
 			assertEqual(JSON.parse(JSON.stringify(location)).href, location.href, "href survives a JSON round trip");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: ancestorOrigins is missing from the proxy entirely.
 		name: "location-ancestororigins",
 		js: `
@@ -87,7 +87,7 @@ export default [
 			assertEqual(typeof location.ancestorOrigins.length, "number", "it has a length");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the proxy carries an own `constructor` property that a
 		// real Location does not - a one-line fingerprint.
 		name: "location-own-property-names",
@@ -100,7 +100,7 @@ export default [
 			);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-identity",
 		js: `
 			assertEqual(window.location, location, "window.location === location");
@@ -110,7 +110,7 @@ export default [
 			assertEqual(globalThis.location, location, "globalThis.location");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-url-resolution",
 		js: `
 			assertEqual(new URL("/x", location).href, location.origin + "/x", "location as a URL base");
@@ -122,7 +122,7 @@ export default [
 			assertEqual(u.protocol + "//" + u.host, location.origin, "decomposition agrees");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-document-urls",
 		js: `
 			assertEqual(document.URL, location.href, "document.URL");
@@ -132,7 +132,7 @@ export default [
 			assertEqual(self.origin, location.origin, "self.origin");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-resource-urls",
 		js: `
 			assertEqual(document.querySelector("script").src, location.origin + "/script.js",
@@ -147,7 +147,7 @@ export default [
 	// ------------------------------------------------------------------
 	// mutation
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "location-hash-roundtrip",
 		js: `
 			location.hash = "alpha";
@@ -162,7 +162,7 @@ export default [
 			assertEqual(location.hash, "", "cleared");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-hashchange-event",
 		js: `
 			const before = location.href;
@@ -190,7 +190,7 @@ export default [
 	// ------------------------------------------------------------------
 	// history - the router path
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		name: "location-history-pushstate",
 		js: `
 			history.pushState({ a: 1 }, "", "/newpath?q=1#h");
@@ -206,7 +206,7 @@ export default [
 			assertDeepEqual(history.state, { b: 2 }, "replaced state");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-history-pushstate-url-forms",
 		js: `
 			history.pushState(null, "", location.origin + "/abs?x=2");
@@ -220,7 +220,7 @@ export default [
 			assertEqual(location.href, location.origin + "/", "back to the root");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-history-popstate",
 		js: `
 			history.pushState({ step: 1 }, "", "/step1");
@@ -235,7 +235,7 @@ export default [
 			assertDeepEqual(history.state, { step: 1 }, "history.state follows too");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "location-search-params",
 		js: `
 			history.replaceState(null, "", "/p?a=1&b=two");

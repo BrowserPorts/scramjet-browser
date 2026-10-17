@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // The Cache API is namespaced per proxied origin the same way IndexedDB and
 // localStorage are, so the same un-namespacing duty applies - and it has an
@@ -10,7 +10,7 @@ import { basicTest } from "../../testcommon.ts";
 // `caches.keys().then(ns => ns.filter(n => n !== CURRENT).map(caches.delete))`.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "cachestorage-put-and-match",
 		js: `
 			const c = await caches.open("adversarial-cache");
@@ -27,7 +27,7 @@ export default [
 			assertEqual(await caches.has("adversarial-cache"), false, "caches.delete");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "cachestorage-put-fetched-response",
 		js: `
 			const c = await caches.open("adversarial-cache2");
@@ -42,7 +42,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: caches.keys() reports the namespaced name
 		// ("http://site@name" instead of "name"). The standard activate-time
 		// cleanup filters this list against a known cache name, so it either
@@ -58,7 +58,7 @@ export default [
 			await caches.delete("adversarial-cache3");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: the Request objects from cache.keys() carry the proxy
 		// origin, so code that re-fetches or compares them targets the wrong host.
 		name: "cachestorage-request-keys-urls",
@@ -71,7 +71,7 @@ export default [
 			await caches.delete("adversarial-cache4");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: cache.add and cache.addAll reject with "Request failed".
 		// addAll is how every precaching service worker populates its cache.
 		name: "cachestorage-add-and-addall",

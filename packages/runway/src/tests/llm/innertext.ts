@@ -1,11 +1,11 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // HTMLElement.prototype.innerText trap: shares its rewrite-and-stash logic
 // with the Node.prototype.textContent trap. These tests guard the script /
 // style branches against regressing the dedup.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "innertext-script-roundtrip",
 		js: `
 			const s = document.createElement("script");
@@ -15,7 +15,7 @@ export default [
 			assertEqual(s.textContent, src, "script.textContent should match");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "innertext-textcontent-dedup-no-regression",
 		js: `
 			const s = document.createElement("script");
@@ -25,7 +25,7 @@ export default [
 			assertEqual(s.innerText, src, "innerText should agree with textContent");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "innertext-style-roundtrip",
 		js: `
 			const s = document.createElement("style");
@@ -35,7 +35,7 @@ export default [
 			assertEqual(s.textContent, css, "style.textContent should match");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "innertext-style-textcontent-dedup",
 		js: `
 			const s = document.createElement("style");

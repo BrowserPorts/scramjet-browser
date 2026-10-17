@@ -1,4 +1,4 @@
-import { basicTest } from "../../testcommon.ts";
+import { scriptTest } from "../../testkit.ts";
 
 // innerHTML/outerHTML un-rewrite URLs and hide the internal bookkeeping
 // attribute. Every other way of turning a node back into a string has to do the
@@ -7,7 +7,7 @@ import { basicTest } from "../../testcommon.ts";
 // markup.
 
 export default [
-	basicTest({
+	scriptTest({
 		name: "serialization-domparser",
 		js: `
 			const doc = new DOMParser().parseFromString(
@@ -18,7 +18,7 @@ export default [
 			assert(!doc.body.innerHTML.includes("scramjet-attr"), "no internal attribute in innerHTML");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "serialization-template",
 		js: `
 			const tpl = document.createElement("template");
@@ -34,7 +34,7 @@ export default [
 				"once adopted, the property resolves against the real origin");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "serialization-outerhtml-paths",
 		js: `
 			const d = document.createElement("div");
@@ -49,7 +49,7 @@ export default [
 				'<div><a href="/x"><img src="/i.png"></a></div>', "cloned serialization");
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "serialization-range",
 		js: `
 			const d = document.createElement("div");
@@ -67,7 +67,7 @@ export default [
 			sel.removeAllRanges();
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		name: "serialization-range-createcontextualfragment",
 		js: `
 			const d = document.createElement("div");
@@ -83,7 +83,7 @@ export default [
 	}),
 
 	// ------------------------------------------------------------------
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: serializeToString bypasses the un-rewriting that
 		// innerHTML/outerHTML do, exposing both the proxy URL and the internal
 		// scramjet-attr-* bookkeeping attribute.
@@ -96,7 +96,7 @@ export default [
 			assert(!s.includes("scramjet-attr"), "nor the internal attribute: " + s);
 		`,
 	}),
-	basicTest({
+	scriptTest({
 		// KNOWN FAILURE: same for parsed documents and for SVG, which is the case
 		// that matters most - exporting a chart with
 		// serializeToString(svgElement) is the standard recipe.
