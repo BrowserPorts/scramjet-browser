@@ -16,8 +16,25 @@ export function normalizeContentType(
 	headers.set("content-type", "text/html; charset=utf-8");
 }
 
+/**
+ * Fetch's redirect status set, not "any 3xx".
+ *
+ * `304` and `305` are 3xx but are not redirects and carry no `Location`, so the
+ * old range treated a Not Modified as a redirect: it read a `Location` that was
+ * not there and threw, and it also skipped body rewriting for it.
+ *
+ * https://fetch.spec.whatwg.org/#redirect-status
+ */
 export function isRedirect(response: BareResponse) {
-	return response.status >= 300 && response.status < 400;
+	const status = response.status;
+
+	return (
+		status === 301 ||
+		status === 302 ||
+		status === 303 ||
+		status === 307 ||
+		status === 308
+	);
 }
 
 export function isDocument(parsed: ScramjetFetchParsed) {
