@@ -33,6 +33,23 @@ export type RewriteUrlOptions = {
 export type URLMeta = {
 	origin: _URL;
 	base: _URL;
+	/**
+	 * True when the document declared its own `<base href>`.
+	 *
+	 * An author-declared base is authoritative even when it is opaque: HTML says the
+	 * document base URL *is* that value, so `about:blank` there really does make
+	 * relative URLs resolve against `about:blank`. Only a base that came from the
+	 * document's own `about:` URL is inherited from the creator.
+	 */
+	baseIsDeclared?: boolean;
+	/**
+	 * True when the document HAS a `<base href>`, whether or not it parsed.
+	 *
+	 * Distinct from {@link URLMeta.baseIsDeclared}: HTML's selection is spent by the
+	 * first base with an href even when its value is unusable, so a continuing parse
+	 * must not let a later base take over just because the first one failed.
+	 */
+	baseIsSelected?: boolean;
 	topFrameName?: string;
 	parentFrameName?: string;
 	referrerPolicy?: string;
@@ -211,8 +228,13 @@ export function rewriteUrl(
 	} else {
 		let base = meta.base.href;
 
-		if (String_startsWith(base, "about:"))
-			base = unrewriteUrl(self.location.href, context); // jank!!!!! weird jank!!!
+		// An `about:` base is inherited from the creator only when it is the
+		// DOCUMENT's own URL — that is the HTML rule for an `about:blank` document.
+		// A declared `<base href="about:blank">` is the author's base and must not be
+		// replaced by the document URL: doing so resolved `#x` and `http:/example.com/`
+		// against the page instead of against `about:blank`, which is a different URL.
+		if (String_startsWith(base, "about:") && !meta.baseIsDeclared)
+			base = unrewriteUrl(self.location.href, context);
 		const realUrl = tryCanParseURL(url, base);
 		if (!realUrl) return url;
 

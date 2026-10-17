@@ -79,6 +79,9 @@ export default function (client: ScramjetClient, _self: Self) {
 				loadScripts: false,
 				inline: true,
 				source: client.url.href,
+				// Builds a document of its own: it inherits no base selection from the
+				// document that called it.
+				newDocument: true,
 				apisource: "Document.prototype.parseHTMLUnsafe",
 			});
 		},

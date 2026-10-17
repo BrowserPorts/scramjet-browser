@@ -358,29 +358,62 @@ export class ScramjetClient {
 		};
 		// eslint-disable-next-line @typescript-eslint/no-this-alias
 		const client = this;
+		/**
+		 * The document base, and whether the document declared it.
+		 *
+		 * One selection serving both, from one selector. HTML takes the FIRST `<base>`
+		 * that has an `href` content attribute, in tree order — so `base[href]`, not
+		 * `base`: a preceding `<base target=_blank>` carries no href and must not
+		 * select, and an empty `href` does select rather than deferring to a later
+		 * element. `declared` means that selected base is what resolution actually
+		 * uses, not merely that some attribute was present.
+		 */
+		const declaredBase = (): {
+			url: _URL;
+			declared: boolean;
+			/** A `base[href]` exists, even if its value does not parse. */
+			selected: boolean;
+		} => {
+			const fallback = { url: client.url, declared: false, selected: false };
+			if (!iswindow) return fallback;
+			const base = client.natives.call(
+				"Document.prototype.querySelector",
+				client.global.document,
+				"base[href]"
+			);
+			if (!base) return fallback;
+			// The selection is spent from here on: this element is the document's
+			// chosen base whether or not its href is usable.
+			const spent = { url: client.url, declared: false, selected: true };
+			let url = base.getAttribute("href");
+			if (!url) return spent;
+			const frag = url.indexOf("#");
+			url = url.substring(0, frag === -1 ? undefined : frag);
+			if (!url) return spent;
+			try {
+				return {
+					url: new _URL(url, client.url.origin),
+					declared: true,
+					selected: true,
+				};
+			} catch {
+				// Unparseable base: HTML falls back to the document URL, and this is not
+				// a declared base for resolution purposes — but it still selected.
+				return spent;
+			}
+		};
 		this.meta = {
 			get origin() {
 				return client.url;
 			},
+			get baseIsDeclared() {
+				return declaredBase().declared;
+			},
+			get baseIsSelected() {
+				return declaredBase().selected;
+			},
 			get base() {
-				if (iswindow) {
-					const base = client.natives.call(
-						"Document.prototype.querySelector",
-						client.global.document,
-						"base"
-					);
-					if (base) {
-						let url = base.getAttribute("href");
-						if (!url) return client.url;
-						const frag = url.indexOf("#");
-						url = url.substring(0, frag === -1 ? undefined : frag);
-						if (!url) return client.url;
-
-						return new _URL(url, client.url.origin);
-					}
-				}
-
-				return client.url;
+				return declaredBase().url;
 			},
 			// TODO: very bad assumptions made here, window.parent never throws
 			get topFrameName() {
