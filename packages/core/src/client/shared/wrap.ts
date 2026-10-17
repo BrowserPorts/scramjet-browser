@@ -2,7 +2,10 @@ import { iswindow } from "@client/entry";
 import { SCRAMJETCLIENT } from "@/symbols";
 import { ScramjetClient } from "@client/index";
 // import { argdbg } from "@client/shared/err";
-import { Object_defineProperty } from "@/shared/snapshot";
+import {
+	Object_defineProperty,
+	Object_getOwnPropertyDescriptor,
+} from "@/shared/snapshot";
 
 export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 	let wrappedParent: GlobalThis | null = null;
@@ -61,6 +64,10 @@ export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 
 export const order = 4;
 export default function (client: ScramjetClient, self: GlobalThis) {
+	const realLocationDescriptor = iswindow
+		? Object_getOwnPropertyDescriptor(self, "location")
+		: undefined;
+
 	Object_defineProperty(self, client.config.globals.wrapfn, {
 		value: client.wrapfn,
 		writable: false,
@@ -103,7 +110,26 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 					return client.locationProxy;
 				}
 
-				return this.location;
+				try {
+					return this.location;
+				} catch (error) {
+					let ownLocationDescriptor: PropertyDescriptor | undefined;
+					try {
+						ownLocationDescriptor = Object_getOwnPropertyDescriptor(
+							this,
+							"location"
+						);
+					} catch {
+						throw error;
+					}
+					if (
+						realLocationDescriptor?.get &&
+						ownLocationDescriptor?.get === realLocationDescriptor.get
+					) {
+						return client.locationProxy;
+					}
+					throw error;
+				}
 			},
 			set(value: any) {
 				if (this === self || this === self.document) {
@@ -111,7 +137,27 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 
 					return;
 				}
-				this.location = value;
+				try {
+					this.location = value;
+				} catch (error) {
+					let ownLocationDescriptor: PropertyDescriptor | undefined;
+					try {
+						ownLocationDescriptor = Object_getOwnPropertyDescriptor(
+							this,
+							"location"
+						);
+					} catch {
+						throw error;
+					}
+					if (
+						realLocationDescriptor?.set &&
+						ownLocationDescriptor?.set === realLocationDescriptor.set
+					) {
+						client.url = value;
+						return;
+					}
+					throw error;
+				}
 			},
 			configurable: false,
 			enumerable: false,
