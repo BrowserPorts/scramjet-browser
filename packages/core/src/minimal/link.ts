@@ -1,7 +1,8 @@
+import { identityName } from "@/runtime-identity";
 import { RpcLink } from "@mercuryworkshop/rpc";
 
 /** The message key a framed document and its host use to set up their link */
-export const LINK_KEY = "scramjet-link";
+export const LINK_KEY = identityName("scramjet-link");
 /** Bumped when the link's messages change shape */
 export const LINK_ABI = 1;
 
@@ -23,9 +24,12 @@ export function requestLink(
 	options: { target?: Window; timeout?: number } = {}
 ): Promise<{ link: RpcLink; payload: unknown; document?: string } | null> {
 	const target = options.target ?? globalThis.parent;
-	if (!target || target === (globalThis as unknown as Window)) return Promise.resolve(null);
+	if (!target || target === (globalThis as unknown as Window))
+		return Promise.resolve(null);
 	return new Promise((resolve) => {
-		const done = (value: { link: RpcLink; payload: unknown; document?: string } | null) => {
+		const done = (
+			value: { link: RpcLink; payload: unknown; document?: string } | null
+		) => {
 			clearTimeout(timer);
 			globalThis.removeEventListener("message", listen, true);
 			resolve(value);
@@ -39,7 +43,8 @@ export function requestLink(
 			done({
 				link: new RpcLink(event.ports[0]),
 				payload: welcome.payload,
-				document: typeof welcome.document === "string" ? welcome.document : undefined,
+				document:
+					typeof welcome.document === "string" ? welcome.document : undefined,
 			});
 		};
 		const timer = setTimeout(() => done(null), options.timeout ?? 10000);
@@ -73,10 +78,7 @@ export function acceptLinks(
 	host: Window,
 	accept: (
 		request: LinkRequest
-	) =>
-		| LinkAnswer
-		| null
-		| Promise<LinkAnswer | null>
+	) => LinkAnswer | null | Promise<LinkAnswer | null>
 ): () => void {
 	const listen = async (event: MessageEvent) => {
 		const hello = event.data?.[LINK_KEY] as Hello | undefined;
@@ -86,8 +88,16 @@ export function acceptLinks(
 		const source = event.source as Window;
 		const answer = await accept({ source, url: String(hello.url) });
 		if (!answer) return;
-		const welcome: Welcome = { type: "welcome", abi: LINK_ABI, payload: answer.payload, document: answer.document };
-		source.postMessage({ [LINK_KEY]: welcome }, "*", [answer.port, ...(answer.transfer ?? [])]);
+		const welcome: Welcome = {
+			type: "welcome",
+			abi: LINK_ABI,
+			payload: answer.payload,
+			document: answer.document,
+		};
+		source.postMessage({ [LINK_KEY]: welcome }, "*", [
+			answer.port,
+			...(answer.transfer ?? []),
+		]);
 	};
 	host.addEventListener("message", listen, true);
 	return () => host.removeEventListener("message", listen, true);

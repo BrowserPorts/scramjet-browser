@@ -1,3 +1,4 @@
+import { identityName } from "@/runtime-identity";
 import {
 	RemoteTransport,
 	RpcLink,
@@ -20,9 +21,9 @@ import type { ProxyTransport } from "./types";
  */
 const clients = new WeakMap<object, ScramjetMinimalClient>();
 /** The first message a wrapped worker receives, carrying its link to the page */
-export const WORKER_INIT = "scramjet-minimal-init";
+export const WORKER_INIT = identityName("scramjet-minimal-init");
 /** Hands a shared worker stand-in one more connection */
-export const SHARED_CONNECT = "scramjet-minimal-connect";
+export const SHARED_CONNECT = identityName("scramjet-minimal-connect");
 
 const registry = new NativeMap<string, ScramjetMinimalPlugin>();
 
