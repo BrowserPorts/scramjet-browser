@@ -1,7 +1,7 @@
 import { rewriteCss } from "@rewriters/css";
 import { rewriteHtml, rewriteSrcset } from "@rewriters/html";
 import { rewriteUrl, unrewriteBlob, URLMeta } from "@rewriters/url";
-import { ScramjetContext } from "@/shared";
+import type { ScramjetContext } from "@/shared";
 import { _URL } from "./snapshot";
 
 export const htmlRules: {
@@ -64,6 +64,7 @@ export const htmlRules: {
 			if (value.startsWith("blob:")) {
 				// for media elements specifically they must take the original blob
 				// because they can't be fetch'd
+				if (context.codec) return value;
 				return unrewriteBlob(value, context, meta);
 			}
 

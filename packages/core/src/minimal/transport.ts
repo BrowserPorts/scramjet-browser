@@ -16,7 +16,8 @@ export class LazyTransport implements ProxyTransport {
 	#inner: ProxyTransport | undefined;
 	#loading: Promise<void> | undefined;
 
-	constructor(private load: () => Promise<ProxyTransport>) {}
+	/** How the transport starts; replaceable until the first request starts it */
+	constructor(public load: () => Promise<ProxyTransport>) {}
 
 	init(): Promise<void> {
 		this.#loading ??= (async () => {

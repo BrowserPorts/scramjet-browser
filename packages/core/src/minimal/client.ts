@@ -1,46 +1,43 @@
 import { BareCompatibleClient } from "@mercuryworkshop/proxy-transports";
-import { getOwnPropertyDescriptorHandler } from "@client/helpers";
+import type { RemoteTransport, RpcLink } from "@mercuryworkshop/rpc";
+import { HookClient } from "@/hook/hook-client";
+import { createCodec } from "@/codec";
+import { Tap } from "@/Tap";
+import type { ScramjetStorageManager } from "@/shared/storage";
 import type {
-	ProxyCtx,
-	ProxyHooks,
-	ProxyTransport,
-	RawHeaders,
-	TransportSocket,
-	TrapCtx,
-	TrapHooks,
-} from "./types";
-import {
-	Array_isArray,
-	Object_defineProperty,
-	Object_getOwnPropertyDescriptor,
-	Reflect_apply,
-	Reflect_construct,
-	Reflect_get,
-	Reflect_has,
-	URL_createObjectURL,
-} from "@/shared/snapshot";
+	CodecConfig,
+	MinimalFetchHooks,
+	MinimalHooks,
+	ScramjetMinimalRoute,
+	UrlCodec,
+} from "@/plugins/types";
+import type { ProxyTransport, RawHeaders, TransportSocket } from "./types";
+import { Object_defineProperty, URL_createObjectURL } from "@/shared/snapshot";
 import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
 
-/** Where a request goes: the browser's own network, the Wisp transport, or nowhere */
-export type ScramjetMinimalRoute = "native" | "wisp" | "blocked";
+export type { ScramjetMinimalRoute };
 
-/** Plain settings, so a page can hand the same ones to its workers */
+/** Plain settings, so a page can hand the same ones to its workers and nested windows */
 export type ScramjetMinimalConfig = {
-	/** Origins whose requests keep the browser's network, such as the page's own files */
-	direct: string[];
+	/** Origins whose requests keep the browser's network; defaults to the page's own */
+	direct?: string[];
 	/** Hostnames, with their subdomains, whose requests fail the way blocked ones do */
 	blocked?: string[];
-	/** Wisp endpoint the transport connects to */
+	/** Where original URLs live, so the browser loads them natively from there */
+	codec?: CodecConfig;
+	/** Wisp endpoint the transport connects to, when the page holds its own transport */
 	wisp?: string;
 	/** Module URL of the transport; its default export is constructed with `{ wisp }` */
 	transport?: string;
-	/** URL of this bundle, which workers import to intercept their own requests */
+	/** URL of this bundle, which workers import to install the same plugins */
 	script?: string;
 	/** Base for relative URLs; workers pass their script URL because their own is a blob */
 	base?: string;
-	/** Origin sent with sockets, which servers check; defaults to the base URL's origin */
+	/** Origin sent with sockets, which servers check; defaults to the original page's origin */
 	origin?: string;
+	/** Settings for plugins by plugin name, handed on with the rest */
+	plugins?: Record<string, unknown>;
 };
 
 export type ScramjetMinimalOptions = {
@@ -62,14 +59,13 @@ function header(headers: RawHeaders, name: string): string | null {
 }
 
 /**
- * The part of the Scramjet client that intercepts requests. It keeps the client's `Proxy` and
- * `Trap` helpers and module shape, but performs requests itself over the transport instead of
- * rewriting URLs for a service worker, so it works where no service worker can run, such as a
- * sandboxed frame with an opaque origin.
+ * Scramjet's client without the proxy. It intercepts requests where no service worker can, such
+ * as a sandboxed frame with an opaque origin: a URL the codec owns loads natively from where the
+ * codec put it, the page's own origin loads natively, and everything else goes over the Wisp
+ * transport, unless a plugin tapped `hooks.route` or `hooks.fetch` to decide otherwise. What it
+ * intercepts is up to its plugins.
  */
-export class ScramjetMinimalClient {
-	natives: Record<string, any> = {};
-	descriptors: Record<string, PropertyDescriptor | undefined> = {};
+export class ScramjetMinimalClient extends HookClient {
 	transport: LazyTransport;
 	bare: {
 		createWebSocket(
@@ -78,6 +74,23 @@ export class ScramjetMinimalClient {
 			requestHeaders?: RawHeaders
 		): TransportSocket;
 	};
+	codec: UrlCodec;
+	#minimal = Tap.create<MinimalHooks>();
+	hooks = {
+		route: this.#minimal.route,
+		document: this.#minimal.document,
+		written: this.#minimal.written,
+		fetch: Tap.create<MinimalFetchHooks>(),
+	};
+	/** RPC channels to the page that hosts this frame or worker, when it has one */
+	link: RpcLink | null = null;
+	/**
+	 * The transport relayed over the link, whose sendStorageMutation and sendSetCookie reach the
+	 * host the same way the controller's do
+	 */
+	remote: RemoteTransport | null = null;
+	/** Storage a plugin provides, in Scramjet's storage manager shape */
+	storage: ScramjetStorageManager | null = null;
 	/** Original URLs of resources served from blob URLs, so scripts still see where they came from */
 	origins = new NativeMap<string, string>();
 	#blobs = new NativeMap<string, Promise<string>>();
@@ -87,17 +100,22 @@ export class ScramjetMinimalClient {
 	#direct: Set<string>;
 
 	constructor(
-		public global: typeof globalThis,
+		global: typeof globalThis,
 		public config: ScramjetMinimalConfig,
 		public options: ScramjetMinimalOptions
 	) {
+		super(global);
 		this.transport = new LazyTransport(options.transport);
 		this.bare = new BareCompatibleClient(
 			this.transport as never
 		) as unknown as ScramjetMinimalClient["bare"];
 		this.nativeFetch = global.fetch.bind(global);
+		this.codec = createCodec(config.codec);
+		const direct = config.direct ?? [new NativeURL(this.base).origin];
 		this.#direct = new Set(
-			config.direct.map((origin) => new NativeURL(origin).origin)
+			direct
+				.filter((origin) => origin && origin !== "null")
+				.map((origin) => new NativeURL(origin).origin)
 		);
 	}
 
@@ -110,20 +128,39 @@ export class ScramjetMinimalClient {
 	}
 
 	get origin(): string {
-		return this.config.origin ?? new NativeURL(this.base).origin;
+		if (this.config.origin) return this.config.origin;
+		const base = new NativeURL(this.base);
+		const original = this.codec.decode(base);
+		return original ? new NativeURL(original).origin : base.origin;
 	}
 
-	/** Resolves a URL the way the page would, or null when it is not a URL at all */
+	/**
+	 * Resolves a URL the way the page would, mapped into the codec's space when the codec owns it,
+	 * or null when it is not a URL at all.
+	 */
 	resolve(input: string | URL, base = this.base): URL | null {
+		let url: URL;
 		try {
-			return new NativeURL(String(input), base);
+			url = new NativeURL(String(input), base);
 		} catch {
 			return null;
 		}
+		const encoded = this.codec.encode(url);
+		return encoded ? new NativeURL(encoded) : url;
 	}
 
-	route(url: URL): ScramjetMinimalRoute {
+	/** Where a URL goes, and the URL the browser loads when it loads it itself */
+	decide(url: URL, method = "GET"): { route: ScramjetMinimalRoute; url: string } {
+		const props = { route: this.#route(url), url: url.href };
+		if (props.route === "native") props.url = this.codec.encode(url) ?? url.href;
+		// Route callbacks are synchronous, so their changes to props are in place once dispatch returns
+		void Tap.dispatch(this.hooks.route, { url, method }, props);
+		return props;
+	}
+
+	#route(url: URL): ScramjetMinimalRoute {
 		if (!WISP_PROTOCOLS.includes(url.protocol)) return "native";
+		if (this.codec.owns(url)) return "native";
 		// A socket to a direct origin's host is direct too
 		const scheme =
 			url.protocol === "ws:"
@@ -142,13 +179,43 @@ export class ScramjetMinimalClient {
 		return "wisp";
 	}
 
+	route(url: URL): ScramjetMinimalRoute {
+		return this.decide(url).route;
+	}
+
 	report(error: unknown, url: string) {
 		if ((error as Error)?.name === "AbortError") return;
 		this.options.onError?.(error, url);
 	}
 
-	/** Performs a request over the transport, following redirects the way fetch does */
-	async fetch(request: Request): Promise<Response> {
+	/** Performs a request the browser cannot, through the plugins' fetch hooks and the transport */
+	async fetch(input: Request): Promise<Response> {
+		let request = input;
+		// libcurl never answers a 304 that carries the full entity's Content-Length, so a revalidation
+		// (an engine checking its cached build) goes out as a plain request and gets the full response
+		if (
+			request.headers.has("if-none-match") ||
+			request.headers.has("if-modified-since")
+		) {
+			const headers = new Headers(request.headers);
+			headers.delete("if-none-match");
+			headers.delete("if-modified-since");
+			request = new Request(request, { headers });
+		}
+		const asked: MinimalFetchHooks["request"]["props"] = { request };
+		await Tap.dispatch(
+			this.hooks.fetch.request,
+			{ route: this.route(new NativeURL(request.url)) },
+			asked
+		);
+		const response = await (asked.response ?? this.#follow(asked.request));
+		const answered = { response };
+		await Tap.dispatch(this.hooks.fetch.response, { request: asked.request }, answered);
+		return answered.response;
+	}
+
+	/** Follows redirects the way fetch does, deciding each hop again */
+	async #follow(request: Request): Promise<Response> {
 		const signal = request.signal;
 		signal.throwIfAborted();
 		let url = new NativeURL(request.url);
@@ -168,10 +235,11 @@ export class ScramjetMinimalClient {
 			headers.push(["Accept-Language", navigator.languages.join(",")]);
 
 		for (let hop = 0; ; hop++) {
-			const route = this.route(url);
-			if (route === "blocked") throw new TypeError("Failed to fetch");
-			if (route === "native")
-				return this.nativeFetch(url.href, {
+			const decided = this.decide(url, method);
+			if (decided.route === "blocked" || decided.route === "plugin")
+				throw new TypeError("Failed to fetch");
+			if (decided.route === "native")
+				return this.nativeFetch(decided.url, {
 					method,
 					headers,
 					body,
@@ -184,8 +252,10 @@ export class ScramjetMinimalClient {
 			// delivering data for a stream that no longer exists
 			const head = method === "HEAD";
 			const ranged = head && !headers.some(([name]) => /^range$/i.test(name));
+			// A route hook may send the request to another URL, such as a file's original location
+			const target = decided.url === url.href ? url : new NativeURL(decided.url);
 			const response = await this.transport.request(
-				url,
+				target,
 				head ? "GET" : method,
 				body,
 				ranged ? [...headers, ["Range", "bytes=0-0"]] : headers,
@@ -228,7 +298,7 @@ export class ScramjetMinimalClient {
 					body = null;
 					headers = headers.filter(([name]) => !/^content-/i.test(name));
 				}
-				url = new NativeURL(location, url);
+				url = new NativeURL(location, target);
 				continue;
 			}
 			if (response.status < 200 || response.status > 599)
@@ -298,8 +368,9 @@ export class ScramjetMinimalClient {
 	}
 
 	/**
-	 * Points a stylesheet's third-party references at blob URLs. A blob stylesheet has no base of
-	 * its own, so `absolute` also spells out its other references in full.
+	 * Points a stylesheet's references where they load: owned URLs into the codec's space, other
+	 * sites at blob URLs. A blob stylesheet has no base of its own, so `absolute` also spells out
+	 * its other references in full.
 	 */
 	async css(text: string, base: URL, absolute = true): Promise<string> {
 		const pattern =
@@ -316,7 +387,8 @@ export class ScramjetMinimalClient {
 			const url = this.resolve(raw, base.href);
 			if (!url) continue;
 			const imported = match[4] !== undefined;
-			if (this.route(url) === "wisp")
+			const route = this.route(url);
+			if (route === "wisp" || route === "plugin")
 				swaps.set(
 					raw,
 					this.blob(url, imported ? "style" : "other").catch((error) => {
@@ -324,7 +396,8 @@ export class ScramjetMinimalClient {
 						return url.href;
 					})
 				);
-			else if (absolute) swaps.set(raw, Promise.resolve(url.href));
+			else if (absolute || url.href !== new NativeURL(raw, base).href)
+				swaps.set(raw, Promise.resolve(url.href));
 		}
 		const resolved = new NativeMap<string, string>();
 		for (const [raw, pending] of swaps) resolved.set(raw, await pending);
@@ -336,136 +409,5 @@ export class ScramjetMinimalClient {
 				? `@import ${importQuote}${next}${importQuote}`
 				: `url(${quote}${next}${quote})`;
 		});
-	}
-
-	// The helpers below mirror ScramjetClient's, so interceptor modules are written the same way
-
-	Proxy(name: string | readonly string[], handler: ProxyHooks): void {
-		if (Array_isArray(name)) {
-			for (const each of name) this.Proxy(each, handler);
-			return;
-		}
-		const split = (name as string).split(".");
-		const prop = split.pop();
-		const target = split.reduce(
-			(object, key) => object?.[key],
-			this.global as any
-		);
-		if (!target || !prop) return;
-		if (!((name as string) in this.natives))
-			this.natives[name as string] = Reflect_get(target, prop);
-		this.RawProxy(target, prop, handler);
-	}
-
-	RawProxy(target: any, prop: string, handler: ProxyHooks) {
-		if (!target || !prop || !Reflect_has(target, prop)) return;
-		const value = Reflect_get(target, prop);
-		const descriptor = Object_getOwnPropertyDescriptor(target, prop);
-		const traps: ProxyHandler<any> = {
-			getOwnPropertyDescriptor: getOwnPropertyDescriptorHandler,
-		};
-		if (handler.construct)
-			traps.construct = (fn: any, args: any[], newTarget: any) => {
-				let result: any;
-				let early = false;
-				const ctx: ProxyCtx = {
-					fn,
-					this: null,
-					args,
-					newTarget,
-					return: (value: any) => {
-						early = true;
-						result = value;
-					},
-					call: () => {
-						early = true;
-						result = Reflect_construct(ctx.fn, ctx.args, ctx.newTarget);
-						return result;
-					},
-				};
-				handler.construct!(ctx);
-				return early
-					? result
-					: Reflect_construct(ctx.fn, ctx.args, ctx.newTarget);
-			};
-		if (handler.apply)
-			traps.apply = (fn: any, that: any, args: any[]) => {
-				let result: any;
-				let early = false;
-				const ctx: ProxyCtx = {
-					fn,
-					this: that,
-					args,
-					newTarget: null,
-					return: (value: any) => {
-						early = true;
-						result = value;
-					},
-					call: () => {
-						early = true;
-						result = Reflect_apply(ctx.fn, ctx.this, ctx.args);
-						return result;
-					},
-				};
-				handler.apply!(ctx);
-				return early ? result : Reflect_apply(ctx.fn, ctx.this, ctx.args);
-			};
-		delete target[prop];
-		Object_defineProperty(target, prop, {
-			value: new Proxy(value, traps),
-			writable: descriptor?.writable ?? true,
-			enumerable: descriptor?.enumerable ?? false,
-			configurable: descriptor?.configurable ?? true,
-		});
-	}
-
-	Trap(name: string | readonly string[], descriptor: TrapHooks): void {
-		if (Array_isArray(name)) {
-			for (const each of name) this.Trap(each, descriptor);
-			return;
-		}
-		const split = (name as string).split(".");
-		const prop = split.pop();
-		const target = split.reduce(
-			(object, key) => object?.[key],
-			this.global as any
-		);
-		if (!target || !prop) return;
-		this.descriptors[name as string] = Object_getOwnPropertyDescriptor(
-			target,
-			prop
-		);
-		this.RawTrap(target, prop, descriptor);
-	}
-
-	RawTrap(target: any, prop: string, descriptor: TrapHooks) {
-		if (!target || !prop || !Reflect_has(target, prop)) return;
-		const old = Object_getOwnPropertyDescriptor(target, prop);
-		const context = (that: any): TrapCtx => ({
-			this: that,
-			get: () => old?.get?.call(that),
-			set: (value: any) => old?.set?.call(that, value),
-		});
-		delete target[prop];
-		const next: PropertyDescriptor = {
-			enumerable: descriptor.enumerable ?? old?.enumerable ?? false,
-			configurable: descriptor.configurable ?? old?.configurable ?? true,
-		};
-		if (descriptor.get)
-			next.get = function () {
-				return descriptor.get!(context(this));
-			};
-		else if (old?.get) next.get = old.get;
-		if (descriptor.set)
-			next.set = function (value: any) {
-				descriptor.set!(context(this), value);
-			};
-		else if (old?.set) next.set = old.set;
-		Object_defineProperty(target, prop, next);
-	}
-
-	/** Calls the native function a module replaced */
-	native<T = any>(name: string, that: unknown, ...args: unknown[]): T {
-		return Reflect_apply(this.natives[name], that, args);
 	}
 }

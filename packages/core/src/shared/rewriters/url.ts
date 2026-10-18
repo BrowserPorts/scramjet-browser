@@ -1,6 +1,7 @@
-import { ScramjetContext } from "@/shared";
-import { rewriteJs } from "@rewriters/js";
-import { QP } from "@/fetch/parse";
+import type { ScramjetContext } from "@/shared";
+import type { UrlCodec } from "@/plugins/types";
+import { providers } from "@/shared/providers";
+import { QP } from "@/fetch/qp";
 import { ScramjetDestination } from "@/types";
 
 import {
@@ -83,6 +84,28 @@ export function unrewriteBlob(
 	return "blob:" + context.prefix.origin + blob.pathname;
 }
 
+/** A URL through the context's codec: owned URLs map, everything else stays as written */
+function rewriteUrlWithCodec(
+	url: string,
+	codec: UrlCodec,
+	context: ScramjetContext,
+	meta: URLMeta
+): string {
+	if (
+		String_startsWith(url, "blob:") ||
+		String_startsWith(url, "data:") ||
+		String_startsWith(url, "mailto:") ||
+		String_startsWith(url, "about:")
+	)
+		return url;
+	let base = meta.base.href;
+	if (String_startsWith(base, "about:") && !meta.baseIsDeclared)
+		base = unrewriteUrl(self.location.href, context);
+	const realUrl = tryCanParseURL(url, base);
+	if (!realUrl) return url;
+	return codec.encode(realUrl, { base: meta.base }) ?? url;
+}
+
 export function rewriteUrl(
 	url: string | URL,
 	context: ScramjetContext,
@@ -91,7 +114,9 @@ export function rewriteUrl(
 ) {
 	url = String(url);
 
+	const rewriteJs = providers().rewriteJs;
 	if (String_startsWith(url, "javascript:")) {
+		if (!rewriteJs) return url;
 		return (
 			"javascript:" +
 			rewriteJs(
@@ -101,6 +126,8 @@ export function rewriteUrl(
 				meta
 			)
 		);
+	} else if (context.codec) {
+		return rewriteUrlWithCodec(url, context.codec, context, meta);
 	} else if (String_startsWith(url, "blob:")) {
 		return context.prefix.href + url;
 	} else if (String_startsWith(url, "data:")) {
@@ -291,6 +318,7 @@ export function rewriteUrl(
 
 export function unrewriteUrl(url: string | URL, context: ScramjetContext) {
 	url = String(url);
+	if (context.codec) return context.codec.decode(url) ?? url;
 	if (String_startsWith(url, "javascript:")) {
 		//TODO
 		return url;

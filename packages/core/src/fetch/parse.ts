@@ -1,6 +1,7 @@
 import { Object_entries, Object_keys, _URL, Error } from "@/shared/snapshot";
 import { unrewriteUrl, URLMeta } from "@rewriters/url";
 import { ScramjetDestination } from "@/types";
+import { QP } from "./qp";
 import {
 	ScramjetFetchHandler,
 	ScramjetFetchParsed,
@@ -8,23 +9,7 @@ import {
 	ScramjetFetchTrackedClient,
 } from ".";
 
-export const QP = {
-	referrerPolicy: "$rfp",
-	referrerSource: "$rfs",
-	isModule: "$module",
-	topFrame: "$tf",
-	parentFrame: "$pf",
-	isIframe: "$iframe",
-	mode: "$mode",
-	credentials: "$cred",
-	destination: "$dest",
-	initiatorOrigin: "$io",
-	fetchSite: "$fs",
-	crossSiteRedirect: "$csr",
-	fakeDataURL: "$fakedataurl",
-	workerName: "$wname",
-	workerCorrelation: "$wcorr",
-} as const;
+export { QP } from "./qp";
 
 export type QueryParamKey = keyof typeof QP;
 

@@ -444,9 +444,22 @@ const bootstrapdir = join(__dirname, "packages/bootstrap");
 const createproxyappdir = join(__dirname, "packages/create-proxy-app");
 
 const wasmPath = join(scramjetdir, "dist/scramjet.wasm");
-let wasmB64: string;
-const wasmBuf = await readFile(wasmPath);
-wasmB64 = wasmBuf.toString("base64");
+// Read only for the *-bundled configs, so builds that never inline the rewriter (the minimal
+// client among them) work in a checkout without one
+let wasmB64: string | undefined;
+const bundledWasm = async () =>
+  (wasmB64 ??= (await readFile(wasmPath)).toString("base64"));
+const wantsBundledWasm = (() => {
+  const names = process.argv.flatMap((arg, index, all) =>
+    arg === "--config-name" || arg === "--configName"
+      ? [all[index + 1]]
+      : arg.startsWith("--config-name=")
+        ? [arg.slice("--config-name=".length)]
+        : [],
+  );
+  return names.length === 0 || names.some((name) => name?.includes("bundled"));
+})();
+if (wantsBundledWasm) await bundledWasm();
 
 export const tsloader = {
   test: /\.ts$/,
@@ -641,7 +654,7 @@ const iifeBundledConfig = createScramjetConfig({
       name: "self.$scramjet",
     },
   },
-  rewriterWasm: JSON.stringify(wasmB64),
+  rewriterWasm: JSON.stringify(wasmB64 ?? ""),
   extraConfig: {
     performance: {
       hints: false,
@@ -693,7 +706,7 @@ const moduleBundledConfig = createScramjetConfig({
     libraryTarget: "module",
     iife: false,
   },
-  rewriterWasm: JSON.stringify(wasmB64),
+  rewriterWasm: JSON.stringify(wasmB64 ?? ""),
   extraConfig: {
     performance: {
       hints: false,

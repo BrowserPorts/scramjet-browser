@@ -1,5 +1,5 @@
 import { URLMeta, rewriteUrl, unrewriteUrl } from "@rewriters/url";
-import { ScramjetContext } from "@/shared";
+import type { ScramjetContext } from "@/shared";
 import { providers } from "@/shared/providers";
 import { String } from "@/shared/snapshot";
 

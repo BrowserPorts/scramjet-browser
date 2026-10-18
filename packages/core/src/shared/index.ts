@@ -3,11 +3,12 @@ import DomHandler, { Element } from "domhandler";
 import { URLMeta } from "@rewriters/url";
 import { CookieStore } from "./cookie";
 import type { ScramjetStorageManager } from "./storage";
+import type { UrlCodec } from "@/plugins/types";
 import { TapInstance } from "@/Tap";
 import { HtmlContext } from "@/shared/rewriters/html";
-import { _RegExp } from "./snapshot";
 
 export * from "./cookie";
+export * from "./flags";
 export * from "./headers";
 export * from "./htmlRules";
 export * from "./mime";
@@ -15,21 +16,6 @@ export * from "./providers";
 export * from "./rewriters";
 export * from "./storage";
 
-export function flagEnabled(
-  flag: keyof ScramjetFlags,
-  context: ScramjetContext,
-  url: URL,
-): boolean {
-  const value = context.config.flags[flag];
-  for (const regex in context.config.siteFlags) {
-    const partialflags = context.config.siteFlags[regex];
-    if (new _RegExp(regex).test(url.href) && flag in partialflags) {
-      return partialflags[flag];
-    }
-  }
-
-  return value;
-}
 export type ScramjetInterface = {
   codecEncode: (input: string) => string;
   codecDecode: (input: string) => string;
@@ -50,6 +36,12 @@ export type ScramjetInterface = {
 export type ScramjetContext = {
   config: ScramjetConfig;
   prefix: URL;
+  /**
+   * Where original URLs load from, for runtimes without the proxy's wire
+   * format. With a codec, rewriteUrl maps each URL the codec owns and leaves
+   * the rest as written, and unrewriteUrl maps back; the prefix is unused.
+   */
+  codec?: UrlCodec;
   interface: ScramjetInterface;
   cookieJar: CookieStore;
   storage?: ScramjetStorageManager;

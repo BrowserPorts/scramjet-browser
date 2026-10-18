@@ -1,6 +1,5 @@
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
-import { rewriteJs } from "@rewriters/js";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
 import { type ChildNode, Comment, DomHandler, Element } from "domhandler";
@@ -31,7 +30,7 @@ import {
 } from "@/shared/snapshot";
 import { bytesToBase64 } from "@/shared/util";
 import { Tap } from "@/Tap";
-import { flagEnabled } from "..";
+import { flagEnabled } from "@/shared/flags";
 
 export type ForeignContext = "svg" | "math" | "html";
 
@@ -525,8 +524,9 @@ function traverseParsedHtml(
 				}
 			}
 		}
+		const rewriteJs = providers().rewriteJs;
 		for (const [attr, value] of Object_entries(node.attribs)) {
-			if (eventAttributes.includes(attr)) {
+			if (rewriteJs && eventAttributes.includes(attr)) {
 				node.attribs[`scramjet-attr-${attr}`] = value;
 				node.attribs[attr] = rewriteJs(
 					value as string,
@@ -575,7 +575,8 @@ function traverseParsedHtml(
 			"type" in node.attribs,
 			"language" in node.attribs,
 		);
-		if (isScriptType(scriptBlockType)) {
+		const rewriteJs = providers().rewriteJs;
+		if (rewriteJs && isScriptType(scriptBlockType)) {
 			let js = node.children[0].data;
 			const module = isModuleScriptType(scriptBlockType);
 			node.attribs["scramjet-attr-script-source-src"] = bytesToBase64(

@@ -1,6 +1,6 @@
 {
 	"name": "@mercuryworkshop/scramjet",
-	"version": "2.0.67-alpha.2",
+	"version": "2.1.0-stellite.1",
 	"license": "AGPL-3.0-only",
 	"description": "An experimental web proxy that aims to be the successor to Ultraviolet",
 	"type": "module",
@@ -13,7 +13,7 @@
 	},
 	"scripts": {
 		"build": "cd ../.. && rspack build --mode production",
-		"build:minimal": "cd ../.. && rspack build --mode production --config-name scramjet-minimal && tsc -p packages/core/tsconfig.minimal.json",
+		"build:minimal": "cd ../.. && rspack build --mode production --config-name scramjet-minimal && rm -rf packages/core/dist/minimal && tsc -p packages/core/tsconfig.minimal.json && tsc-alias -p packages/core/tsconfig.minimal.json",
 		"rewriter:build": "cd rewriter/wasm/ && bash build.sh && cd ../../",
 		"format": "prettier --write .",
 		"lint": "eslint ./src/",
@@ -36,7 +36,15 @@
 		"./path": {
 			"types": "./lib/index.d.ts",
 			"default": "./lib/index.cjs"
-		}
+		},
+		"./minimal": {
+			"types": "./dist/minimal/minimal/index.d.ts",
+			"import": "./dist/scramjet.minimal.mjs"
+		},
+		"./plugins": {
+			"types": "./dist/minimal/plugins/types.d.ts"
+		},
+		"./package.json": "./package.json"
 	},
 	"files": [
 		"dist",
@@ -64,6 +72,7 @@
 		"domutils": "^3.2.2",
 		"htmlparser2": "catalog:",
 		"idb": "^8.0.3",
-		"parse-domain": "^8.2.2"
+		"parse-domain": "^8.2.2",
+		"@mercuryworkshop/rpc": "workspace:*"
 	}
 }

@@ -12,6 +12,7 @@ import type {
 	ScramjetStorageArea,
 	ScramjetStorageType,
 } from "@/shared/storage";
+import { createStorageObject } from "@/shared/storage-object";
 
 export default function (client: ScramjetClient, self: Self) {
 	function prefixedKey(key: string) {
@@ -134,16 +135,29 @@ export default function (client: ScramjetClient, self: Self) {
 		};
 	}
 
-	const localStorageProxy = new Proxy(
-		self.localStorage,
-		createHandler("localStorage", client.context.storage?.localStorage)
-	);
-	const sessionStorageProxy = new Proxy(
-		self.sessionStorage,
-		createHandler("sessionStorage", client.context.storage?.sessionStorage)
-	);
-	delete self.localStorage;
-	delete self.sessionStorage;
-	self.localStorage = localStorageProxy;
-	self.sessionStorage = sessionStorageProxy;
+	const wrap = (storageType: ScramjetStorageType): Storage | null => {
+		const backend = client.context.storage?.[storageType];
+		let native: Storage;
+		try {
+			native = self[storageType];
+		} catch {
+			// An opaque origin throws on its own storage, so only a backend can stand in
+			if (!backend) return null;
+			return createStorageObject(self, storageType, backend, () => {
+				const url = client.url;
+				return { url, origin: url.origin };
+			});
+		}
+		return new Proxy(native, createHandler(storageType, backend));
+	};
+	const localStorageProxy = wrap("localStorage");
+	const sessionStorageProxy = wrap("sessionStorage");
+	if (localStorageProxy) {
+		delete self.localStorage;
+		self.localStorage = localStorageProxy;
+	}
+	if (sessionStorageProxy) {
+		delete self.sessionStorage;
+		self.sessionStorage = sessionStorageProxy;
+	}
 }

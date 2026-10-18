@@ -1,4 +1,6 @@
 import { CookieJar, type CookieStore } from "@/shared/cookie";
+import type { ScramjetContext } from "@/shared";
+import type { URLMeta } from "@rewriters/url";
 import {
 	isHtmlMimeType,
 	isJavascriptMimeType,
@@ -113,6 +115,21 @@ export interface ScramjetProviders {
    * cares about.
    */
 	createCookieStore(): CookieStore;
+
+	/**
+	 * Rewrites script text: inline scripts, event handler attributes and
+	 * `javascript:` URLs met while rewriting HTML and URLs. The full builds
+	 * register Scramjet's wasm rewriter. Without one, script text is left as it
+	 * is, which suits a runtime that keeps the page's own URL and only maps where
+	 * its files load from.
+	 */
+	rewriteJs?(
+		js: string | Uint8Array,
+		url: string | null,
+		context: ScramjetContext,
+		meta: URLMeta,
+		isModule?: boolean,
+	): string | Uint8Array;
 }
 
 // regex from vk6 (https://github.com/ading2210)
