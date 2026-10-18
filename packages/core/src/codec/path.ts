@@ -39,6 +39,8 @@ export class PathCodec implements UrlCodec {
 	}
 
 	encode(url: URL): string | null {
+		// A relative URL resolved against the served page is already in this codec's space
+		if (this.decode(url) !== null) return url.href;
 		if (!this.owns(url)) return null;
 		return `${this.prefix.href}${this.#segment(url)}${url.pathname}${url.search}${url.hash}`;
 	}
@@ -56,10 +58,12 @@ export class PathCodec implements UrlCodec {
 		const slash = rest.indexOf("/");
 		const segment = slash === -1 ? rest : rest.slice(0, slash);
 		if (!segment) return null;
-		const path = slash === -1 ? "/" : rest.slice(slash);
+		const allowed = this.#hosts.has(segment.toLowerCase());
 		const marker = segment.indexOf("~");
-		const scheme = marker === -1 ? this.#scheme : `${segment.slice(0, marker)}:`;
 		const host = marker === -1 ? segment : segment.slice(marker + 1);
+		if (!allowed && !this.#hosts.has(host.toLowerCase())) return null;
+		const path = slash === -1 ? "/" : rest.slice(slash);
+		const scheme = marker === -1 ? this.#scheme : `${segment.slice(0, marker)}:`;
 		if (scheme !== "http:" && scheme !== "https:") return null;
 		return `${scheme}//${host}${path}${url.search}${url.hash}`;
 	}
