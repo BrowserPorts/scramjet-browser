@@ -1,7 +1,7 @@
 import {
-  BareCompatibleClient,
-  ProxyTransport,
-  RawHeaders,
+	BareCompatibleClient,
+	ProxyTransport,
+	RawHeaders,
 } from "@mercuryworkshop/proxy-transports";
 import { SCRAMJETCLIENT, SCRAMJETMARKER } from "@/symbols";
 import { getClient, setClient } from "./clients";
@@ -10,75 +10,75 @@ import { createLocationProxy } from "@client/location";
 import { createWrapFn } from "@client/shared/wrap";
 import { LifecycleHooks } from "@client/events";
 import {
-  rewriteUrl,
-  RewriteUrlOptions,
-  unrewriteUrl,
-  type URLMeta,
+	rewriteUrl,
+	RewriteUrlOptions,
+	unrewriteUrl,
+	type URLMeta,
 } from "@rewriters/url";
 import {
-  flagEnabled,
-  HtmlRewriterHooks,
-  ScramjetContext,
-  ScramjetHeaders,
+	flagEnabled,
+	HtmlRewriterHooks,
+	ScramjetContext,
+	ScramjetHeaders,
 } from "@/shared";
 import { iswindow } from "./entry";
 import { SingletonBox } from "./singletonbox";
 import { ScramjetConfig } from "@/types";
 import { Tap } from "@/Tap";
 import {
-  type CookieSyncEntry,
-  type CookieSyncOptions,
-  TrackedHistoryState,
+	type CookieSyncEntry,
+	type CookieSyncOptions,
+	TrackedHistoryState,
 } from "@/fetch";
 import { AnyFunction } from "@/types";
 import {
-  _URL,
-  Error,
-  String,
-  Reflect_get,
-  Array_isArray,
-  Reflect_has,
-  Reflect_apply,
-  Reflect_construct,
-  Object_getOwnPropertyDescriptor,
-  Object_defineProperty,
-  Object_defineProperties,
-  _Map,
+	_URL,
+	Error,
+	String,
+	Reflect_get,
+	Array_isArray,
+	Reflect_has,
+	Reflect_apply,
+	Reflect_construct,
+	Object_getOwnPropertyDescriptor,
+	Object_defineProperty,
+	Object_defineProperties,
+	_Map,
 } from "@/shared/snapshot";
 import { createIndirectEval } from "./shared/eval";
 
 // https://github.com/Microsoft/TypeScript/issues/27024#issuecomment-421529650
 type IfEquals<T, U, Y = unknown, N = never> =
-  (<G>() => G extends T ? 1 : 2) extends <G>() => G extends U ? 1 : 2 ? Y : N;
+	(<G>() => G extends T ? 1 : 2) extends <G>() => G extends U ? 1 : 2 ? Y : N;
 // thank you psm (https://github.com/psmpm) <3
 type Traverse<
-  O extends Record<any, any>,
-  P extends string,
+	O extends Record<any, any>,
+	P extends string,
 > = P extends `${infer K}.${infer R}` ? Traverse<O[K], R> : O[P];
 type GlobalTraverse<P extends string> = Traverse<
-  GlobalThis & Record<string, any>,
-  P
+	GlobalThis & Record<string, any>,
+	P
 >;
 type ProxyApplyThis<T extends string> =
-  unknown extends ThisParameterType<Extract<GlobalTraverse<T>, AnyFunction>>
-    ? T extends `${infer ClassName}.prototype.${string}`
-      ? GlobalTraverse<ClassName> extends { prototype: infer Proto }
-        ? Proto
-        : unknown
-      : unknown
-    : ThisParameterType<Extract<GlobalTraverse<T>, AnyFunction>>;
+	unknown extends ThisParameterType<Extract<GlobalTraverse<T>, AnyFunction>>
+		? T extends `${infer ClassName}.prototype.${string}`
+			? GlobalTraverse<ClassName> extends { prototype: infer Proto }
+				? Proto
+				: unknown
+			: unknown
+		: ThisParameterType<Extract<GlobalTraverse<T>, AnyFunction>>;
 
 export type ScramjetClientInit = {
-  context: ScramjetContext;
-  transport: ProxyTransport;
-  sendSetCookie: (
-    cookies: CookieSyncEntry[],
-    options?: CookieSyncOptions,
-  ) => Promise<void>;
-  shouldBlockMessageEvent?: (ev: MessageEvent) => boolean;
-  hookSubcontext: (self: Self, frame?: HTMLIFrameElement) => ScramjetClient;
-  initHeaders: RawHeaders;
-  history: TrackedHistoryState[];
+	context: ScramjetContext;
+	transport: ProxyTransport;
+	sendSetCookie: (
+		cookies: CookieSyncEntry[],
+		options?: CookieSyncOptions
+	) => Promise<void>;
+	shouldBlockMessageEvent?: (ev: MessageEvent) => boolean;
+	hookSubcontext: (self: Self, frame?: HTMLIFrameElement) => ScramjetClient;
+	initHeaders: RawHeaders;
+	history: TrackedHistoryState[];
 };
 /**
  * `window.frameElement` is typed `Element`, because any embedding element can be
@@ -91,631 +91,631 @@ export type ScramjetClientInit = {
 type NamedFrameElement = Element & { name?: string };
 
 type NativeStore = {
-  store: Record<string, any>;
-  construct: <T extends string>(
-    target: T,
-    ...args: ConstructorParameters<GlobalTraverse<T>>
-  ) => InstanceType<GlobalTraverse<T>>;
-  call: <T extends string>(
-    target: T,
-    that: ProxyApplyThis<T>,
-    ...args: Parameters<GlobalTraverse<T>>
-  ) => ReturnType<GlobalTraverse<T>>;
+	store: Record<string, any>;
+	construct: <T extends string>(
+		target: T,
+		...args: ConstructorParameters<GlobalTraverse<T>>
+	) => InstanceType<GlobalTraverse<T>>;
+	call: <T extends string>(
+		target: T,
+		that: ProxyApplyThis<T>,
+		...args: Parameters<GlobalTraverse<T>>
+	) => ReturnType<GlobalTraverse<T>>;
 };
 type DescriptorStore = {
-  store: Record<string, PropertyDescriptor>;
-  get: <T extends string>(target: T, that: any) => GlobalTraverse<T>;
-  set: <T extends string>(
-    target: T,
-    that: any,
-    value: GlobalTraverse<T>,
-  ) => void;
+	store: Record<string, PropertyDescriptor>;
+	get: <T extends string>(target: T, that: any) => GlobalTraverse<T>;
+	set: <T extends string>(
+		target: T,
+		that: any,
+		value: GlobalTraverse<T>
+	) => void;
 };
 
 export type ProxyCtx<
-  T extends string = string,
-  U extends "construct" | "apply" = "apply",
+	T extends string = string,
+	U extends "construct" | "apply" = "apply",
 > = {
-  fn: GlobalTraverse<T>;
-  this: IfEquals<U, "construct", null, ProxyApplyThis<T>>;
-  args: IfEquals<
-    U,
-    "construct",
-    ConstructorParameters<GlobalTraverse<T>>,
-    Parameters<GlobalTraverse<T>>
-  >;
-  newTarget: IfEquals<U, "construct", GlobalTraverse<T>, null>;
-  return: (
-    r: IfEquals<
-      U,
-      "construct",
-      InstanceType<GlobalTraverse<T>>,
-      ReturnType<GlobalTraverse<T>>
-    >,
-  ) => void;
-  call: () => IfEquals<
-    U,
-    "construct",
-    InstanceType<GlobalTraverse<T>>,
-    ReturnType<GlobalTraverse<T>>
-  >;
+	fn: GlobalTraverse<T>;
+	this: IfEquals<U, "construct", null, ProxyApplyThis<T>>;
+	args: IfEquals<
+		U,
+		"construct",
+		ConstructorParameters<GlobalTraverse<T>>,
+		Parameters<GlobalTraverse<T>>
+	>;
+	newTarget: IfEquals<U, "construct", GlobalTraverse<T>, null>;
+	return: (
+		r: IfEquals<
+			U,
+			"construct",
+			InstanceType<GlobalTraverse<T>>,
+			ReturnType<GlobalTraverse<T>>
+		>
+	) => void;
+	call: () => IfEquals<
+		U,
+		"construct",
+		InstanceType<GlobalTraverse<T>>,
+		ReturnType<GlobalTraverse<T>>
+	>;
 };
 export type Proxy<T extends string = string> = {
-  construct?(ctx: ProxyCtx<T, "construct">): any;
-  apply?(ctx: ProxyCtx<T, "apply">): any;
+	construct?(ctx: ProxyCtx<T, "construct">): any;
+	apply?(ctx: ProxyCtx<T, "apply">): any;
 };
 
 export type TrapCtx<T extends string> = {
-  this: any;
-  get: () => GlobalTraverse<T>;
-  set: (v: GlobalTraverse<T>) => void;
+	this: any;
+	get: () => GlobalTraverse<T>;
+	set: (v: GlobalTraverse<T>) => void;
 };
 export type Trap<T extends string> = {
-  writable?: boolean;
-  value?: any;
-  enumerable?: boolean;
-  configurable?: boolean;
-  get?: (ctx: TrapCtx<T>) => GlobalTraverse<T>;
-  set?: (ctx: TrapCtx<T>, v: GlobalTraverse<T>) => void;
+	writable?: boolean;
+	value?: any;
+	enumerable?: boolean;
+	configurable?: boolean;
+	get?: (ctx: TrapCtx<T>) => GlobalTraverse<T>;
+	set?: (ctx: TrapCtx<T>, v: GlobalTraverse<T>) => void;
 };
 
 export type ScramjetModule = {
-  enabled: (client: ScramjetClient) => boolean | undefined;
-  disabled: (client: ScramjetClient, self: GlobalThis) => void | undefined;
-  order: number | undefined;
-  default: (client: ScramjetClient, self: GlobalThis) => void;
+	enabled: (client: ScramjetClient) => boolean | undefined;
+	disabled: (client: ScramjetClient, self: GlobalThis) => void | undefined;
+	order: number | undefined;
+	default: (client: ScramjetClient, self: GlobalThis) => void;
 };
 
 function findBox(global: Window, seen: Window[]): SingletonBox | null {
-  if (seen.includes(global)) return null;
-  seen.push(global);
+	if (seen.includes(global)) return null;
+	seen.push(global);
 
-  try {
-    // Only resolves a global THIS bundle hooked (e.g. a subframe hooked via
-    // hookSubcontext, whose client is constructed in this realm). A sibling
-    // that booted its own bundle keeps its own box; the walk continues past
-    // it. The box is never read off the global itself anymore.
-    const existing = getClient(global);
-    if (existing) return existing.box;
-  } catch {}
+	try {
+		// Only resolves a global THIS bundle hooked (e.g. a subframe hooked via
+		// hookSubcontext, whose client is constructed in this realm). A sibling
+		// that booted its own bundle keeps its own box; the walk continues past
+		// it. The box is never read off the global itself anymore.
+		const existing = getClient(global);
+		if (existing) return existing.box;
+	} catch {}
 
-  try {
-    const b = findBox(global.parent, seen);
-    if (b) return b;
-  } catch {}
+	try {
+		const b = findBox(global.parent, seen);
+		if (b) return b;
+	} catch {}
 
-  try {
-    const b = findBox(global.top, seen);
-    if (b) return b;
-  } catch {}
+	try {
+		const b = findBox(global.top, seen);
+		if (b) return b;
+	} catch {}
 
-  try {
-    if (global.opener) {
-      const b = findBox(global.opener, seen);
-      if (b) return b;
-    }
-  } catch {}
+	try {
+		if (global.opener) {
+			const b = findBox(global.opener, seen);
+			if (b) return b;
+		}
+	} catch {}
 
-  for (let i = 0; i < global.length; i++) {
-    try {
-      const b = findBox(global[i], seen);
-      if (b) return b;
-    } catch {}
-  }
+	for (let i = 0; i < global.length; i++) {
+		try {
+			const b = findBox(global[i], seen);
+			if (b) return b;
+		} catch {}
+	}
 
-  return null;
+	return null;
 }
 
 export class ScramjetClient {
-  locationProxy: any;
-  indirectEval: any;
-  bare: BareCompatibleClient;
-
-  natives: NativeStore;
-  descriptors: DescriptorStore;
-  wrapfn: (i: any, ...args: any) => any;
-
-  eventcallbacks: Map<
-    any,
-    [
-      {
-        event: string;
-        originalCallback: AnyFunction;
-        proxiedCallback: AnyFunction;
-      },
-    ]
-  > = new _Map();
-
-  meta: URLMeta;
-
-  box: SingletonBox;
-
-  context: ScramjetContext;
-
-  initHeaders: ScramjetHeaders;
-
-  history: TrackedHistoryState[];
-
-  private flagCache = new _Map<keyof ScramjetConfig["flags"], boolean>();
-
-  hooks = {
-    rewriter: {
-      html: Tap.create<HtmlRewriterHooks>(),
-    },
-    lifecycle: Tap.create<LifecycleHooks>(),
-  };
-
-  constructor(
-    public global: GlobalThis,
-    public init: ScramjetClientInit,
-  ) {
-    if (SCRAMJETCLIENT in global) {
-      dbg.error(
-        "attempted to initialize a scramjet client, but one is already loaded - this is very bad",
-      );
-      throw new Error();
-    }
-
-    if (iswindow) {
-      const b = findBox(global as unknown as Window, []);
-      if (b) {
-        this.box = b;
-      }
-    }
-
-    if (!this.box) {
-      this.box = new SingletonBox(this);
-    }
-
-    this.box.registerClient(this, global as Self);
-
-    this.context = init.context;
-    if (init.initHeaders)
-      this.initHeaders = ScramjetHeaders.fromRawHeaders(init.initHeaders);
-    this.history = init.history;
-    this.context.hooks = {
-      rewriter: this.hooks.rewriter,
-    };
-
-    this.bare = new BareCompatibleClient(init.transport);
-
-    if (iswindow) {
-      setClient(global.document, this);
-    }
-
-    this.indirectEval = createIndirectEval(this);
-    this.wrapfn = createWrapFn(this, global);
-    const nativeCall = this.hooks.lifecycle.nativeCall;
-    this.natives = {
-      store: new Proxy(
-        {},
-        {
-          get: (target, prop: string) => {
-            if (prop in target) {
-              return target[prop];
-            }
-
-            const split = prop.split(".");
-            const realProp = split.pop();
-            const realTarget = split.reduce((a, b) => a?.[b], this.global);
-
-            if (!realTarget) return;
-
-            const original = Reflect_get(realTarget, realProp);
-            target[prop] = original;
-
-            return target[prop];
-          },
-        },
-      ),
-      construct(target, ...args) {
-        const original = this.store[target];
-        if (!original) return null;
-
-        return new original(...args);
-      },
-      call(target, that, ...args) {
-        const original = this.store[target];
-        if (!original) return null;
-
-        const props: { receiver: unknown; args: unknown[] } = {
-          receiver: that,
-          args,
-        };
-        Tap.dispatchSync(nativeCall, { target }, props);
-        return Reflect_apply(original, props.receiver, props.args);
-      },
-    };
-    this.descriptors = {
-      store: new Proxy(
-        {},
-        {
-          get: (target, prop: string) => {
-            if (prop in target) {
-              return target[prop];
-            }
-
-            const split = prop.split(".");
-            const realProp = split.pop();
-            const realTarget = split.reduce((a, b) => a?.[b], this.global);
-
-            if (!realTarget) return;
-
-            const original = client.natives.call(
-              "Object.getOwnPropertyDescriptor",
-              null,
-              realTarget,
-              realProp,
-            );
-            target[prop] = original;
-
-            return target[prop];
-          },
-        },
-      ),
-      get(target, that) {
-        const original = this.store[target];
-        if (!original) return null;
-
-        return original.get!.call(that);
-      },
-      set(target, that, value) {
-        const original = this.store[target];
-        if (!original) return null;
-
-        original.set!.call(that, value);
-      },
-    };
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const client = this;
-    /**
-     * The document base, and whether the document declared it.
-     *
-     * One selection serving both, from one selector. HTML takes the FIRST `<base>`
-     * that has an `href` content attribute, in tree order — so `base[href]`, not
-     * `base`: a preceding `<base target=_blank>` carries no href and must not
-     * select, and an empty `href` does select rather than deferring to a later
-     * element. `declared` means that selected base is what resolution actually
-     * uses, not merely that some attribute was present.
-     */
-    const declaredBase = (): {
-      url: _URL;
-      declared: boolean;
-      /** A `base[href]` exists, even if its value does not parse. */
-      selected: boolean;
-    } => {
-      const fallback = { url: client.url, declared: false, selected: false };
-      if (!iswindow) return fallback;
-      const base = client.natives.call(
-        "Document.prototype.querySelector",
-        client.global.document,
-        "base[href]",
-      );
-      if (!base) return fallback;
-      // The selection is spent from here on: this element is the document's
-      // chosen base whether or not its href is usable.
-      const spent = { url: client.url, declared: false, selected: true };
-      let url = base.getAttribute("href");
-      if (!url) return spent;
-      const frag = url.indexOf("#");
-      url = url.substring(0, frag === -1 ? undefined : frag);
-      if (!url) return spent;
-      try {
-        return {
-          url: new _URL(url, client.url.origin),
-          declared: true,
-          selected: true,
-        };
-      } catch {
-        // Unparseable base: HTML falls back to the document URL, and this is not
-        // a declared base for resolution purposes — but it still selected.
-        return spent;
-      }
-    };
-    this.meta = {
-      get origin() {
-        return client.url;
-      },
-      get baseIsDeclared() {
-        return declaredBase().declared;
-      },
-      get baseIsSelected() {
-        return declaredBase().selected;
-      },
-      get base() {
-        return declaredBase().url;
-      },
-      // TODO: very bad assumptions made here, window.parent never throws
-      get topFrameName() {
-        if (!iswindow)
-          throw new Error("topFrameName was called from a worker?");
-
-        let currentWin = client.global;
-
-        try {
-          if (currentWin.parent.window == currentWin.window) {
-            // we're top level & we don't have a frame name
-            return null;
-          }
-        } catch {
-          // accessing parent was blocked by CORS, we're in a frame but the parent is cross origin
-        }
-
-        try {
-          // find the topmost frame that's controlled by scramjet, stopping before the real top frame
-          while (currentWin.parent.window !== currentWin.window) {
-            if (!currentWin.parent.window[SCRAMJETCLIENT]) break;
-            currentWin = currentWin.parent.window;
-          }
-        } catch {
-          // doesn't matter if it throws here just means we found the topmost one
-        }
-
-        // The topmost scramjet-controlled frame is reached cross-realm
-        // through the shared box, not off its global. If it is not in this
-        // box (it booted its own bundle), we cannot read its frame name.
-        const curclient = client.box.globals.get(currentWin as Self);
-        if (!curclient) return null;
-        const frame = curclient.descriptors.get(
-          "window.frameElement",
-          currentWin,
-        ) as NamedFrameElement;
-        if (!frame) {
-          // we're inside an iframe, but the top frame is scramjet-controlled and top level, so we can't get a top frame name
-          // or we're cross-origin and frameElement doesn't exist. that's a TODO because this won't work
-          return null;
-        }
-        if (!frame.name) {
-          // the top frame is scramjet-controlled, but it has no name. this is user error
-          dbg.error(
-            "YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK",
-          );
-
-          return null;
-        }
-
-        return frame.name;
-      },
-      get parentFrameName() {
-        if (!iswindow)
-          throw new Error("parentFrameName was called from a worker?");
-
-        try {
-          try {
-            if (client.global.parent.window == client.global.window) {
-              // we're top level & we don't have a frame name
-              return null;
-            }
-          } catch {
-            // accessing parent was blocked by CORS, we're in a frame but the parent is cross origin
-            return null;
-          }
-
-          const parentWin = client.global.parent.window;
-          if (SCRAMJETCLIENT in parentWin) {
-            // we're inside an iframe, and the parent is scramjet-controlled
-            const parentClient = client.box.globals.get(parentWin as Self);
-            if (!parentClient) return null;
-            const frame = parentClient.descriptors.get(
-              "window.frameElement",
-              parentWin,
-            ) as NamedFrameElement;
-
-            if (!frame) {
-              // parent is scramjet controlled and top-level. there is no parent frame name
-              return null;
-            }
-
-            if (!frame.name) {
-              // the parent frame is scramjet-controlled, but it has no name. this is user error
-              dbg.error(
-                "YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK",
-              );
-
-              return null;
-            }
-
-            return frame.name;
-          } else {
-            // we're inside an iframe, and the parent is not scramjet-controlled
-            // return our own frame name
-            const frame = client.descriptors.get(
-              "window.frameElement",
-              client.global,
-            ) as NamedFrameElement;
-            if (!frame.name) {
-              // the parent frame is not scramjet-controlled, so we can't get a parent frame name
-              dbg.error(
-                "YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK",
-              );
-
-              return null;
-            }
-
-            return frame.name;
-          }
-        } catch {
-          return null;
-        }
-      },
-      get referrerPolicy(): string | undefined {
-        if (client.initHeaders && client.initHeaders.has("referrer-policy")) {
-          return client.initHeaders.get("referrer-policy");
-        }
-        if (!iswindow) return "";
-
-        // TODO: need to nullify the actual meta tag so it still sends unsafe-url
-        const meta = [
-          ...client.natives.call(
-            "Document.prototype.querySelectorAll",
-            client.global.document,
-            "meta[name='referrer']",
-          ),
-          ...client.natives.call(
-            "Document.prototype.querySelectorAll",
-            client.global.document,
-            "meta[name='referrer-policy']",
-          ),
-          ...client.natives.call(
-            "Document.prototype.querySelectorAll",
-            client.global.document,
-            "meta[http-equiv='referrer-policy']",
-          ),
-        ];
-        const last = meta[meta.length - 1];
-        if (last) {
-          return last.getAttribute("content");
-        }
-
-        return "";
-      },
-    };
-    this.locationProxy = createLocationProxy(this, global);
-
-    // The live client goes in the off-global registry, never on `global`
-    // itself. Only the inert cross-realm presence marker is left on the
-    // global so related Scramjet realms can detect this one without reaching
-    // any internal state.
-    setClient(global, this);
-    global[SCRAMJETCLIENT] = SCRAMJETMARKER;
-  }
-
-  /** Apply document injection init when a client was already installed (e.g. early contentWindow). */
-  syncDocumentInit(init: {
-    initHeaders: RawHeaders;
-    history: TrackedHistoryState[];
-    cookies?: string;
-  }) {
-    this.initHeaders = ScramjetHeaders.fromRawHeaders(init.initHeaders);
-    this.history = init.history;
-    if (init.cookies !== undefined) {
-      this.context.cookieJar.load(init.cookies);
-    }
-  }
-
-  hook() {
-    const context = import.meta.webpackContext(".", {
-      recursive: true,
-    });
-
-    const modules: ScramjetModule[] = [];
-
-    for (const key of context.keys()) {
-      const module = context(key) as ScramjetModule;
-      if (!key.endsWith(".ts")) continue;
-      if (
-        (key.startsWith("./dom/") && "window" in this.global) ||
-        (key.startsWith("./worker/") && "WorkerGlobalScope" in this.global) ||
-        key.startsWith("./shared/")
-      ) {
-        modules.push(module);
-      }
-    }
-
-    modules.sort((a, b) => {
-      const aorder = a.order || 0;
-      const border = b.order || 0;
-
-      return aorder - border;
-    });
-
-    for (const module of modules) {
-      if (!module.enabled || module.enabled(this))
-        module.default(this, this.global);
-      else if (module.disabled) module.disabled(this, this.global);
-    }
-  }
-
-  get url(): _URL {
-    return new _URL(this.unrewriteUrl(this.global.location.href));
-  }
-
-  set url(url: _URL | string) {
-    url = String(url);
-
-    Tap.dispatch(
-      this.hooks.lifecycle.navigate,
-      {
-        type: "location",
-      },
-      {
-        url,
-      },
-    );
-
-    this.global.location.href = this.rewriteUrl(url, {
-      navigateType: "location",
-    });
-  }
-
-  // below are the utilities for proxying and trapping dom APIs
-  // you don't have to understand this it just makes the rest easier
-  // i'll document it eventually
-  Proxy<T extends string>(name: T, handler: Proxy<T>): void;
-  Proxy<const T extends readonly string[]>(
-    name: T,
-    handler: Proxy<T[number]>,
-  ): void;
-  Proxy(name: string | string[], handler: Proxy<any>): void {
-    if (Array_isArray(name)) {
-      for (const n of name) {
-        this.Proxy(n, handler);
-      }
-
-      return;
-    }
-
-    const split = name.split(".");
-    const prop = split.pop();
-    const target = split.reduce((a, b) => a?.[b], this.global);
-    if (!target) return;
-    if (!prop) return;
-
-    if (!(name in this.natives.store)) {
-      const original = Reflect_get(target, prop);
-      this.natives.store[name] = original;
-    }
-
-    this.RawProxy(target, prop, handler, name);
-  }
-  RawProxy(target: any, prop: string, handler: Proxy<any>, debugname?: string) {
-    if (!target) return;
-    if (!prop) return;
-    if (!Reflect_has(target, prop)) return;
-
-    const value = Reflect_get(target, prop);
-    const originalDescriptor = Object_getOwnPropertyDescriptor(target, prop);
-    delete target[prop];
-
-    const h: ProxyHandler<any> = {};
-
-    let applyFn: typeof Reflect_apply;
-    let constructFn: typeof Reflect_construct;
-    if (this.flagEnabled("debugTrampolines")) {
-      let fnName: string;
-      if (debugname) {
-        fnName = debugname;
-      } else if (typeof value === "function" && value.name) {
-        fnName = `Function ${value.name} -> ${prop}`;
-      } else if (typeof value === "object" && value.constructor) {
-        fnName = `Object ${value.constructor.name} -> ${prop}`;
-      } else {
-        fnName = `${typeof value} -> ${prop}`;
-      }
-      let windowName = this.descriptors.get("window.name", this.global);
-      if (!windowName) windowName = "<unnamed window>";
-      let location = this.url.href;
-
-      // sanitize newlines just in case somehow
-      location = location.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      windowName = windowName.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      fnName = fnName.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      const sourceURL = debugname ? `${debugname}.sj` : "rawproxy.sj";
-
-      const { construct, apply } = this.natives.call(
-        "Function",
-        null,
-        `"use strict";
+	locationProxy: any;
+	indirectEval: any;
+	bare: BareCompatibleClient;
+
+	natives: NativeStore;
+	descriptors: DescriptorStore;
+	wrapfn: (i: any, ...args: any) => any;
+
+	eventcallbacks: Map<
+		any,
+		[
+			{
+				event: string;
+				originalCallback: AnyFunction;
+				proxiedCallback: AnyFunction;
+			},
+		]
+	> = new _Map();
+
+	meta: URLMeta;
+
+	box: SingletonBox;
+
+	context: ScramjetContext;
+
+	initHeaders: ScramjetHeaders;
+
+	history: TrackedHistoryState[];
+
+	private flagCache = new _Map<keyof ScramjetConfig["flags"], boolean>();
+
+	hooks = {
+		rewriter: {
+			html: Tap.create<HtmlRewriterHooks>(),
+		},
+		lifecycle: Tap.create<LifecycleHooks>(),
+	};
+
+	constructor(
+		public global: GlobalThis,
+		public init: ScramjetClientInit
+	) {
+		if (SCRAMJETCLIENT in global) {
+			dbg.error(
+				"attempted to initialize a scramjet client, but one is already loaded - this is very bad"
+			);
+			throw new Error();
+		}
+
+		if (iswindow) {
+			const b = findBox(global as unknown as Window, []);
+			if (b) {
+				this.box = b;
+			}
+		}
+
+		if (!this.box) {
+			this.box = new SingletonBox(this);
+		}
+
+		this.box.registerClient(this, global as Self);
+
+		this.context = init.context;
+		if (init.initHeaders)
+			this.initHeaders = ScramjetHeaders.fromRawHeaders(init.initHeaders);
+		this.history = init.history;
+		this.context.hooks = {
+			rewriter: this.hooks.rewriter,
+		};
+
+		this.bare = new BareCompatibleClient(init.transport);
+
+		if (iswindow) {
+			setClient(global.document, this);
+		}
+
+		this.indirectEval = createIndirectEval(this);
+		this.wrapfn = createWrapFn(this, global);
+		const nativeCall = this.hooks.lifecycle.nativeCall;
+		this.natives = {
+			store: new Proxy(
+				{},
+				{
+					get: (target, prop: string) => {
+						if (prop in target) {
+							return target[prop];
+						}
+
+						const split = prop.split(".");
+						const realProp = split.pop();
+						const realTarget = split.reduce((a, b) => a?.[b], this.global);
+
+						if (!realTarget) return;
+
+						const original = Reflect_get(realTarget, realProp);
+						target[prop] = original;
+
+						return target[prop];
+					},
+				}
+			),
+			construct(target, ...args) {
+				const original = this.store[target];
+				if (!original) return null;
+
+				return new original(...args);
+			},
+			call(target, that, ...args) {
+				const original = this.store[target];
+				if (!original) return null;
+
+				const props: { receiver: unknown; args: unknown[] } = {
+					receiver: that,
+					args,
+				};
+				Tap.dispatchSync(nativeCall, { target }, props);
+				return Reflect_apply(original, props.receiver, props.args);
+			},
+		};
+		this.descriptors = {
+			store: new Proxy(
+				{},
+				{
+					get: (target, prop: string) => {
+						if (prop in target) {
+							return target[prop];
+						}
+
+						const split = prop.split(".");
+						const realProp = split.pop();
+						const realTarget = split.reduce((a, b) => a?.[b], this.global);
+
+						if (!realTarget) return;
+
+						const original = client.natives.call(
+							"Object.getOwnPropertyDescriptor",
+							null,
+							realTarget,
+							realProp
+						);
+						target[prop] = original;
+
+						return target[prop];
+					},
+				}
+			),
+			get(target, that) {
+				const original = this.store[target];
+				if (!original) return null;
+
+				return original.get!.call(that);
+			},
+			set(target, that, value) {
+				const original = this.store[target];
+				if (!original) return null;
+
+				original.set!.call(that, value);
+			},
+		};
+		// eslint-disable-next-line @typescript-eslint/no-this-alias
+		const client = this;
+		/**
+		 * The document base, and whether the document declared it.
+		 *
+		 * One selection serving both, from one selector. HTML takes the FIRST `<base>`
+		 * that has an `href` content attribute, in tree order — so `base[href]`, not
+		 * `base`: a preceding `<base target=_blank>` carries no href and must not
+		 * select, and an empty `href` does select rather than deferring to a later
+		 * element. `declared` means that selected base is what resolution actually
+		 * uses, not merely that some attribute was present.
+		 */
+		const declaredBase = (): {
+			url: _URL;
+			declared: boolean;
+			/** A `base[href]` exists, even if its value does not parse. */
+			selected: boolean;
+		} => {
+			const fallback = { url: client.url, declared: false, selected: false };
+			if (!iswindow) return fallback;
+			const base = client.natives.call(
+				"Document.prototype.querySelector",
+				client.global.document,
+				"base[href]"
+			);
+			if (!base) return fallback;
+			// The selection is spent from here on: this element is the document's
+			// chosen base whether or not its href is usable.
+			const spent = { url: client.url, declared: false, selected: true };
+			let url = base.getAttribute("href");
+			if (!url) return spent;
+			const frag = url.indexOf("#");
+			url = url.substring(0, frag === -1 ? undefined : frag);
+			if (!url) return spent;
+			try {
+				return {
+					url: new _URL(url, client.url.origin),
+					declared: true,
+					selected: true,
+				};
+			} catch {
+				// Unparseable base: HTML falls back to the document URL, and this is not
+				// a declared base for resolution purposes — but it still selected.
+				return spent;
+			}
+		};
+		this.meta = {
+			get origin() {
+				return client.url;
+			},
+			get baseIsDeclared() {
+				return declaredBase().declared;
+			},
+			get baseIsSelected() {
+				return declaredBase().selected;
+			},
+			get base() {
+				return declaredBase().url;
+			},
+			// TODO: very bad assumptions made here, window.parent never throws
+			get topFrameName() {
+				if (!iswindow)
+					throw new Error("topFrameName was called from a worker?");
+
+				let currentWin = client.global;
+
+				try {
+					if (currentWin.parent.window == currentWin.window) {
+						// we're top level & we don't have a frame name
+						return null;
+					}
+				} catch {
+					// accessing parent was blocked by CORS, we're in a frame but the parent is cross origin
+				}
+
+				try {
+					// find the topmost frame that's controlled by scramjet, stopping before the real top frame
+					while (currentWin.parent.window !== currentWin.window) {
+						if (!currentWin.parent.window[SCRAMJETCLIENT]) break;
+						currentWin = currentWin.parent.window;
+					}
+				} catch {
+					// doesn't matter if it throws here just means we found the topmost one
+				}
+
+				// The topmost scramjet-controlled frame is reached cross-realm
+				// through the shared box, not off its global. If it is not in this
+				// box (it booted its own bundle), we cannot read its frame name.
+				const curclient = client.box.globals.get(currentWin as Self);
+				if (!curclient) return null;
+				const frame = curclient.descriptors.get(
+					"window.frameElement",
+					currentWin
+				) as NamedFrameElement;
+				if (!frame) {
+					// we're inside an iframe, but the top frame is scramjet-controlled and top level, so we can't get a top frame name
+					// or we're cross-origin and frameElement doesn't exist. that's a TODO because this won't work
+					return null;
+				}
+				if (!frame.name) {
+					// the top frame is scramjet-controlled, but it has no name. this is user error
+					dbg.error(
+						"YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK"
+					);
+
+					return null;
+				}
+
+				return frame.name;
+			},
+			get parentFrameName() {
+				if (!iswindow)
+					throw new Error("parentFrameName was called from a worker?");
+
+				try {
+					try {
+						if (client.global.parent.window == client.global.window) {
+							// we're top level & we don't have a frame name
+							return null;
+						}
+					} catch {
+						// accessing parent was blocked by CORS, we're in a frame but the parent is cross origin
+						return null;
+					}
+
+					const parentWin = client.global.parent.window;
+					if (SCRAMJETCLIENT in parentWin) {
+						// we're inside an iframe, and the parent is scramjet-controlled
+						const parentClient = client.box.globals.get(parentWin as Self);
+						if (!parentClient) return null;
+						const frame = parentClient.descriptors.get(
+							"window.frameElement",
+							parentWin
+						) as NamedFrameElement;
+
+						if (!frame) {
+							// parent is scramjet controlled and top-level. there is no parent frame name
+							return null;
+						}
+
+						if (!frame.name) {
+							// the parent frame is scramjet-controlled, but it has no name. this is user error
+							dbg.error(
+								"YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK"
+							);
+
+							return null;
+						}
+
+						return frame.name;
+					} else {
+						// we're inside an iframe, and the parent is not scramjet-controlled
+						// return our own frame name
+						const frame = client.descriptors.get(
+							"window.frameElement",
+							client.global
+						) as NamedFrameElement;
+						if (!frame.name) {
+							// the parent frame is not scramjet-controlled, so we can't get a parent frame name
+							dbg.error(
+								"YOU NEED TO USE `new ScramjetFrame()`! DIRECT IFRAMES WILL NOT WORK"
+							);
+
+							return null;
+						}
+
+						return frame.name;
+					}
+				} catch {
+					return null;
+				}
+			},
+			get referrerPolicy(): string | undefined {
+				if (client.initHeaders && client.initHeaders.has("referrer-policy")) {
+					return client.initHeaders.get("referrer-policy");
+				}
+				if (!iswindow) return "";
+
+				// TODO: need to nullify the actual meta tag so it still sends unsafe-url
+				const meta = [
+					...client.natives.call(
+						"Document.prototype.querySelectorAll",
+						client.global.document,
+						"meta[name='referrer']"
+					),
+					...client.natives.call(
+						"Document.prototype.querySelectorAll",
+						client.global.document,
+						"meta[name='referrer-policy']"
+					),
+					...client.natives.call(
+						"Document.prototype.querySelectorAll",
+						client.global.document,
+						"meta[http-equiv='referrer-policy']"
+					),
+				];
+				const last = meta[meta.length - 1];
+				if (last) {
+					return last.getAttribute("content");
+				}
+
+				return "";
+			},
+		};
+		this.locationProxy = createLocationProxy(this, global);
+
+		// The live client goes in the off-global registry, never on `global`
+		// itself. Only the inert cross-realm presence marker is left on the
+		// global so related Scramjet realms can detect this one without reaching
+		// any internal state.
+		setClient(global, this);
+		global[SCRAMJETCLIENT] = SCRAMJETMARKER;
+	}
+
+	/** Apply document injection init when a client was already installed (e.g. early contentWindow). */
+	syncDocumentInit(init: {
+		initHeaders: RawHeaders;
+		history: TrackedHistoryState[];
+		cookies?: string;
+	}) {
+		this.initHeaders = ScramjetHeaders.fromRawHeaders(init.initHeaders);
+		this.history = init.history;
+		if (init.cookies !== undefined) {
+			this.context.cookieJar.load(init.cookies);
+		}
+	}
+
+	hook() {
+		const context = import.meta.webpackContext(".", {
+			recursive: true,
+		});
+
+		const modules: ScramjetModule[] = [];
+
+		for (const key of context.keys()) {
+			const module = context(key) as ScramjetModule;
+			if (!key.endsWith(".ts")) continue;
+			if (
+				(key.startsWith("./dom/") && "window" in this.global) ||
+				(key.startsWith("./worker/") && "WorkerGlobalScope" in this.global) ||
+				key.startsWith("./shared/")
+			) {
+				modules.push(module);
+			}
+		}
+
+		modules.sort((a, b) => {
+			const aorder = a.order || 0;
+			const border = b.order || 0;
+
+			return aorder - border;
+		});
+
+		for (const module of modules) {
+			if (!module.enabled || module.enabled(this))
+				module.default(this, this.global);
+			else if (module.disabled) module.disabled(this, this.global);
+		}
+	}
+
+	get url(): _URL {
+		return new _URL(this.unrewriteUrl(this.global.location.href));
+	}
+
+	set url(url: _URL | string) {
+		url = String(url);
+
+		Tap.dispatch(
+			this.hooks.lifecycle.navigate,
+			{
+				type: "location",
+			},
+			{
+				url,
+			}
+		);
+
+		this.global.location.href = this.rewriteUrl(url, {
+			navigateType: "location",
+		});
+	}
+
+	// below are the utilities for proxying and trapping dom APIs
+	// you don't have to understand this it just makes the rest easier
+	// i'll document it eventually
+	Proxy<T extends string>(name: T, handler: Proxy<T>): void;
+	Proxy<const T extends readonly string[]>(
+		name: T,
+		handler: Proxy<T[number]>
+	): void;
+	Proxy(name: string | string[], handler: Proxy<any>): void {
+		if (Array_isArray(name)) {
+			for (const n of name) {
+				this.Proxy(n, handler);
+			}
+
+			return;
+		}
+
+		const split = name.split(".");
+		const prop = split.pop();
+		const target = split.reduce((a, b) => a?.[b], this.global);
+		if (!target) return;
+		if (!prop) return;
+
+		if (!(name in this.natives.store)) {
+			const original = Reflect_get(target, prop);
+			this.natives.store[name] = original;
+		}
+
+		this.RawProxy(target, prop, handler, name);
+	}
+	RawProxy(target: any, prop: string, handler: Proxy<any>, debugname?: string) {
+		if (!target) return;
+		if (!prop) return;
+		if (!Reflect_has(target, prop)) return;
+
+		const value = Reflect_get(target, prop);
+		const originalDescriptor = Object_getOwnPropertyDescriptor(target, prop);
+		delete target[prop];
+
+		const h: ProxyHandler<any> = {};
+
+		let applyFn: typeof Reflect_apply;
+		let constructFn: typeof Reflect_construct;
+		if (this.flagEnabled("debugTrampolines")) {
+			let fnName: string;
+			if (debugname) {
+				fnName = debugname;
+			} else if (typeof value === "function" && value.name) {
+				fnName = `Function ${value.name} -> ${prop}`;
+			} else if (typeof value === "object" && value.constructor) {
+				fnName = `Object ${value.constructor.name} -> ${prop}`;
+			} else {
+				fnName = `${typeof value} -> ${prop}`;
+			}
+			let windowName = this.descriptors.get("window.name", this.global);
+			if (!windowName) windowName = "<unnamed window>";
+			let location = this.url.href;
+
+			// sanitize newlines just in case somehow
+			location = location.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+			windowName = windowName.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+			fnName = fnName.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+			const sourceURL = debugname ? `${debugname}.sj` : "rawproxy.sj";
+
+			const { construct, apply } = this.natives.call(
+				"Function",
+				null,
+				`"use strict";
 
 // SCRAMJET FUNCTION INTERCEPT
 // target: ${fnName}
@@ -732,277 +732,277 @@ function construct(fn, args, newTarget) {
 
 return { apply, construct };
 
-//# sourceURL=${sourceURL}`,
-      )();
+//# sourceURL=${sourceURL}`
+			)();
 
-      applyFn = apply;
-      constructFn = construct;
-    } else {
-      applyFn = Reflect_apply;
-      constructFn = Reflect_construct;
-    }
+			applyFn = apply;
+			constructFn = construct;
+		} else {
+			applyFn = Reflect_apply;
+			constructFn = Reflect_construct;
+		}
 
-    if (handler.construct) {
-      h.construct = function (
-        constructor: any,
-        args: any[],
-        newTarget: AnyFunction,
-      ) {
-        let returnValue: any = undefined;
-        let earlyreturn = false;
+		if (handler.construct) {
+			h.construct = function (
+				constructor: any,
+				args: any[],
+				newTarget: AnyFunction
+			) {
+				let returnValue: any = undefined;
+				let earlyreturn = false;
 
-        const ctx: ProxyCtx<any, "construct"> = {
-          fn: constructor,
-          this: null,
-          args,
-          newTarget: newTarget,
-          return: (r: any) => {
-            earlyreturn = true;
-            returnValue = r;
-          },
-          call: () => {
-            earlyreturn = true;
-            returnValue = constructFn(ctx.fn, ctx.args, ctx.newTarget);
+				const ctx: ProxyCtx<any, "construct"> = {
+					fn: constructor,
+					this: null,
+					args,
+					newTarget: newTarget,
+					return: (r: any) => {
+						earlyreturn = true;
+						returnValue = r;
+					},
+					call: () => {
+						earlyreturn = true;
+						returnValue = constructFn(ctx.fn, ctx.args, ctx.newTarget);
 
-            return returnValue;
-          },
-        };
+						return returnValue;
+					},
+				};
 
-        handler.construct(ctx);
+				handler.construct(ctx);
 
-        if (earlyreturn) {
-          return returnValue;
-        }
+				if (earlyreturn) {
+					return returnValue;
+				}
 
-        return constructFn(ctx.fn, ctx.args, ctx.newTarget);
-      };
-    }
+				return constructFn(ctx.fn, ctx.args, ctx.newTarget);
+			};
+		}
 
-    if (handler.apply) {
-      h.apply = (fn: any, that: any, args: any[]) => {
-        let returnValue: any = undefined;
-        let earlyreturn = false;
+		if (handler.apply) {
+			h.apply = (fn: any, that: any, args: any[]) => {
+				let returnValue: any = undefined;
+				let earlyreturn = false;
 
-        const ctx: ProxyCtx<any, "apply"> = {
-          fn,
-          this: that,
-          args,
-          newTarget: null,
-          return: (r: any) => {
-            earlyreturn = true;
-            returnValue = r;
-          },
-          call: () => {
-            earlyreturn = true;
-            returnValue = applyFn(ctx.fn, ctx.this, ctx.args);
+				const ctx: ProxyCtx<any, "apply"> = {
+					fn,
+					this: that,
+					args,
+					newTarget: null,
+					return: (r: any) => {
+						earlyreturn = true;
+						returnValue = r;
+					},
+					call: () => {
+						earlyreturn = true;
+						returnValue = applyFn(ctx.fn, ctx.this, ctx.args);
 
-            return returnValue;
-          },
-        };
-        if (
-          !this.flagEnabled("debugTrampolines") &&
-          this.flagEnabled("allowFailedIntercepts")
-        ) {
-          // fast path, no error detection
-          handler.apply(ctx);
+						return returnValue;
+					},
+				};
+				if (
+					!this.flagEnabled("debugTrampolines") &&
+					this.flagEnabled("allowFailedIntercepts")
+				) {
+					// fast path, no error detection
+					handler.apply(ctx);
 
-          if (earlyreturn) {
-            return returnValue;
-          }
-          return applyFn(ctx.fn, ctx.this, ctx.args);
-        }
+					if (earlyreturn) {
+						return returnValue;
+					}
+					return applyFn(ctx.fn, ctx.this, ctx.args);
+				}
 
-        const pst = Error.prepareStackTrace;
+				const pst = Error.prepareStackTrace;
 
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
-        const client = this;
-        Error.prepareStackTrace = function (err, s) {
-          if (
-            s[0].getFileName() &&
-            !s[0].getFileName().startsWith(client.context.prefix.href)
-          ) {
-            return { stack: err.stack };
-          }
-        };
+				// eslint-disable-next-line @typescript-eslint/no-this-alias
+				const client = this;
+				Error.prepareStackTrace = function (err, s) {
+					if (
+						s[0].getFileName() &&
+						!s[0].getFileName().startsWith(client.context.prefix.href)
+					) {
+						return { stack: err.stack };
+					}
+				};
 
-        try {
-          handler.apply(ctx);
-        } catch (err) {
-          if (this.box.instanceof(err, "Error")) {
-            if (this.box.instanceof(err.stack, "Object")) {
-              //i'm not going to explain this
-              err.stack = err.stack.stack;
-              // eslint-disable-next-line scramjet-core/no-globals
-              console.error("ERROR FROM SCRAMJET INTERNALS", err);
-              if (!this.flagEnabled("allowFailedIntercepts")) {
-                Error.prepareStackTrace = pst;
-                throw err;
-              }
-            } else {
-              Error.prepareStackTrace = pst;
-              throw err;
-            }
-          } else {
-            Error.prepareStackTrace = pst;
-            throw err;
-          }
-        }
+				try {
+					handler.apply(ctx);
+				} catch (err) {
+					if (this.box.instanceof(err, "Error")) {
+						if (this.box.instanceof(err.stack, "Object")) {
+							//i'm not going to explain this
+							err.stack = err.stack.stack;
+							// eslint-disable-next-line scramjet-core/no-globals
+							console.error("ERROR FROM SCRAMJET INTERNALS", err);
+							if (!this.flagEnabled("allowFailedIntercepts")) {
+								Error.prepareStackTrace = pst;
+								throw err;
+							}
+						} else {
+							Error.prepareStackTrace = pst;
+							throw err;
+						}
+					} else {
+						Error.prepareStackTrace = pst;
+						throw err;
+					}
+				}
 
-        Error.prepareStackTrace = pst;
+				Error.prepareStackTrace = pst;
 
-        if (earlyreturn) {
-          return returnValue;
-        }
+				if (earlyreturn) {
+					return returnValue;
+				}
 
-        return applyFn(ctx.fn, ctx.this, ctx.args);
-      };
-    }
+				return applyFn(ctx.fn, ctx.this, ctx.args);
+			};
+		}
 
-    const proxy = new Proxy(value, h);
-    this.box.unproxy.set(proxy, value);
-    h.getOwnPropertyDescriptor = getOwnPropertyDescriptorHandler;
-    // Preserve original property descriptor (enumerable, configurable, etc.)
-    Object_defineProperty(target, prop, {
-      value: proxy,
-      writable: originalDescriptor?.writable ?? true,
-      enumerable: originalDescriptor?.enumerable ?? false,
-      configurable: originalDescriptor?.configurable ?? true,
-    });
-  }
-  Trap<T extends string>(name: T, handler: Trap<T>): void;
-  Trap<const T extends readonly string[]>(
-    name: T,
-    handler: Trap<T[number]>,
-  ): void;
-  Trap(name: string | string[], descriptor: Trap<any>): void {
-    if (Array_isArray(name)) {
-      for (const n of name) {
-        this.Trap(n, descriptor);
-      }
+		const proxy = new Proxy(value, h);
+		this.box.unproxy.set(proxy, value);
+		h.getOwnPropertyDescriptor = getOwnPropertyDescriptorHandler;
+		// Preserve original property descriptor (enumerable, configurable, etc.)
+		Object_defineProperty(target, prop, {
+			value: proxy,
+			writable: originalDescriptor?.writable ?? true,
+			enumerable: originalDescriptor?.enumerable ?? false,
+			configurable: originalDescriptor?.configurable ?? true,
+		});
+	}
+	Trap<T extends string>(name: T, handler: Trap<T>): void;
+	Trap<const T extends readonly string[]>(
+		name: T,
+		handler: Trap<T[number]>
+	): void;
+	Trap(name: string | string[], descriptor: Trap<any>): void {
+		if (Array_isArray(name)) {
+			for (const n of name) {
+				this.Trap(n, descriptor);
+			}
 
-      return;
-    }
+			return;
+		}
 
-    const split = name.split(".");
-    const prop = split.pop();
-    const target = split.reduce((a, b) => a?.[b], this.global);
-    if (!target) return;
-    if (!prop) return;
+		const split = name.split(".");
+		const prop = split.pop();
+		const target = split.reduce((a, b) => a?.[b], this.global);
+		if (!target) return;
+		if (!prop) return;
 
-    const original = this.natives.call(
-      "Object.getOwnPropertyDescriptor",
-      null,
-      target,
-      prop,
-    );
-    this.descriptors.store[name] = original;
+		const original = this.natives.call(
+			"Object.getOwnPropertyDescriptor",
+			null,
+			target,
+			prop
+		);
+		this.descriptors.store[name] = original;
 
-    this.RawTrap(target, prop, descriptor);
-  }
-  RawTrap(target: any, prop: string, descriptor: Trap<any>) {
-    if (!target) return;
-    if (!prop) return;
-    if (!Reflect_has(target, prop)) return;
+		this.RawTrap(target, prop, descriptor);
+	}
+	RawTrap(target: any, prop: string, descriptor: Trap<any>) {
+		if (!target) return;
+		if (!prop) return;
+		if (!Reflect_has(target, prop)) return;
 
-    const oldDescriptor = this.natives.call(
-      "Object.getOwnPropertyDescriptor",
-      null,
-      target,
-      prop,
-    );
+		const oldDescriptor = this.natives.call(
+			"Object.getOwnPropertyDescriptor",
+			null,
+			target,
+			prop
+		);
 
-    const ctx: TrapCtx<any> = {
-      this: null,
-      get: function () {
-        return oldDescriptor && oldDescriptor.get.call(this.this);
-      },
-      set: function (v: any) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        oldDescriptor && oldDescriptor.set.call(this.this, v);
-      },
-    };
+		const ctx: TrapCtx<any> = {
+			this: null,
+			get: function () {
+				return oldDescriptor && oldDescriptor.get.call(this.this);
+			},
+			set: function (v: any) {
+				// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+				oldDescriptor && oldDescriptor.set.call(this.this, v);
+			},
+		};
 
-    delete target[prop];
+		delete target[prop];
 
-    const desc: PropertyDescriptor = {};
+		const desc: PropertyDescriptor = {};
 
-    if (descriptor.get) {
-      desc.get = this.maskAccessor(oldDescriptor?.get, function (this: any) {
-        ctx.this = this;
+		if (descriptor.get) {
+			desc.get = this.maskAccessor(oldDescriptor?.get, function (this: any) {
+				ctx.this = this;
 
-        return descriptor.get(ctx);
-      });
-    } else if (oldDescriptor?.get) {
-      desc.get = oldDescriptor.get;
-    }
+				return descriptor.get(ctx);
+			});
+		} else if (oldDescriptor?.get) {
+			desc.get = oldDescriptor.get;
+		}
 
-    if (descriptor.set) {
-      desc.set = this.maskAccessor(
-        oldDescriptor?.set,
-        function (this: any, v: any) {
-          ctx.this = this;
+		if (descriptor.set) {
+			desc.set = this.maskAccessor(
+				oldDescriptor?.set,
+				function (this: any, v: any) {
+					ctx.this = this;
 
-          descriptor.set(ctx, v);
-        },
-      );
-    } else if (oldDescriptor?.set) {
-      desc.set = oldDescriptor.set;
-    }
+					descriptor.set(ctx, v);
+				}
+			);
+		} else if (oldDescriptor?.set) {
+			desc.set = oldDescriptor.set;
+		}
 
-    if (descriptor.enumerable) desc.enumerable = descriptor.enumerable;
-    else if (oldDescriptor?.enumerable)
-      desc.enumerable = oldDescriptor.enumerable;
-    if (descriptor.configurable) desc.configurable = descriptor.configurable;
-    else if (oldDescriptor?.configurable)
-      desc.configurable = oldDescriptor.configurable;
+		if (descriptor.enumerable) desc.enumerable = descriptor.enumerable;
+		else if (oldDescriptor?.enumerable)
+			desc.enumerable = oldDescriptor.enumerable;
+		if (descriptor.configurable) desc.configurable = descriptor.configurable;
+		else if (oldDescriptor?.configurable)
+			desc.configurable = oldDescriptor.configurable;
 
-    Object_defineProperty(target, prop, desc);
-  }
+		Object_defineProperty(target, prop, desc);
+	}
 
-  /**
-   * Wraps a trapped accessor's replacement get/set so reflecting on it answers
-   * for the native accessor it stands in for. A bare replacement function has
-   * `name === ""`, `length === 0` and a `toString()` that returns its JS
-   * source, none of which match a native accessor — a page reading
-   * `Object.getOwnPropertyDescriptor(proto, prop).get.toString()`/`.name` can
-   * tell it apart. A `Proxy` of the native keeps the native's `name`, `length`
-   * and missing `prototype`, and registering it in `box.unproxy` lets the
-   * `Function.prototype.toString` mask (client/shared/sourcemaps.ts) print the
-   * native's `[native code]` source for it. Mirrors `HookClient.#accessor`
-   * (hook/hook-client.ts), which already does this for the minimal client.
-   */
-  maskAccessor(
-    native: ((...args: any[]) => any) | undefined,
-    implementation: (...args: any[]) => any,
-  ): (...args: any[]) => any {
-    if (typeof native !== "function") return implementation;
-    const proxy = new Proxy(native, {
-      apply: (_target, that, args) => Reflect_apply(implementation, that, args),
-      getOwnPropertyDescriptor: getOwnPropertyDescriptorHandler,
-    });
-    this.box.unproxy.set(proxy, native);
+	/**
+	 * Wraps a trapped accessor's replacement get/set so reflecting on it answers
+	 * for the native accessor it stands in for. A bare replacement function has
+	 * `name === ""`, `length === 0` and a `toString()` that returns its JS
+	 * source, none of which match a native accessor — a page reading
+	 * `Object.getOwnPropertyDescriptor(proto, prop).get.toString()`/`.name` can
+	 * tell it apart. A `Proxy` of the native keeps the native's `name`, `length`
+	 * and missing `prototype`, and registering it in `box.unproxy` lets the
+	 * `Function.prototype.toString` mask (client/shared/sourcemaps.ts) print the
+	 * native's `[native code]` source for it. Mirrors `HookClient.#accessor`
+	 * (hook/hook-client.ts), which already does this for the minimal client.
+	 */
+	maskAccessor(
+		native: ((...args: any[]) => any) | undefined,
+		implementation: (...args: any[]) => any
+	): (...args: any[]) => any {
+		if (typeof native !== "function") return implementation;
+		const proxy = new Proxy(native, {
+			apply: (_target, that, args) => Reflect_apply(implementation, that, args),
+			getOwnPropertyDescriptor: getOwnPropertyDescriptorHandler,
+		});
+		this.box.unproxy.set(proxy, native);
 
-    return proxy;
-  }
+		return proxy;
+	}
 
-  rewriteUrl(url: string | URL, options?: RewriteUrlOptions): string {
-    return rewriteUrl(url, this.context, this.meta, options);
-  }
+	rewriteUrl(url: string | URL, options?: RewriteUrlOptions): string {
+		return rewriteUrl(url, this.context, this.meta, options);
+	}
 
-  unrewriteUrl(url: string | URL): string {
-    return unrewriteUrl(url, this.context);
-  }
+	unrewriteUrl(url: string | URL): string {
+		return unrewriteUrl(url, this.context);
+	}
 
-  flagEnabled(flag: keyof ScramjetConfig["flags"]): boolean {
-    const cached = this.flagCache.get(flag);
-    if (cached !== undefined) return cached;
+	flagEnabled(flag: keyof ScramjetConfig["flags"]): boolean {
+		const cached = this.flagCache.get(flag);
+		if (cached !== undefined) return cached;
 
-    const result = flagEnabled(flag, this.context, this.url);
-    this.flagCache.set(flag, result);
-    return result;
-  }
+		const result = flagEnabled(flag, this.context, this.url);
+		this.flagCache.set(flag, result);
+		return result;
+	}
 
-  get config(): ScramjetConfig {
-    return this.context.config;
-  }
+	get config(): ScramjetConfig {
+		return this.context.config;
+	}
 }
