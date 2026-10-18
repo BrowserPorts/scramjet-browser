@@ -40,6 +40,8 @@ import { flagEnabled } from "@/shared/flags";
 export type ForeignContext = "svg" | "math" | "html";
 
 export type HtmlContext = {
+	/** Keep source attributes for the full client's logical DOM views, default true */
+	originalAttributes?: boolean;
 	// should we inject scramjet scripts at the top of the document?
 	loadScripts: boolean;
 	// did the document come from the service worker, or from document.write/innerHTML?
@@ -273,7 +275,8 @@ function rewriteHtmlInner(
 			foreign: baseInForeignContext,
 			seen: 0,
 		},
-		false
+		false,
+		htmlcontext
 	);
 
 	let htmlRoot: Element | undefined;
@@ -486,7 +489,8 @@ function traverseParsedHtml(
 	context: ScramjetContext,
 	callerMeta: URLMeta,
 	state: BaseState,
-	inTemplate: boolean
+	inTemplate: boolean,
+	htmlcontext: HtmlContext
 ) {
 	// HTML selects the FIRST `<base>` with an `href` content attribute, in tree
 	// order — not the last, and not merely the first `<base>`: a preceding
@@ -545,7 +549,8 @@ function traverseParsedHtml(
 						else {
 							node.attribs[attr] = v;
 						}
-						node.attribs[internalAttribute(attr)] = value;
+						if (htmlcontext.originalAttributes !== false)
+							node.attribs[internalAttribute(attr)] = value;
 					}
 				}
 			}
@@ -553,7 +558,8 @@ function traverseParsedHtml(
 		const rewriteJs = providers().rewriteJs;
 		for (const [attr, value] of Object_entries(node.attribs)) {
 			if (rewriteJs && eventAttributes.includes(attr)) {
-				node.attribs[internalAttribute(attr)] = value;
+				if (htmlcontext.originalAttributes !== false)
+					node.attribs[internalAttribute(attr)] = value;
 				node.attribs[attr] = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
@@ -605,9 +611,10 @@ function traverseParsedHtml(
 		if (rewriteJs && isScriptType(scriptBlockType)) {
 			let js = node.children[0].data;
 			const module = isModuleScriptType(scriptBlockType);
-			node.attribs[internalAttribute("script-source-src")] = bytesToBase64(
-				TextEncoder_encode(js)
-			);
+			if (htmlcontext.originalAttributes !== false)
+				node.attribs[internalAttribute("script-source-src")] = bytesToBase64(
+					TextEncoder_encode(js)
+				);
 			const htmlcomment = /<!--[\s\S]*?-->/g;
 			js = js.replace(htmlcomment, "");
 			node.children[0].data = rewriteJs(
@@ -647,7 +654,8 @@ function traverseParsedHtml(
 				context,
 				callerMeta,
 				state,
-				inTemplate || node.name === "template"
+				inTemplate || node.name === "template",
+				htmlcontext
 			);
 		}
 	}
