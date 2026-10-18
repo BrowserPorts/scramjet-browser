@@ -21,6 +21,8 @@ export type { ScramjetMinimalRoute };
 
 /** Plain settings, so a page can hand the same ones to its workers and nested windows */
 export type ScramjetMinimalConfig = {
+	/** Fetch native element resources through the plugin pipeline before the browser loads them */
+	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */
 	direct?: string[];
 	/** Hostnames, with their subdomains, whose requests fail the way blocked ones do */
@@ -396,7 +398,7 @@ export class ScramjetMinimalClient extends HookClient {
 			const url = this.resolve(raw, base.href);
 			if (!url || ["data:", "blob:", "about:"].includes(url.protocol)) return raw;
 			const route = this.route(url);
-			if (route === "wisp" || route === "plugin")
+			if (route === "wisp" || route === "plugin" || this.config.resourceTransforms)
 				swaps.set(
 					raw,
 					this.blob(url, kind === "import" ? "style" : "other")
