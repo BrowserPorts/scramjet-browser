@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, chmodSync, realpathSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
-import { basename, delimiter, dirname, join, resolve } from "node:path";
+import { copyFile, cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { basename, delimiter, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertNoSpecifiers,
@@ -378,13 +378,15 @@ class TypeScriptDeclarationsPlugin {
           const emitted = (await readdir(stagingDir)).filter((name) =>
             name.endsWith(".d.ts"),
           );
-          if (emitted.length !== 1) {
+          const entryName = `${basename(bundled.entry, extname(bundled.entry))}.d.ts`;
+          if (!emitted.includes(entryName) || basename(target) !== entryName) {
             throw new Error(
-              `bundled declaration compile for ${bundled.specifier} emitted ${emitted.length} declaration files (${emitted.join(", ") || "none"}); expected exactly one`,
+              `bundled declaration compile for ${bundled.specifier} needs ${entryName} at its declared entry`,
             );
           }
           await mkdir(dirname(target), { recursive: true });
-          await copyFile(join(stagingDir, emitted[0]), target);
+          // Relative imports keep the complete declaration graph beside its entry
+          await cp(stagingDir, dirname(target), { recursive: true });
           console.log(
             `TypeScript declarations: bundled ${bundled.specifier} -> ${join(this.declarationDir, bundled.out)}`,
           );
@@ -863,7 +865,7 @@ const controllerConfig = createGenericConfig({
           {
             specifier: "@mercuryworkshop/rpc",
             entry: join(rpcdir, "index.ts"),
-            out: "internal/rpc.d.ts",
+            out: "internal/rpc/index.d.ts",
           },
         ],
       },
