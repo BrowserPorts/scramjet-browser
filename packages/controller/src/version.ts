@@ -1,3 +1,4 @@
+declare const SCRAMJET_RUNTIME_NAMESPACE: string | undefined;
 declare const SCRAMJET_EXPECTED_VERSION: string;
 declare const CONTROLLER_VERSION: string;
 
@@ -16,7 +17,14 @@ function assertVersionMatch(
 }
 
 export function assertRuntimeScramjetVersion() {
-	if (typeof $scramjet === "undefined") {
+	const name =
+		typeof SCRAMJET_RUNTIME_NAMESPACE === "undefined"
+			? "$scramjet"
+			: SCRAMJET_RUNTIME_NAMESPACE;
+	const runtime = (
+		globalThis as unknown as Record<string, typeof $scramjet | undefined>
+	)[name];
+	if (!runtime) {
 		throw new Error(
 			"@mercuryworkshop/scramjet is not loaded. Load scramjet before the controller."
 		);
@@ -25,6 +33,6 @@ export function assertRuntimeScramjetVersion() {
 	assertVersionMatch(
 		"@mercuryworkshop/scramjet",
 		SCRAMJET_EXPECTED_VERSION,
-		$scramjet.versionInfo.version
+		runtime.versionInfo.version
 	);
 }

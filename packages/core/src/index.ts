@@ -46,3 +46,15 @@ export * from "./shared";
 export * from "./fetch";
 export { BareResponse } from "@mercuryworkshop/proxy-transports";
 export * from "./client";
+
+export {
+	identityName,
+	internalAttribute,
+	internalAttributePrefix,
+	injectedAttribute,
+	runtimeNamespace,
+	controllerNamespace,
+	wasmNamespace,
+	messageFields,
+	runtimeIdentity,
+} from "./runtime-identity";

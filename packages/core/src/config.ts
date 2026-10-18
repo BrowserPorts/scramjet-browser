@@ -1,20 +1,22 @@
+import { identityName, runtimeIdentity } from "./runtime-identity";
 import type { ScramjetConfig } from "./types";
 
 export const defaultConfig: ScramjetConfig = {
+	identity: runtimeIdentity,
 	globals: {
-		setrealmfn: "$scramjet$setrealmfn",
-		wrapfn: "$scramjet$wrap",
-		wrappropertybase: "$scramjet__",
-		wrappropertyfn: "$scramjet$prop",
-		cleanrestfn: "$scramjet$clean",
-		importfn: "$scramjet$import",
-		rewritefn: "$scramjet$rewrite",
-		metafn: "$scramjet$meta",
-		wrappostmessagefn: "$scramjet$wrappostmessage",
-		pushsourcemapfn: "$scramjet$pushsourcemap",
-		trysetfn: "$scramjet$tryset",
-		templocid: "$scramjet$temploc",
-		tempunusedid: "$scramjet$tempunused",
+		setrealmfn: identityName("$scramjet$setrealmfn"),
+		wrapfn: identityName("$scramjet$wrap"),
+		wrappropertybase: identityName("$scramjet__"),
+		wrappropertyfn: identityName("$scramjet$prop"),
+		cleanrestfn: identityName("$scramjet$clean"),
+		importfn: identityName("$scramjet$import"),
+		rewritefn: identityName("$scramjet$rewrite"),
+		metafn: identityName("$scramjet$meta"),
+		wrappostmessagefn: identityName("$scramjet$wrappostmessage"),
+		pushsourcemapfn: identityName("$scramjet$pushsourcemap"),
+		trysetfn: identityName("$scramjet$tryset"),
+		templocid: identityName("$scramjet$temploc"),
+		tempunusedid: identityName("$scramjet$tempunused"),
 	},
 	flags: {
 		syncxhr: false,

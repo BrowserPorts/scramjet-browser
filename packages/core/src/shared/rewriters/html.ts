@@ -1,3 +1,8 @@
+import {
+	injectedAttribute,
+	internalAttribute,
+	logicalAttribute,
+} from "@/runtime-identity";
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
@@ -112,7 +117,7 @@ export class IncrementalHtmlRewriter {
 	constructor(
 		private readonly context: ScramjetContext,
 		private readonly meta: URLMeta,
-		private readonly htmlcontext: HtmlContext,
+		private readonly htmlcontext: HtmlContext
 	) {
 		this.handler = new DomHandler(undefined, undefined, (element) => {
 			this.completedElements.add(element);
@@ -181,7 +186,7 @@ export class IncrementalHtmlRewriter {
 				node,
 				this.context,
 				this.meta,
-				this.htmlcontext,
+				this.htmlcontext
 			);
 			this.rewrittenNodes.set(node, rewritten);
 		}
@@ -194,7 +199,7 @@ function rewriteHtmlInner(
 	html: string | ChildNode,
 	context: ScramjetContext,
 	meta: URLMeta,
-	htmlcontext: HtmlContext,
+	htmlcontext: HtmlContext
 ) {
 	if (typeof html !== "string") {
 		html = serializeHtmlNode(html);
@@ -240,7 +245,7 @@ function rewriteHtmlInner(
 			htmlcontext,
 			origHtml: html,
 		},
-		undefined,
+		undefined
 	);
 	traverseParsedHtml(
 		handler.root,
@@ -328,17 +333,17 @@ function rewriteHtmlInner(
 
 	if (htmlcontext.loadScripts) {
 		const script = (src: string) =>
-			new Element("script", { src, "scramjet-injected": "true" });
+			new Element("script", { src, [injectedAttribute]: "true" });
 		const injectScripts = context.interface.getInjectScripts(
 			meta,
 			handler,
 			htmlcontext,
-			script,
+			script
 		);
 
 		if (isQuirky) {
 			dbg.warn(
-				`detected quirky document structure parsing @ ${meta.origin.href}!`,
+				`detected quirky document structure parsing @ ${meta.origin.href}!`
 			);
 			// there's weird stuff going on with the document that could result in page scripts being loaded before our inject scripts
 			// so inject them at position 0
@@ -362,7 +367,7 @@ function rewriteHtmlInner(
 			htmlcontext,
 			origHtml: html,
 		},
-		props,
+		props
 	);
 
 	if (props.setRawHtml !== undefined) {
@@ -376,7 +381,7 @@ export function rewriteHtml(
 	html: string,
 	context: ScramjetContext,
 	meta: URLMeta,
-	htmlcontext: HtmlContext,
+	htmlcontext: HtmlContext
 ) {
 	const before = Performance_now();
 	const ret = rewriteHtmlInner(html, context, meta, htmlcontext);
@@ -404,14 +409,15 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 	function traverse(node: ChildNode) {
 		if ("attribs" in node) {
 			for (const key in node.attribs) {
-				if (key == "scramjet-attr-script-source-src") {
+				if (key === internalAttribute("script-source-src")) {
 					if (node.children[0] && "data" in node.children[0])
 						node.children[0].data = atob(node.attribs[key]);
 					continue;
 				}
 
-				if (key.startsWith("scramjet-attr-")) {
-					node.attribs[key.slice("scramjet-attr-".length)] = node.attribs[key];
+				const originalName = logicalAttribute(key);
+				if (originalName !== null) {
+					node.attribs[originalName] = node.attribs[key];
 					delete node.attribs[key];
 				}
 			}
@@ -464,8 +470,14 @@ function withBase(meta: URLMeta, state: BaseState): URLMeta {
 	// Delegating overlay, so the remaining fields stay lazy — reading
 	// `topFrameName` eagerly throws in a worker.
 	const overlay = Object_setPrototypeOf({}, meta) as URLMeta;
-	Object_defineProperty(overlay, "base", { value: state.base, enumerable: true });
-	Object_defineProperty(overlay, "baseIsDeclared", { value: true, enumerable: true });
+	Object_defineProperty(overlay, "base", {
+		value: state.base,
+		enumerable: true,
+	});
+	Object_defineProperty(overlay, "baseIsDeclared", {
+		value: true,
+		enumerable: true,
+	});
 	return overlay;
 }
 
@@ -474,7 +486,7 @@ function traverseParsedHtml(
 	context: ScramjetContext,
 	callerMeta: URLMeta,
 	state: BaseState,
-	inTemplate: boolean,
+	inTemplate: boolean
 ) {
 	// HTML selects the FIRST `<base>` with an `href` content attribute, in tree
 	// order — not the last, and not merely the first `<base>`: a preceding
@@ -488,7 +500,11 @@ function traverseParsedHtml(
 		state.seen += 1;
 		// Eligible when the parser did not see it in foreign content and it is not
 		// inert template content. The first eligible one selects, in document order.
-		if (!state.selected && inTemplate === false && state.foreign[ordinal] !== true) {
+		if (
+			!state.selected &&
+			inTemplate === false &&
+			state.foreign[ordinal] !== true
+		) {
 			// Selection is consumed HERE, before the parse: the eligible base is the
 			// selected one whether or not its value parses, so an invalid base keeps
 			// the fallback base and still blocks every later one.
@@ -506,7 +522,11 @@ function traverseParsedHtml(
 	const htmlHooks = context.hooks?.rewriter.html;
 	if (htmlHooks && node.type === ElementType.Text) {
 		const props = { text: node.data as string };
-		Tap.dispatchSync(htmlHooks.text, { parent: node.parent?.name ? node.parent : null, meta }, props);
+		Tap.dispatchSync(
+			htmlHooks.text,
+			{ parent: node.parent?.name ? node.parent : null, meta },
+			props
+		);
 		node.data = props.text;
 	}
 
@@ -525,7 +545,7 @@ function traverseParsedHtml(
 						else {
 							node.attribs[attr] = v;
 						}
-						node.attribs[`scramjet-attr-${attr}`] = value;
+						node.attribs[internalAttribute(attr)] = value;
 					}
 				}
 			}
@@ -533,12 +553,12 @@ function traverseParsedHtml(
 		const rewriteJs = providers().rewriteJs;
 		for (const [attr, value] of Object_entries(node.attribs)) {
 			if (rewriteJs && eventAttributes.includes(attr)) {
-				node.attribs[`scramjet-attr-${attr}`] = value;
+				node.attribs[internalAttribute(attr)] = value;
 				node.attribs[attr] = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
-					meta,
+					meta
 				);
 			}
 		}
@@ -579,14 +599,14 @@ function traverseParsedHtml(
 			"type" in node.attribs ? node.attribs.type : undefined,
 			"language" in node.attribs ? node.attribs.language : undefined,
 			"type" in node.attribs,
-			"language" in node.attribs,
+			"language" in node.attribs
 		);
 		const rewriteJs = providers().rewriteJs;
 		if (rewriteJs && isScriptType(scriptBlockType)) {
 			let js = node.children[0].data;
 			const module = isModuleScriptType(scriptBlockType);
-			node.attribs["scramjet-attr-script-source-src"] = bytesToBase64(
-				TextEncoder_encode(js),
+			node.attribs[internalAttribute("script-source-src")] = bytesToBase64(
+				TextEncoder_encode(js)
 			);
 			const htmlcomment = /<!--[\s\S]*?-->/g;
 			js = js.replace(htmlcomment, "");
@@ -595,7 +615,7 @@ function traverseParsedHtml(
 				"(inline script element)",
 				context,
 				meta,
-				module,
+				module
 			);
 		}
 	}
@@ -627,7 +647,7 @@ function traverseParsedHtml(
 				context,
 				callerMeta,
 				state,
-				inTemplate || node.name === "template",
+				inTemplate || node.name === "template"
 			);
 		}
 	}
@@ -638,10 +658,10 @@ function traverseParsedHtml(
 export function rewriteSrcset(
 	srcset: string,
 	context: ScramjetContext,
-	meta: URLMeta,
+	meta: URLMeta
 ) {
 	return providers().rewriteSrcsetUrls(srcset, (url) =>
-		rewriteUrl(url, context, meta),
+		rewriteUrl(url, context, meta)
 	);
 }
 

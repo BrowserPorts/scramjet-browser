@@ -23,7 +23,14 @@ export {
 	SHARED_CONNECT,
 	type InstallOptions,
 } from "./install";
-export { requestLink, acceptLinks, LINK_KEY, LINK_ABI, type LinkAnswer, type LinkRequest } from "./link";
+export {
+	requestLink,
+	acceptLinks,
+	LINK_KEY,
+	LINK_ABI,
+	type LinkAnswer,
+	type LinkRequest,
+} from "./link";
 export { start, takeOver, tookOver, type StartOptions } from "./boot";
 export { LazyTransport, PortTransport, serveTransport } from "./transport";
 export {
@@ -60,12 +67,27 @@ export { ScramjetStorageJar } from "@/shared/storage";
 export { createStorageObject } from "@/shared/storage-object";
 export { rewriteHtml, rewriteSrcset, type HtmlContext } from "@rewriters/html";
 export { rewriteCss } from "@rewriters/css";
-export { getScriptBlockTypeString, isModuleScriptType, isScriptType } from "@/shared/mime";
+export {
+	getScriptBlockTypeString,
+	isModuleScriptType,
+	isScriptType,
+} from "@/shared/mime";
 export { rewriteUrl, unrewriteUrl, type URLMeta } from "@rewriters/url";
-export { registerProviders, providers, type ScramjetProviders } from "@/shared/providers";
+export {
+	registerProviders,
+	providers,
+	type ScramjetProviders,
+} from "@/shared/providers";
 export { defaultConfig } from "@/config";
-export type { ScramjetContext, ScramjetInterface, HtmlRewriterHooks } from "@/shared";
+export type {
+	ScramjetContext,
+	ScramjetInterface,
+	HtmlRewriterHooks,
+} from "@/shared";
 export type { ScramjetConfig, ScramjetFlags } from "@/types";
 export { CookieJar, type Cookie } from "@/shared/cookie";
 export type * from "./types";
 export type * from "@/plugins/types";
+
+export { identityName, runtimeIdentity } from "@/runtime-identity";
+export type { CodeRewriterHooks } from "@/shared";

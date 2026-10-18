@@ -1,3 +1,4 @@
+import { identityName, messageFields } from "@/runtime-identity";
 import { iswindow } from "@client/entry";
 import { ScramjetClient } from "@client/index";
 import { getOwnPropertyDescriptorHandler } from "@client/helpers";
@@ -9,7 +10,9 @@ import {
 	Symbol_for,
 } from "@/shared/snapshot";
 
-const realOnEvent = Symbol_for("scramjet original onevent function");
+const realOnEvent = Symbol_for(
+	identityName("scramjet original onevent function")
+);
 
 export default function (client: ScramjetClient, self: Self) {
 	const handlers = {
@@ -36,14 +39,22 @@ export default function (client: ScramjetClient, self: Self) {
 			},
 			origin() {
 				if (!iswindow) return "";
-				if (typeof this.data === "object" && "$scramjet$origin" in this.data)
-					return this.data.$scramjet$origin;
+				if (
+					this.data !== null &&
+					typeof this.data === "object" &&
+					messageFields.origin in this.data
+				)
+					return this.data[messageFields.origin];
 
 				return client.url.origin;
 			},
 			data() {
-				if (typeof this.data === "object" && "$scramjet$data" in this.data)
-					return this.data.$scramjet$data;
+				if (
+					this.data !== null &&
+					typeof this.data === "object" &&
+					messageFields.data in this.data
+				)
+					return this.data[messageFields.data];
 
 				return this.data;
 			},

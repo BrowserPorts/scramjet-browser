@@ -1,3 +1,4 @@
+import { internalAttributePrefix } from "@/runtime-identity";
 import { ScramjetClient } from "@client/index";
 import {
 	Number,
@@ -21,7 +22,11 @@ export default function (client: ScramjetClient) {
 						return new Proxy(value, {
 							apply(target, that, args) {
 								if (that !== proxy) return Reflect_apply(target, that, args);
-								const iterator = Reflect_apply(target, map, args) as Iterator<Attr>;
+								const iterator = Reflect_apply(
+									target,
+									map,
+									args
+								) as Iterator<Attr>;
 								const next = Reflect_get(iterator, "next");
 
 								return (function* () {
@@ -29,7 +34,7 @@ export default function (client: ScramjetClient) {
 										const result = Reflect_apply(
 											next,
 											iterator,
-											[],
+											[]
 										) as IteratorResult<Attr>;
 										if (Reflect_get(result, "done")) return;
 
@@ -37,7 +42,7 @@ export default function (client: ScramjetClient) {
 										const name = Reflect_get(attribute, "name");
 										if (
 											typeof name === "string" &&
-											!String_startsWith(name, "scramjet-attr-")
+											!String_startsWith(name, internalAttributePrefix)
 										) {
 											yield attribute;
 										}
@@ -63,7 +68,9 @@ export default function (client: ScramjetClient) {
 							apply(target, that, args) {
 								if (that !== proxy) return Reflect_apply(target, that, args);
 								const position = Object_keys(proxy)[args[0] >>> 0];
-								return position === undefined ? null : Reflect_get(map, position);
+								return position === undefined
+									? null
+									: Reflect_get(map, position);
 							},
 						});
 					}
@@ -100,8 +107,9 @@ export default function (client: ScramjetClient) {
 				},
 				has(target, prop) {
 					if (typeof prop === "symbol") return Reflect_has(target, prop);
-					if (prop.startsWith("scramjet-attr-")) return false;
-					if (map[prop]?.name?.startsWith("scramjet-attr-")) return false;
+					if (prop.startsWith(internalAttributePrefix)) return false;
+					if (map[prop]?.name?.startsWith(internalAttributePrefix))
+						return false;
 
 					return Reflect_has(target, prop);
 				},

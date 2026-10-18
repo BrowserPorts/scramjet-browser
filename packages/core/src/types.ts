@@ -31,6 +31,13 @@ export type ScramjetFlags = {
 };
 
 export interface ScramjetConfig {
+	/** Build identities accompany generated document and worker bootstraps */
+	identity: {
+		runtimeNamespace: string;
+		controllerNamespace: string;
+		wasmNamespace: string;
+		injectedAttribute: string;
+	};
 	globals: {
 		setrealmfn: string;
 		wrapfn: string;

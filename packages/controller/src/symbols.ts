@@ -1,1 +1,4 @@
-export const CONTROLLERFRAME = Symbol.for("controller frame handle");
+import { identityName } from "@mercuryworkshop/scramjet";
+export const CONTROLLERFRAME = Symbol.for(
+	identityName("controller frame handle")
+);
