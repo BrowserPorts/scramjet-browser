@@ -286,6 +286,11 @@ export class ScramjetClient {
 		this.indirectEval = createIndirectEval(this);
 		this.wrapfn = createWrapFn(this, global);
 		const nativeCall = this.hooks.lifecycle.nativeCall;
+		const prepareNative = (target: string, receiver: unknown, args: unknown[]) => {
+			const props = { receiver, args };
+			Tap.dispatchSync(nativeCall, { target }, props);
+			return props;
+		};
 		this.natives = {
 			store: new Proxy(
 				{},
@@ -312,17 +317,14 @@ export class ScramjetClient {
 				const original = this.store[target];
 				if (!original) return null;
 
-				return new original(...args);
+				const props = prepareNative(target, null, args);
+				return Reflect_construct(original, props.args);
 			},
 			call(target, that, ...args) {
 				const original = this.store[target];
 				if (!original) return null;
 
-				const props: { receiver: unknown; args: unknown[] } = {
-					receiver: that,
-					args,
-				};
-				Tap.dispatchSync(nativeCall, { target }, props);
+				const props = prepareNative(target, that, args);
 				return Reflect_apply(original, props.receiver, props.args);
 			},
 		};
@@ -357,13 +359,15 @@ export class ScramjetClient {
 				const original = this.store[target];
 				if (!original) return null;
 
-				return original.get!.call(that);
+				const props = prepareNative(target, that, []);
+				return Reflect_apply(original.get!, props.receiver, props.args);
 			},
 			set(target, that, value) {
 				const original = this.store[target];
 				if (!original) return null;
 
-				original.set!.call(that, value);
+				const props = prepareNative(target, that, [value]);
+				Reflect_apply(original.set!, props.receiver, props.args);
 			},
 		};
 		// eslint-disable-next-line @typescript-eslint/no-this-alias

@@ -1,5 +1,5 @@
 export type LifecycleHooks = {
-	/** Plugins can unwrap their DOM facades before a captured native is called */
+	/** Plugins can unwrap their DOM facades before a captured native operation */
 	nativeCall: {
 		context: { target: string };
 		props: { receiver: unknown; args: unknown[] };
