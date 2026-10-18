@@ -117,7 +117,8 @@ export const htmlRules: {
 		srcdoc: ["iframe"],
 	},
 	{
-		fn: (value, context, meta) => rewriteCss(value, context, meta),
+		fn: (value, context, meta) =>
+			rewriteCss(value, context, meta, "declarations"),
 		style: "*",
 	},
 	{

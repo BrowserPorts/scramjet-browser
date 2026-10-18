@@ -7,7 +7,11 @@ import {
 	rewriteWorkers,
 } from "@/shared";
 import { providers } from "@/shared/providers";
-import { _TextDecoder, _Uint8Array, TextDecoder_decode } from "@/shared/snapshot";
+import {
+	_TextDecoder,
+	_Uint8Array,
+	TextDecoder_decode,
+} from "@/shared/snapshot";
 import { Tap } from "@/Tap";
 import type {
 	BodyType,
@@ -28,7 +32,7 @@ export async function rewriteBody(
 	handler: ScramjetFetchHandler,
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed,
-	response: BareResponse,
+	response: BareResponse
 ): Promise<BodyType> {
 	switch (parsed.destination) {
 		case "iframe":
@@ -46,7 +50,7 @@ export async function rewriteBody(
 						defaultEncoding: "",
 						parentCharset: "",
 						responseCharset: parsedType.hadCharset ? parsedType.charset : "",
-					},
+					}
 				);
 
 				return rewriteHtml(decoded.text, handler.context, parsed.meta, {
@@ -102,7 +106,7 @@ export async function rewriteBody(
 					{
 						source,
 					};
-				await Tap.dispatch(
+				await Tap.dispatchSeries(
 					handler.hooks.rewriter.script.response,
 					scriptContext,
 					scriptProps
@@ -116,7 +120,7 @@ export async function rewriteBody(
 					response.url,
 					handler.context,
 					parsed.meta,
-					parsed.isModule,
+					parsed.isModule
 				);
 
 				if (
@@ -137,7 +141,7 @@ export async function rewriteBody(
 			const decoded = providers().decodeCssResource(
 				bytes,
 				"",
-				responseCharset(response.headers.get("content-type")),
+				responseCharset(response.headers.get("content-type"))
 			);
 			return rewriteCss(decoded.text, handler.context, parsed.meta);
 		}
@@ -149,7 +153,7 @@ export async function rewriteBody(
 				response.url,
 				handler.context,
 				parsed.meta,
-				parsed.isModule,
+				parsed.isModule
 			);
 			const workerContext: typeof handler.hooks.fetch.worker.context = {
 				request,
@@ -161,7 +165,11 @@ export async function rewriteBody(
 				inject: workerInjectScripts(handler, parsed),
 				source: TextDecoder_decode(bytes),
 			};
-			await Tap.dispatch(handler.hooks.fetch.worker, workerContext, workerProps);
+			await Tap.dispatchSeries(
+				handler.hooks.fetch.worker,
+				workerContext,
+				workerProps
+			);
 			return workerProps.replacement ?? rewritten;
 		}
 		default:
@@ -171,13 +179,13 @@ export async function rewriteBody(
 
 function workerInjectScripts(
 	handler: ScramjetFetchHandler,
-	parsed: ScramjetFetchParsed,
+	parsed: ScramjetFetchParsed
 ): string {
 	const script = (script: string) =>
 		parsed.isModule ? `import "${script}"\n` : `importScripts("${script}");\n`;
 	return handler.context.interface.getWorkerInjectScripts(
 		parsed.meta,
 		parsed.isModule,
-		script,
+		script
 	);
 }

@@ -6,7 +6,12 @@ export default function (client: ScramjetClient) {
 	client.Proxy("CSSStyleDeclaration.prototype.setProperty", {
 		apply(ctx) {
 			if (!ctx.args[1]) return;
-			ctx.args[1] = rewriteCss(ctx.args[1], client.context, client.meta);
+			ctx.args[1] = rewriteCss(
+				ctx.args[1],
+				client.context,
+				client.meta,
+				"value"
+			);
 		},
 	});
 
@@ -14,16 +19,16 @@ export default function (client: ScramjetClient) {
 		apply(ctx) {
 			const v = ctx.call();
 			if (!v) return v;
-			ctx.return(unrewriteCss(v, client.context));
+			ctx.return(unrewriteCss(v, client.context, "value"));
 		},
 	});
 
 	client.Trap("CSSStyleDeclaration.prototype.cssText", {
 		set(ctx, value: string) {
-			ctx.set(rewriteCss(value, client.context, client.meta));
+			ctx.set(rewriteCss(value, client.context, client.meta, "declarations"));
 		},
 		get(ctx) {
-			return unrewriteCss(ctx.get(), client.context);
+			return unrewriteCss(ctx.get(), client.context, "declarations");
 		},
 	});
 
@@ -57,7 +62,12 @@ export default function (client: ScramjetClient) {
 	client.Proxy("CSSStyleValue.parse", {
 		apply(ctx) {
 			if (!ctx.args[1]) return;
-			ctx.args[1] = rewriteCss(ctx.args[1], client.context, client.meta);
+			ctx.args[1] = rewriteCss(
+				ctx.args[1],
+				client.context,
+				client.meta,
+				"value"
+			);
 		},
 	});
 
@@ -83,7 +93,7 @@ export default function (client: ScramjetClient) {
 					if (prop in CSSStyleDeclaration.prototype) return value;
 					if (!value) return value;
 
-					return unrewriteCss(value, client.context);
+					return unrewriteCss(value, client.context, "value");
 				},
 				set(target, prop, value) {
 					if (prop == "cssText" || value == "" || typeof value !== "string") {
@@ -93,7 +103,7 @@ export default function (client: ScramjetClient) {
 					return Reflect_set(
 						target,
 						prop,
-						rewriteCss(value, client.context, client.meta)
+						rewriteCss(value, client.context, client.meta, "value")
 					);
 				},
 			});

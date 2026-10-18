@@ -95,7 +95,11 @@ export type CodeRewriterHooks = {
     props: { source: string };
   };
   css: {
-    context: { meta: URLMeta; direction: "rewrite" | "unrewrite" };
+    context: {
+      meta: URLMeta;
+      direction: "rewrite" | "unrewrite";
+      kind: "stylesheet" | "declarations" | "value";
+    };
     props: { source: string };
   };
 };

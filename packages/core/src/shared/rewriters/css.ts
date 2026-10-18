@@ -7,16 +7,34 @@ import { Tap } from "@/Tap";
 export function rewriteCss(
 	css: string,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
+	kind: "stylesheet" | "declarations" | "value" = "stylesheet"
 ) {
 	const result = { source: handleCss("rewrite", css, context, meta) };
 	const hooks = context.hooks?.rewriter.code;
-	if (hooks) Tap.dispatchSync(hooks.css, { meta, direction: "rewrite" }, result);
+	if (hooks)
+		Tap.dispatchSync(hooks.css, { meta, direction: "rewrite", kind }, result);
 	return result.source;
 }
 
-export function unrewriteCss(css: string, context: ScramjetContext) {
-	return handleCss("unrewrite", css, context);
+export function unrewriteCss(
+	css: string,
+	context: ScramjetContext,
+	kind: "stylesheet" | "declarations" | "value" = "stylesheet"
+) {
+	const result = { source: handleCss("unrewrite", css, context) };
+	const hooks = context.hooks?.rewriter.code;
+	if (hooks)
+		Tap.dispatchSync(
+			hooks.css,
+			{
+				meta: { base: context.prefix, origin: context.prefix } as URLMeta,
+				direction: "unrewrite",
+				kind,
+			},
+			result
+		);
+	return result.source;
 }
 
 function handleCss(

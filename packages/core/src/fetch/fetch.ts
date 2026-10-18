@@ -13,11 +13,7 @@ import {
 import { rewriteUrl, unrewriteBlob, unrewriteUrl } from "@rewriters/url";
 import { QP, parseRequest } from "./parse";
 import { ScramjetHeaders } from "@/shared";
-import {
-	isDocument,
-	isRedirect,
-	normalizeContentType,
-} from "./util";
+import { isDocument, isRedirect, normalizeContentType } from "./util";
 import { rewriteBody } from "./body";
 import { Tap } from "@/Tap";
 import {
@@ -47,7 +43,11 @@ export async function doHandleFetch(
 			parsed,
 		};
 		const errorProps: typeof handler.hooks.fetch.error.props = { error };
-		await Tap.dispatch(handler.hooks.fetch.error, errorContext, errorProps);
+		await Tap.dispatchSeries(
+			handler.hooks.fetch.error,
+			errorContext,
+			errorProps
+		);
 		throw error;
 	}
 }
@@ -66,7 +66,7 @@ async function handleParsedFetch(
 		parsed,
 	};
 	const interceptProps: typeof handler.hooks.fetch.intercept.props = {};
-	await Tap.dispatch(
+	await Tap.dispatchSeries(
 		handler.hooks.fetch.intercept,
 		interceptCtx,
 		interceptProps
@@ -186,7 +186,6 @@ async function handleParsedFetch(
 		// UTF-8 by the Response constructor. Normalize the Content-Type charset so
 		// the browser doesn't try to decode UTF-8 bytes with the original encoding.
 		normalizeContentType(parsed, responseHeaders);
-
 	}
 
 	const respcontext: typeof handler.hooks.fetch.response.context = {
@@ -202,7 +201,11 @@ async function handleParsedFetch(
 		},
 	};
 
-	await Tap.dispatch(handler.hooks.fetch.response, respcontext, respprops);
+	await Tap.dispatchSeries(
+		handler.hooks.fetch.response,
+		respcontext,
+		respprops
+	);
 
 	return respprops.response;
 }
@@ -229,7 +232,7 @@ export async function doNetworkFetch(
 		init,
 		url: parsed.url,
 	};
-	await Tap.dispatch(handler.hooks.fetch.request, reqcontext, reqprops);
+	await Tap.dispatchSeries(handler.hooks.fetch.request, reqcontext, reqprops);
 	let earlyResponse: BareResponse;
 
 	if (reqprops.earlyResponse) {
@@ -254,7 +257,7 @@ export async function doNetworkFetch(
 		response: earlyResponse,
 	};
 
-	await Tap.dispatch(
+	await Tap.dispatchSeries(
 		handler.hooks.fetch.preresponse,
 		prerespcontext,
 		prerespprops
@@ -449,10 +452,13 @@ async function handleCookies(
 		}
 	}
 
-	await handler.sendSetCookie(cookies.map((cookie) => ({
-		url: parsed.url,
-		cookie,
-	})), {
-		destination: parsed.destination,
-	});
+	await handler.sendSetCookie(
+		cookies.map((cookie) => ({
+			url: parsed.url,
+			cookie,
+		})),
+		{
+			destination: parsed.destination,
+		}
+	);
 }
