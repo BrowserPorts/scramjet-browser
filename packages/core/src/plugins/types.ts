@@ -34,6 +34,8 @@ export type CodecConfig =
 			prefix: string;
 			/** Original hosts, with ports, whose files live under the prefix */
 			hosts: string[];
+			/** Absolute URL prefixes served directly beside the encoded content */
+			passthrough?: string[];
 			defaultScheme: "https" | "http";
 	  }
 	| { type: "none" };

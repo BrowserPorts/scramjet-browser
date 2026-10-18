@@ -19,13 +19,17 @@ export class PathCodec implements UrlCodec {
 	readonly prefix: URL;
 	#hosts: Set<string>;
 	#scheme: "https:" | "http:";
+	#passthrough: string[];
 
 	constructor(config: PathCodecConfig) {
 		this.prefix = new NativeURL(config.prefix);
 		if (!this.prefix.pathname.endsWith("/")) this.prefix.pathname += "/";
 		this.#hosts = new Set(config.hosts.map((host) => host.toLowerCase()));
 		this.#scheme = config.defaultScheme === "http" ? "http:" : "https:";
-		this.id = `path:${this.prefix.href}`;
+		this.#passthrough = (config.passthrough ?? []).map((prefix) => new NativeURL(prefix).href);
+		this.id = `path:${this.prefix.href}:${JSON.stringify([
+			this.#scheme, Array.from(this.#hosts).sort(), [...this.#passthrough].sort(),
+		])}`;
 	}
 
 	#segment(url: URL): string {
@@ -35,12 +39,15 @@ export class PathCodec implements UrlCodec {
 
 	owns(url: URL): boolean {
 		if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+		if (this.#passthrough.some((prefix) => url.href.startsWith(prefix))) return false;
 		return this.#hosts.has(this.#segment(url)) || this.#hosts.has(url.host.toLowerCase());
 	}
 
 	encode(url: URL): string | null {
 		// A relative URL resolved against the served page is already in this codec's space
-		if (this.decode(url) !== null) return url.href;
+		const original = this.decode(url);
+		if (original !== null)
+			return this.#passthrough.some((prefix) => original.startsWith(prefix)) ? original : url.href;
 		if (!this.owns(url)) return null;
 		return `${this.prefix.href}${this.#segment(url)}${url.pathname}${url.search}${url.hash}`;
 	}
