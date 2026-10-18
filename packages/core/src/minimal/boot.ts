@@ -1,6 +1,12 @@
 import { Tap } from "@/Tap";
 import type { ScramjetMinimalClient, ScramjetMinimalConfig } from "./client";
-import { attach, install, prepare, type InstallOptions } from "./install";
+import {
+	attach,
+	install,
+	prepare,
+	requiresPreparation,
+	type InstallOptions,
+} from "./install";
 import { requestLink } from "./link";
 
 /** Global scopes whose document start() took over, kept out of the page's reach */
@@ -30,13 +36,13 @@ export function takeOver(
 	// A srcdoc document has no URL to fetch again; its host hands the markup back instead
 	const refetch = location.protocol !== "about:";
 	const page = refetch
-		? fetchNative(url, { cache: "force-cache", credentials: "same-origin" }).then((response) => response.text())
+		? fetchNative(url, {
+				cache: "force-cache",
+				credentials: "same-origin",
+			}).then((response) => response.text())
 		: null;
 	page?.catch(() => undefined);
 	work()
-		.catch((error) => {
-			console.error("Scramjet could not finish starting", error);
-		})
 		.then((markup) => {
 			if (typeof markup === "string") return markup;
 			if (page) return page;
@@ -79,24 +85,50 @@ export function start(
 ): ScramjetMinimalClient {
 	const client = install(config, options);
 	if (tookOver()) return client;
-	const framed = globalThis.parent && globalThis.parent !== (globalThis as unknown as Window);
-	if (!framed || options.handshake === false || options.link) {
-		void prepare(client, options.link ?? null, undefined);
+	const framed =
+		globalThis.parent &&
+		globalThis.parent !== (globalThis as unknown as Window);
+	const handshake = framed && options.handshake !== false && !options.link;
+	if (!handshake && !requiresPreparation(client)) {
+		prepare(client, options.link ?? null, undefined).catch((error) =>
+			client.report(error, client.base)
+		);
 		return client;
 	}
 	takeOver(
 		async () => {
-			const linked = await requestLink({ timeout: options.timeout });
+			const linked = handshake
+				? await requestLink({ timeout: options.timeout })
+				: null;
 			if (linked) attach(client, linked.link);
-			await prepare(client, linked?.link ?? null, linked?.payload);
+			try {
+				await prepare(
+					client,
+					linked?.link ?? options.link ?? null,
+					linked?.payload
+				);
+			} catch (error) {
+				client.report(error, client.base);
+				throw error;
+			}
 			return linked?.document;
 		},
 		async (html) => {
 			const props = { html };
-			await Tap.dispatch(client.hooks.document, { url: location.href }, props);
+			await Tap.dispatchSeries(
+				client.hooks.document,
+				{ url: location.href },
+				props
+			);
 			return props.html;
 		},
-		() => void Tap.dispatch(client.hooks.written, { window: globalThis as unknown as Window }, {})
+		() => {
+			Tap.dispatchSync(
+				client.hooks.written,
+				{ window: globalThis as unknown as Window },
+				{}
+			);
+		}
 	);
 	return client;
 }

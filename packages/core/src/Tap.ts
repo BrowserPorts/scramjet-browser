@@ -44,8 +44,10 @@ function mergeTapOrder(plugin: Plugin, order?: TapOrder): TapOrder {
 }
 
 function sortCallbacks<T extends Description>(
-	callbacks: CallbackInfo<T>[]
+	callbacks: CallbackInfo<T>[],
+	strict = false
 ): CallbackInfo<T>[] {
+	if (strict) return orderTransforms(callbacks);
 	const afters: Record<string, string[]> = {};
 	for (const callback of callbacks) {
 		if (callback.order.before) {
@@ -90,9 +92,47 @@ function sortCallbacks<T extends Description>(
 		}
 		return sorted;
 	} catch (err) {
+		if (strict) throw err;
 		dbg.error("an error occurred:", err);
 		return sorted;
 	}
+}
+
+function orderTransforms<T extends Description>(
+	callbacks: CallbackInfo<T>[]
+): CallbackInfo<T>[] {
+	const groups = new Map<string, CallbackInfo<T>[]>();
+	const dependencies = new Map<string, Set<string>>();
+	for (const callback of callbacks) {
+		const name = callback.plugin.name;
+		const group = groups.get(name) ?? [];
+		group.push(callback);
+		groups.set(name, group);
+		const after = dependencies.get(name) ?? new Set<string>();
+		for (const dependency of callback.order.after ?? []) after.add(dependency);
+		dependencies.set(name, after);
+		for (const following of callback.order.before ?? []) {
+			const preceding = dependencies.get(following) ?? new Set<string>();
+			preceding.add(name);
+			dependencies.set(following, preceding);
+		}
+	}
+	const completed = new Set<string>();
+	const visiting = new Set<string>();
+	const result: CallbackInfo<T>[] = [];
+	const visit = (name: string): undefined => {
+		if (completed.has(name) || !groups.has(name)) return undefined;
+		if (visiting.has(name))
+			throw new Error(`Circular transform dependency at plugin ${name}`);
+		visiting.add(name);
+		for (const dependency of dependencies.get(name) ?? []) visit(dependency);
+		visiting.delete(name);
+		completed.add(name);
+		for (const callback of groups.get(name)!) result.push(callback);
+		return undefined;
+	};
+	for (const name of groups.keys()) visit(name);
+	return result;
 }
 
 export class Plugin {
@@ -111,6 +151,46 @@ export class Plugin {
 }
 
 export class Tap {
+	/** Ordered transformations observe the completed result of the preceding plugin */
+	static async dispatchSeries<T extends Description>(
+		hook: T,
+		context: T["context"],
+		props: T["props"]
+	): Promise<undefined> {
+		const internal = hook as unknown as InternalHookDescription;
+		const callbacks = internal.tap.callbacks[internal.key] ?? [];
+		for (const callback of sortCallbacks(
+			Array.from(callbacks) as CallbackInfo<T>[],
+			true
+		)) {
+			await callback.callback(context, props);
+		}
+		return undefined;
+	}
+
+	/** Synchronous rewriters cannot admit a plugin that finishes after author code runs */
+	static dispatchSync<T extends Description>(
+		hook: T,
+		context: T["context"],
+		props: T["props"]
+	): undefined {
+		const internal = hook as unknown as InternalHookDescription;
+		const callbacks = internal.tap.callbacks[internal.key] ?? [];
+		for (const callback of sortCallbacks(
+			Array.from(callbacks) as CallbackInfo<T>[],
+			true
+		)) {
+			const result = callback.callback(context, props);
+			if (result && typeof result.then === "function") {
+				result.catch(() => undefined);
+				throw new TypeError(
+					`Plugin ${callback.plugin.name} returned asynchronous work to ${internal.key}`
+				);
+			}
+		}
+		return undefined;
+	}
+
 	static dispatch<T extends Description>(
 		hook: T,
 		context: T["context"],

@@ -1,4 +1,8 @@
-import { RemoteTransport, RpcLink, remoteTransportMethods } from "@mercuryworkshop/rpc";
+import {
+	RemoteTransport,
+	RpcLink,
+	remoteTransportMethods,
+} from "@mercuryworkshop/rpc";
 import { Plugin, Tap } from "@/Tap";
 import type { ScramjetMinimalPlugin } from "@/plugins/types";
 import {
@@ -37,16 +41,28 @@ export function registered(): string[] {
 }
 
 /** The client installed in a global scope, if any */
-export function installed(scope: typeof globalThis = globalThis): ScramjetMinimalClient | null {
+export function installed(
+	scope: typeof globalThis = globalThis
+): ScramjetMinimalClient | null {
 	return clients.get(scope) ?? null;
 }
 
 function active(client: ScramjetMinimalClient): ScramjetMinimalPlugin[] {
-	const worker = typeof (client.global as { document?: unknown }).document === "undefined";
+	const worker =
+		typeof (client.global as { document?: unknown }).document === "undefined";
 	return Array.from(registry.values())
-		.filter((plugin) => (plugin.scope ?? ["window", "worker"]).includes(worker ? "worker" : "window"))
+		.filter((plugin) =>
+			(plugin.scope ?? ["window", "worker"]).includes(
+				worker ? "worker" : "window"
+			)
+		)
 		.filter((plugin) => !plugin.enabled || plugin.enabled(client))
 		.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+/** Required plugins gate author execution even outside a host frame */
+export function requiresPreparation(client: ScramjetMinimalClient): boolean {
+	return active(client).some((plugin) => plugin.required === true);
 }
 
 /** Runs every active plugin's prepare step, with the host's welcome payload by plugin name */
@@ -54,17 +70,18 @@ export async function prepare(
 	client: ScramjetMinimalClient,
 	link: RpcLink | null,
 	payload: unknown
-): Promise<void> {
+): Promise<undefined> {
 	const byName = (payload ?? {}) as Record<string, unknown>;
-	await Promise.all(
-		active(client).map(async (plugin) => {
-			try {
-				await plugin.prepare?.(client, { link, payload: byName[plugin.name] });
-			} catch (error) {
-				console.error(`Scramjet plugin ${plugin.name} could not prepare`, error);
-			}
-		})
-	);
+	for (const plugin of active(client)) {
+		try {
+			await plugin.prepare?.(client, { link, payload: byName[plugin.name] });
+		} catch (error) {
+			client.report(error, client.base);
+			if (plugin.required) throw error;
+			console.error(`Scramjet plugin ${plugin.name} could not prepare`, error);
+		}
+	}
+	return undefined;
 }
 
 function hook(client: ScramjetMinimalClient) {
@@ -97,7 +114,10 @@ function installSubcontext(
 	const client = new ScramjetMinimalClient(
 		global,
 		{ ...parent.config, base: undefined },
-		{ transport: async () => parent.transport, onError: parent.options.onError }
+		{
+			transport: async () => parent.transport,
+			onError: parent.options.onError,
+		}
 	);
 	client.link = parent.link;
 	client.remote = parent.remote;
@@ -115,11 +135,18 @@ export type InstallOptions = Pick<ScramjetMinimalOptions, "onError"> & {
 };
 
 /** Starts the transport from config.transport and config.wisp */
-async function importTransport(config: ScramjetMinimalConfig): Promise<ProxyTransport> {
+async function importTransport(
+	config: ScramjetMinimalConfig
+): Promise<ProxyTransport> {
 	if (!config.transport || !config.wisp)
-		throw new TypeError("No transport is configured for requests to other sites");
-	const module = await import(/* @vite-ignore */ /* webpackIgnore: true */ config.transport);
-	const Transport = module.default ?? module.LibcurlClient ?? module.EpoxyTransport;
+		throw new TypeError(
+			"No transport is configured for requests to other sites"
+		);
+	const module = await import(
+		/* @vite-ignore */ /* webpackIgnore: true */ config.transport
+	);
+	const Transport =
+		module.default ?? module.LibcurlClient ?? module.EpoxyTransport;
 	return new Transport({ wisp: config.wisp });
 }
 
@@ -135,7 +162,11 @@ export function install(
 	const existing = clients.get(global);
 	if (existing) {
 		if (options.link && !existing.link) attach(existing, options.link);
-		void Tap.dispatch(existing.hooks.written, { window: global as unknown as Window }, {});
+		Tap.dispatchSync(
+			existing.hooks.written,
+			{ window: global as unknown as Window },
+			{}
+		);
 		return existing;
 	}
 	let remote: RemoteTransport | null = null;
@@ -196,14 +227,17 @@ export function worker(): Promise<void> {
 	let ready = false;
 	let shared = false;
 	const connect = (port: MessagePort) =>
-		scope.dispatchEvent(new MessageEvent("connect", { ports: [port], data: "" }));
+		scope.dispatchEvent(
+			new MessageEvent("connect", { ports: [port], data: "" })
+		);
 	// Registered before the worker's own script exists, so it always runs first and can keep the
 	// messages Scramjet sends to itself out of the script's sight
 	scope.addEventListener(
 		"message",
 		(event) => {
 			if (!ready) return;
-			if (!shared || event.data?.type !== SHARED_CONNECT || !event.ports[0]) return;
+			if (!shared || event.data?.type !== SHARED_CONNECT || !event.ports[0])
+				return;
 			event.stopImmediatePropagation();
 			connect(event.ports[0]);
 		},
@@ -228,9 +262,11 @@ export function worker(): Promise<void> {
 					enumerable: true,
 					get: () => onconnect,
 					set: (value) => {
-						if (onconnect) scope.removeEventListener("connect", onconnect as EventListener);
+						if (onconnect)
+							scope.removeEventListener("connect", onconnect as EventListener);
 						onconnect = typeof value === "function" ? value : null;
-						if (onconnect) scope.addEventListener("connect", onconnect as EventListener);
+						if (onconnect)
+							scope.addEventListener("connect", onconnect as EventListener);
 					},
 				});
 			}
@@ -249,7 +285,11 @@ export function worker(): Promise<void> {
 				ready = true;
 				scope.removeEventListener("message", capture, true);
 				for (const queued of buffered.splice(0)) {
-					if (shared && queued.data?.type === SHARED_CONNECT && queued.ports[0]) {
+					if (
+						shared &&
+						queued.data?.type === SHARED_CONNECT &&
+						queued.ports[0]
+					) {
 						connect(queued.ports[0]);
 						continue;
 					}
@@ -266,7 +306,10 @@ export function worker(): Promise<void> {
 			// Plugins prepare before the worker's own script, as they do before a page's
 			prepare(client, link, init.payload).then(() => {
 				if (init.module) {
-					import(/* @vite-ignore */ /* webpackIgnore: true */ init.entry).then(started, reject);
+					import(/* @vite-ignore */ /* webpackIgnore: true */ init.entry).then(
+						started,
+						reject
+					);
 					return;
 				}
 				try {
@@ -276,7 +319,7 @@ export function worker(): Promise<void> {
 					throw error;
 				}
 				started();
-			});
+			}, reject);
 		};
 		scope.addEventListener("message", capture, true);
 	});
@@ -286,9 +329,15 @@ export function worker(): Promise<void> {
  * The page's side of a worker's link: a port whose "transport" channel the page answers with its
  * own transport. Plugins open their own channels on the returned link before handing the port over.
  */
-export function workerLink(client: ScramjetMinimalClient): { port: MessagePort; link: RpcLink } {
+export function workerLink(client: ScramjetMinimalClient): {
+	port: MessagePort;
+	link: RpcLink;
+} {
 	const channel = new MessageChannel();
 	const link = new RpcLink(channel.port1);
-	link.channel("transport", remoteTransportMethods({ transport: client.transport }));
+	link.channel(
+		"transport",
+		remoteTransportMethods({ transport: client.transport })
+	);
 	return { port: channel.port2, link };
 }

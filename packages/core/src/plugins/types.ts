@@ -91,6 +91,8 @@ export type MinimalPluginContext<Client> = {
  */
 export interface ScramjetMinimalPlugin<Client = any> {
 	name: string;
+	/** A preparation failure stops the document or worker before author scripts execute */
+	required?: boolean;
 	/** Lower numbers install first */
 	order?: number;
 	/** Where the plugin installs; defaults to both */
@@ -105,7 +107,10 @@ export interface ScramjetMinimalPlugin<Client = any> {
 	 * Runs once the host answered, before the document's own scripts: load state, probe the
 	 * browser. `payload` is what the host handed this plugin by name in its welcome.
 	 */
-	prepare?(client: Client, context: MinimalPrepareContext): void | Promise<void>;
+	prepare?(
+		client: Client,
+		context: MinimalPrepareContext
+	): void | Promise<void>;
 }
 
 export type MinimalPrepareContext = {
