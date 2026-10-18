@@ -2,6 +2,7 @@ import type { ScramjetConfig } from "./types";
 
 export const defaultConfig: ScramjetConfig = {
 	globals: {
+		setrealmfn: "$scramjet$setrealmfn",
 		wrapfn: "$scramjet$wrap",
 		wrappropertybase: "$scramjet__",
 		wrappropertyfn: "$scramjet$prop",

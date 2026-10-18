@@ -71,6 +71,7 @@ impl NativeRewriter {
 					prefix: cfg.prefix.clone(),
 
 					wrapfn: cfg.wrapfn.clone(),
+					setrealmfn: String::from("$scramjet$setrealmfn"),
 					wrappropertybase: cfg.wrappropertybase.clone(),
 					wrappropertyfn: cfg.wrappropertyfn.clone(),
 					cleanrestfn: cfg.cleanrestfn.clone(),
