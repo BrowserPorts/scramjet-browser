@@ -43,6 +43,16 @@ export type ScramjetMinimalRoute = "native" | "wisp" | "blocked" | "plugin";
 
 /** Tap hooks on the minimal client. Route callbacks run synchronously and change props */
 export type MinimalHooks = {
+	/** Executable resources, awaited before creating their browser-loadable URL */
+	resource: {
+		context: { url: URL; kind: "script" | "style" | "other"; isModule: boolean };
+		props: { response: Response };
+	};
+	/** Synchronous code entered through eval, constructors or parsed markup */
+	javascript: {
+		context: { url: string | null; isModule: boolean };
+		props: { source: string };
+	};
 	route: {
 		context: { url: URL; method: string };
 		/** `url` is what the browser loads when the route is native, or what goes over Wisp */

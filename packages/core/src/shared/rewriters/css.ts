@@ -10,7 +10,7 @@ export function rewriteCss(
 	meta: URLMeta,
 	kind: "stylesheet" | "declarations" | "value" = "stylesheet"
 ) {
-	const result = { source: handleCss("rewrite", css, context, meta) };
+	const result = { source: handleCss("rewrite", css, context, meta, kind) };
 	const hooks = context.hooks?.rewriter.code;
 	if (hooks)
 		Tap.dispatchSync(hooks.css, { meta, direction: "rewrite", kind }, result);
@@ -22,7 +22,7 @@ export function unrewriteCss(
 	context: ScramjetContext,
 	kind: "stylesheet" | "declarations" | "value" = "stylesheet"
 ) {
-	const result = { source: handleCss("unrewrite", css, context) };
+	const result = { source: handleCss("unrewrite", css, context, undefined, kind) };
 	const hooks = context.hooks?.rewriter.code;
 	if (hooks)
 		Tap.dispatchSync(
@@ -41,12 +41,13 @@ function handleCss(
 	type: "rewrite" | "unrewrite",
 	css: string,
 	context: ScramjetContext,
-	meta?: URLMeta
+	meta?: URLMeta,
+	kind: "stylesheet" | "declarations" | "value" = "stylesheet"
 ) {
 	const rewrite = (url: string) =>
 		type === "rewrite"
 			? rewriteUrl(url, context, meta!)
 			: unrewriteUrl(url, context);
 
-	return providers().rewriteCssUrls(String(css), rewrite);
+	return providers().rewriteCssUrls(String(css), rewrite, kind);
 }

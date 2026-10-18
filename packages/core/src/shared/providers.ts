@@ -51,7 +51,11 @@ export interface ScramjetProviders {
    * `@import` targets, returning the stylesheet with each URL replaced by
    * the value `rewrite` returns for it.
    */
-	rewriteCssUrls(source: string, rewrite: (url: string) => string): string;
+	rewriteCssUrls(
+		source: string,
+		rewrite: (url: string, kind?: "url" | "import") => string,
+		kind?: "stylesheet" | "declarations" | "value",
+	): string;
 
 	/**
    * Rewrites every candidate URL in a `srcset` attribute value, preserving
@@ -220,7 +224,7 @@ export const nativeProviders: ScramjetProviders = {
 			) => {
 				const url = doubleQuotedUrl ?? singleQuotedUrl ?? unquotedUrl;
 
-				return match.replace(url, rewrite(url.trim()));
+				return match.replace(url, rewrite(url.trim(), "url"));
 			},
 		);
 		css = css.replace(atRuleRegex, (match, importStatement: string) => {
@@ -238,7 +242,7 @@ export const nativeProviders: ScramjetProviders = {
 							return match;
 						}
 
-						return `${firstQuote}${rewrite(url.trim())}${endQuote}`;
+						return `${firstQuote}${rewrite(url.trim(), "import")}${endQuote}`;
 					},
 				),
 			);

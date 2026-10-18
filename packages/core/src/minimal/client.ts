@@ -15,6 +15,7 @@ import type { ProxyTransport, RawHeaders, TransportSocket } from "./types";
 import { Object_defineProperty, URL_createObjectURL } from "@/shared/snapshot";
 import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
+import { providers } from "@/shared/providers";
 
 export type { ScramjetMinimalRoute };
 
@@ -77,6 +78,8 @@ export class ScramjetMinimalClient extends HookClient {
 	codec: UrlCodec;
 	#minimal = Tap.create<MinimalHooks>();
 	hooks = {
+		resource: this.#minimal.resource,
+		javascript: this.#minimal.javascript,
 		route: this.#minimal.route,
 		document: this.#minimal.document,
 		written: this.#minimal.written,
@@ -154,7 +157,7 @@ export class ScramjetMinimalClient extends HookClient {
 		const props = { route: this.#route(url), url: url.href };
 		if (props.route === "native") props.url = this.codec.encode(url) ?? url.href;
 		// Route callbacks are synchronous, so their changes to props are in place once dispatch returns
-		void Tap.dispatch(this.hooks.route, { url, method }, props);
+		Tap.dispatchSync(this.hooks.route, { url, method }, props);
 		return props;
 	}
 
@@ -203,14 +206,14 @@ export class ScramjetMinimalClient extends HookClient {
 			request = new Request(request, { headers });
 		}
 		const asked: MinimalFetchHooks["request"]["props"] = { request };
-		await Tap.dispatch(
+		await Tap.dispatchSeries(
 			this.hooks.fetch.request,
 			{ route: this.route(new NativeURL(request.url)) },
 			asked
 		);
 		const response = await (asked.response ?? this.#follow(asked.request));
 		const answered = { response };
-		await Tap.dispatch(this.hooks.fetch.response, { request: asked.request }, answered);
+		await Tap.dispatchSeries(this.hooks.fetch.response, { request: asked.request }, answered);
 		return answered.response;
 	}
 
@@ -335,13 +338,16 @@ export class ScramjetMinimalClient extends HookClient {
 	 */
 	blob(
 		url: URL,
-		kind: "script" | "style" | "other" = "other"
+		kind: "script" | "style" | "other" = "other",
+		isModule = false
 	): Promise<string> {
-		const key = `${kind} ${url.href}`;
+		const key = `${kind} ${isModule} ${url.href}`;
 		let pending = this.#blobs.get(key);
 		if (!pending) {
 			pending = (async () => {
-				const response = await this.fetch(new Request(url.href));
+				const props = { response: await this.fetch(new Request(url.href)) };
+				await Tap.dispatchSeries(this.hooks.resource, { url, kind, isModule }, props);
+				const response = props.response;
 				if (!response.ok)
 					throw new TypeError(`${url.href} answered ${response.status}`);
 				let data: Blob;
@@ -367,47 +373,40 @@ export class ScramjetMinimalClient extends HookClient {
 		return pending;
 	}
 
+	/** Transforms code synchronously before a native execution entry point sees it */
+	javascript(source: string, url: string | null = null, isModule = false): string {
+		const props = { source };
+		Tap.dispatchSync(this.hooks.javascript, { url, isModule }, props);
+		return props.source;
+	}
+
 	/**
 	 * Points a stylesheet's references where they load: owned URLs into the codec's space, other
 	 * sites at blob URLs. A blob stylesheet has no base of its own, so `absolute` also spells out
 	 * its other references in full.
 	 */
 	async css(text: string, base: URL, absolute = true): Promise<string> {
-		const pattern =
-			/url\(\s*(['"]?)([^'")]+)\1\s*\)|@import\s+(['"])([^'"]+)\3/g;
 		const swaps = new NativeMap<string, Promise<string>>();
-		for (const match of text.matchAll(pattern)) {
-			const raw = (match[2] ?? match[4]).trim();
+		providers().rewriteCssUrls(text, (raw, kind) => {
 			if (
 				swaps.has(raw) ||
-				/^(data|blob|about):/i.test(raw) ||
 				raw.startsWith("#")
 			)
-				continue;
+				return raw;
 			const url = this.resolve(raw, base.href);
-			if (!url) continue;
-			const imported = match[4] !== undefined;
+			if (!url || ["data:", "blob:", "about:"].includes(url.protocol)) return raw;
 			const route = this.route(url);
 			if (route === "wisp" || route === "plugin")
 				swaps.set(
 					raw,
-					this.blob(url, imported ? "style" : "other").catch((error) => {
-						this.report(error, url.href);
-						return url.href;
-					})
+					this.blob(url, kind === "import" ? "style" : "other")
 				);
 			else if (absolute || url.href !== new NativeURL(raw, base).href)
 				swaps.set(raw, Promise.resolve(url.href));
-		}
+			return raw;
+		});
 		const resolved = new NativeMap<string, string>();
 		for (const [raw, pending] of swaps) resolved.set(raw, await pending);
-		return text.replace(pattern, (whole, quote, url, importQuote, imported) => {
-			const raw = (url ?? imported).trim();
-			const next = resolved.get(raw);
-			if (!next) return whole;
-			return imported !== undefined
-				? `@import ${importQuote}${next}${importQuote}`
-				: `url(${quote}${next}${quote})`;
-		});
+		return providers().rewriteCssUrls(text, (raw) => resolved.get(raw) ?? raw);
 	}
 }
