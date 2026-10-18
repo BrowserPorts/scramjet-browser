@@ -21,8 +21,9 @@ type Welcome = {
  * the host speaks another ABI, or when it does not answer in time.
  */
 export function requestLink(
-	options: { target?: Window; timeout?: number } = {}
+	options: { target?: Window; timeout?: number; key?: string } = {}
 ): Promise<{ link: RpcLink; payload: unknown; document?: string } | null> {
+	const key = options.key ?? LINK_KEY;
 	const target = options.target ?? globalThis.parent;
 	if (!target || target === (globalThis as unknown as Window))
 		return Promise.resolve(null);
@@ -36,7 +37,7 @@ export function requestLink(
 		};
 		const listen = (event: MessageEvent) => {
 			if (event.source !== target) return;
-			const welcome = event.data?.[LINK_KEY] as Welcome | undefined;
+			const welcome = event.data?.[key] as Welcome | undefined;
 			if (welcome?.type !== "welcome") return;
 			event.stopImmediatePropagation();
 			if (welcome.abi !== LINK_ABI || !event.ports[0]) return done(null);
@@ -50,7 +51,7 @@ export function requestLink(
 		const timer = setTimeout(() => done(null), options.timeout ?? 10000);
 		globalThis.addEventListener("message", listen, true);
 		const hello: Hello = { type: "hello", abi: LINK_ABI, url: location.href };
-		target.postMessage({ [LINK_KEY]: hello }, "*");
+		target.postMessage({ [key]: hello }, "*");
 	});
 }
 
@@ -78,10 +79,12 @@ export function acceptLinks(
 	host: Window,
 	accept: (
 		request: LinkRequest
-	) => LinkAnswer | null | Promise<LinkAnswer | null>
+	) => LinkAnswer | null | Promise<LinkAnswer | null>,
+	options: { key?: string } = {}
 ): () => void {
+	const key = options.key ?? LINK_KEY;
 	const listen = async (event: MessageEvent) => {
-		const hello = event.data?.[LINK_KEY] as Hello | undefined;
+		const hello = event.data?.[key] as Hello | undefined;
 		if (hello?.type !== "hello" || !event.source) return;
 		// Registered before the page's own listeners, so the page never sees a link being made
 		event.stopImmediatePropagation();
@@ -94,7 +97,7 @@ export function acceptLinks(
 			payload: answer.payload,
 			document: answer.document,
 		};
-		source.postMessage({ [LINK_KEY]: welcome }, "*", [
+		source.postMessage({ [key]: welcome }, "*", [
 			answer.port,
 			...(answer.transfer ?? []),
 		]);

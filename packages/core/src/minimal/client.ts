@@ -21,6 +21,8 @@ export type { ScramjetMinimalRoute };
 
 /** Plain settings, so a page can hand the same ones to its workers and nested windows */
 export type ScramjetMinimalConfig = {
+	/** Host-selected message key used before required plugins receive their settings */
+	linkKey?: string;
 	/** Fetch native element resources through the plugin pipeline before the browser loads them */
 	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */

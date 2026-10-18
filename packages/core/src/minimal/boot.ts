@@ -107,7 +107,7 @@ export function start(
 	takeOver(
 		async () => {
 			const linked = handshake
-				? await requestLink({ timeout: options.timeout })
+				? await requestLink({ timeout: options.timeout, key: config.linkKey })
 				: null;
 			if (linked) attach(client, linked.link);
 			try {
