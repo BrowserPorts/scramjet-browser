@@ -711,8 +711,15 @@ export class Controller {
 			pendingReconnect !== null &&
 			pendingReconnect.worker === worker &&
 			(expectedWorkerId === undefined ||
+				pendingReconnect.expectedWorkerId === undefined ||
 				pendingReconnect.expectedWorkerId === expectedWorkerId)
 		) {
+			// A revival can identify the worker while a navigation awaits its first acknowledgement
+			if (expectedWorkerId !== undefined && pendingReconnect.expectedWorkerId === undefined) {
+				pendingReconnect.expectedWorkerId = expectedWorkerId;
+				const ready = this.serviceWorkerReady;
+				if (ready?.worker === worker) ready.expectedWorkerId = expectedWorkerId;
+			}
 			return pendingReconnect.promise;
 		}
 		this.isReady = false;
