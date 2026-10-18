@@ -31,12 +31,17 @@ export function takeOver(
 	taken.add(globalThis);
 	const url = location.href;
 	const fetchNative = fetch.bind(globalThis);
+	// Required plugins may wrap author-facing sinks while preparation runs
+	// The document hook already transformed the replacement before these sinks receive it
+	const openDocument = document.open.bind(document);
+	const writeDocument = document.write.bind(document);
+	const closeDocument = document.close.bind(document);
 	// document.open does nothing while the parser runs this script, and nothing ever again once the
 	// parser was aborted, so the load is not stopped. The rest of the document becomes the text of
 	// a hidden plaintext element instead: none of its scripts run, and the parser finishes normally,
 	// which leaves document.open working once the work is done. A document already parsed has no
 	// scripts left to hold back, and writing to it would replace it now
-	if (document.readyState === "loading") document.write("<plaintext hidden>");
+	if (document.readyState === "loading") writeDocument("<plaintext hidden>");
 	// A srcdoc document has no URL to fetch again; its host hands the markup back instead
 	const refetch = location.protocol !== "about:";
 	const page = refetch
@@ -55,11 +60,11 @@ export function takeOver(
 		.then(transform)
 		.then(
 			(html) => {
-				document.open();
+				openDocument();
 				// document.open drops the window's listeners, which plugins add back here
 				written();
-				document.write(html);
-				document.close();
+				writeDocument(html);
+				closeDocument();
 			},
 			(error) => console.error("Scramjet could not load the page again", error)
 		);
