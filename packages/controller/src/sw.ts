@@ -458,8 +458,16 @@ export async function route(event: FetchEvent): Promise<Response> {
 	}
 }
 
+let activateUpdates = true;
+
+/** A host worker can keep existing documents paired with their current runtime */
+export function configureLifecycle(options: { activateUpdates?: boolean }): undefined {
+	activateUpdates = options.activateUpdates !== false;
+	return undefined;
+}
+
 addEventListener("install", () => {
-	self.skipWaiting();
+	if (activateUpdates) self.skipWaiting();
 });
 
 addEventListener("activate", (event: ExtendableEvent) => {
