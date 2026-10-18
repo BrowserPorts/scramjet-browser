@@ -2,6 +2,7 @@ import { flagEnabled, ScramjetContext } from "@/shared";
 import { URLMeta } from "@rewriters/url";
 
 import { getRewriter, JsRewriterOutput } from "@rewriters/wasm";
+import { Tap } from "@/Tap";
 import {
 	Array_from,
 	TextDecoder_decode,
@@ -110,6 +111,7 @@ export function rewriteJs(
 	meta: URLMeta,
 	isModule = false
 ): string | Uint8Array {
+	let rewritten = false;
 	try {
 		const res = rewriteJsInner(js, url, context, meta, isModule);
 		let newjs = res.js;
@@ -145,8 +147,16 @@ export function rewriteJs(
 			}
 		}
 
+		rewritten = true;
+		const hooks = context.hooks?.rewriter.code;
+		if (hooks) {
+			const result = { source: typeof newjs === "string" ? newjs : TextDecoder_decode(newjs) as string };
+			Tap.dispatchSync(hooks.javascript, { url, meta, isModule }, result);
+			return result.source;
+		}
 		return newjs;
 	} catch (err) {
+		if (rewritten) throw err;
 		dbg.warn(
 			"failed rewriting js for",
 			url || "(unknown)",

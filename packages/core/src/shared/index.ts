@@ -53,11 +53,20 @@ export type ScramjetContext = {
     rewriter: {
       html: TapInstance<HtmlRewriterHooks>;
       script?: TapInstance<ScriptRewriterHooks>;
+      code?: TapInstance<CodeRewriterHooks>;
     };
   };
 };
 
 export type HtmlRewriterHooks = {
+  element: {
+    context: { element: Element; meta: URLMeta };
+    props: {};
+  };
+  text: {
+    context: { parent: Element | null; meta: URLMeta };
+    props: { text: string };
+  };
   pre: {
     context: {
       handler: DomHandler;
@@ -76,6 +85,18 @@ export type HtmlRewriterHooks = {
     props: {
       setRawHtml?: string;
     };
+  };
+};
+
+/** Synchronous transforms run inside Scramjet's rewriters before their result is exposed */
+export type CodeRewriterHooks = {
+  javascript: {
+    context: { url: string | null; meta: URLMeta; isModule: boolean };
+    props: { source: string };
+  };
+  css: {
+    context: { meta: URLMeta; direction: "rewrite" | "unrewrite" };
+    props: { source: string };
   };
 };
 /**

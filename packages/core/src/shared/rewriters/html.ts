@@ -232,7 +232,7 @@ function rewriteHtmlInner(
 
 	parser.write(html);
 	parser.end();
-	Tap.dispatch(
+	Tap.dispatchSync(
 		context.hooks!.rewriter.html.pre,
 		{
 			handler,
@@ -354,7 +354,7 @@ function rewriteHtmlInner(
 	}
 
 	const props: typeof context.hooks.rewriter.html.post.props = {};
-	Tap.dispatch(
+	Tap.dispatchSync(
 		context.hooks!.rewriter.html.post,
 		{
 			handler,
@@ -503,6 +503,12 @@ function traverseParsedHtml(
 		}
 	}
 	const meta = withBase(callerMeta, state);
+	const htmlHooks = context.hooks?.rewriter.html;
+	if (htmlHooks && node.type === ElementType.Text) {
+		const props = { text: node.data as string };
+		Tap.dispatchSync(htmlHooks.text, { parent: node.parent?.name ? node.parent : null, meta }, props);
+		node.data = props.text;
+	}
 
 	if (node.attribs) {
 		for (const rule of htmlRules) {
@@ -612,6 +618,8 @@ function traverseParsedHtml(
 		}
 	}
 
+	if (htmlHooks && isElementNode(node))
+		Tap.dispatchSync(htmlHooks.element, { element: node, meta }, {});
 	if (node.childNodes) {
 		for (const childNode in node.childNodes) {
 			node.childNodes[childNode] = traverseParsedHtml(
