@@ -124,14 +124,37 @@ export default function (client: ScramjetClient, _self: Self) {
 		},
 	});
 
+	// Rewrite the URL-attribute selectors Scramjet understands, and neutralise any
+	// selector that probes Scramjet's own attributes (`[scramjet-attr-*]`,
+	// `[scramjet-injected]`) so that branch matches nothing — exactly as it would
+	// on a page that was never proxied. querySelector(All) exists on Document,
+	// Element and DocumentFragment, so cover them all; the per-attribute masking
+	// on getAttribute is otherwise bypassed by a selector match.
+	const maskSelector = (selector: unknown): string => {
+		let s = String(selector).replace(
+			/((?:^|\s)\b\w+\[(?:src|href|data-href))[\^]?(=['"]?(?:https?[:])?\/\/)/,
+			"$1*$2"
+		);
+		s = s.replace(
+			/\[\s*scramjet-(?:attr[\w-]*|injected)[^\]]*\]/gi,
+			":not(*)"
+		);
+
+		return s;
+	};
+
 	client.Proxy(
-		["Document.prototype.querySelector", "Document.prototype.querySelectorAll"],
+		[
+			"Document.prototype.querySelector",
+			"Document.prototype.querySelectorAll",
+			"Element.prototype.querySelector",
+			"Element.prototype.querySelectorAll",
+			"DocumentFragment.prototype.querySelector",
+			"DocumentFragment.prototype.querySelectorAll",
+		],
 		{
 			apply(ctx) {
-				ctx.args[0] = String(ctx.args[0]).replace(
-					/((?:^|\s)\b\w+\[(?:src|href|data-href))[\^]?(=['"]?(?:https?[:])?\/\/)/,
-					"$1*$2"
-				);
+				ctx.args[0] = maskSelector(ctx.args[0]);
 			},
 		}
 	);

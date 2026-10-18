@@ -3,7 +3,8 @@ import {
 	ProxyTransport,
 	RawHeaders,
 } from "@mercuryworkshop/proxy-transports";
-import { SCRAMJETCLIENT } from "@/symbols";
+import { SCRAMJETCLIENT, SCRAMJETMARKER } from "@/symbols";
+import { getClient, setClient } from "./clients";
 import { getOwnPropertyDescriptorHandler } from "@client/helpers";
 import { createLocationProxy } from "@client/location";
 import { createWrapFn } from "@client/shared/wrap";
@@ -170,9 +171,12 @@ function findBox(global: Window, seen: Window[]): SingletonBox | null {
 	seen.push(global);
 
 	try {
-		if ((SCRAMJETCLIENT in global) as any) {
-			return global[SCRAMJETCLIENT].box;
-		}
+		// Only resolves a global THIS bundle hooked (e.g. a subframe hooked via
+		// hookSubcontext, whose client is constructed in this realm). A sibling
+		// that booted its own bundle keeps its own box; the walk continues past
+		// it. The box is never read off the global itself anymore.
+		const existing = getClient(global);
+		if (existing) return existing.box;
 	} catch {}
 
 	try {
@@ -276,7 +280,7 @@ export class ScramjetClient {
 		this.bare = new BareCompatibleClient(init.transport);
 
 		if (iswindow) {
-			global.document[SCRAMJETCLIENT] = this;
+			setClient(global.document, this);
 		}
 
 		this.indirectEval = createIndirectEval(this);
@@ -441,7 +445,11 @@ export class ScramjetClient {
 					// doesn't matter if it throws here just means we found the topmost one
 				}
 
-				const curclient = currentWin[SCRAMJETCLIENT];
+				// The topmost scramjet-controlled frame is reached cross-realm
+				// through the shared box, not off its global. If it is not in this
+				// box (it booted its own bundle), we cannot read its frame name.
+				const curclient = client.box.globals.get(currentWin as Self);
+				if (!curclient) return null;
 				const frame = curclient.descriptors.get(
 					"window.frameElement",
 					currentWin
@@ -478,9 +486,10 @@ export class ScramjetClient {
 					}
 
 					const parentWin = client.global.parent.window;
-					if (parentWin[SCRAMJETCLIENT]) {
+					if (SCRAMJETCLIENT in parentWin) {
 						// we're inside an iframe, and the parent is scramjet-controlled
-						const parentClient = parentWin[SCRAMJETCLIENT];
+						const parentClient = client.box.globals.get(parentWin as Self);
+						if (!parentClient) return null;
 						const frame = parentClient.descriptors.get(
 							"window.frameElement",
 							parentWin
@@ -557,7 +566,12 @@ export class ScramjetClient {
 		};
 		this.locationProxy = createLocationProxy(this, global);
 
-		global[SCRAMJETCLIENT] = this;
+		// The live client goes in the off-global registry, never on `global`
+		// itself. Only the inert cross-realm presence marker is left on the
+		// global so related Scramjet realms can detect this one without reaching
+		// any internal state.
+		setClient(global, this);
+		global[SCRAMJETCLIENT] = SCRAMJETMARKER;
 	}
 
 	/** Apply document injection init when a client was already installed (e.g. early contentWindow). */
@@ -907,21 +921,24 @@ return { apply, construct };
 		const desc: PropertyDescriptor = {};
 
 		if (descriptor.get) {
-			desc.get = function () {
+			desc.get = this.maskAccessor(oldDescriptor?.get, function (this: any) {
 				ctx.this = this;
 
 				return descriptor.get(ctx);
-			};
+			});
 		} else if (oldDescriptor?.get) {
 			desc.get = oldDescriptor.get;
 		}
 
 		if (descriptor.set) {
-			desc.set = function (v: any) {
-				ctx.this = this;
+			desc.set = this.maskAccessor(
+				oldDescriptor?.set,
+				function (this: any, v: any) {
+					ctx.this = this;
 
-				descriptor.set(ctx, v);
-			};
+					descriptor.set(ctx, v);
+				}
+			);
 		} else if (oldDescriptor?.set) {
 			desc.set = oldDescriptor.set;
 		}
@@ -934,6 +951,32 @@ return { apply, construct };
 			desc.configurable = oldDescriptor.configurable;
 
 		Object_defineProperty(target, prop, desc);
+	}
+
+	/**
+	 * Wraps a trapped accessor's replacement get/set so reflecting on it answers
+	 * for the native accessor it stands in for. A bare replacement function has
+	 * `name === ""`, `length === 0` and a `toString()` that returns its JS
+	 * source, none of which match a native accessor — a page reading
+	 * `Object.getOwnPropertyDescriptor(proto, prop).get.toString()`/`.name` can
+	 * tell it apart. A `Proxy` of the native keeps the native's `name`, `length`
+	 * and missing `prototype`, and registering it in `box.unproxy` lets the
+	 * `Function.prototype.toString` mask (client/shared/sourcemaps.ts) print the
+	 * native's `[native code]` source for it. Mirrors `HookClient.#accessor`
+	 * (hook/hook-client.ts), which already does this for the minimal client.
+	 */
+	maskAccessor(
+		native: ((...args: any[]) => any) | undefined,
+		implementation: (...args: any[]) => any
+	): (...args: any[]) => any {
+		if (typeof native !== "function") return implementation;
+		const proxy = new Proxy(native, {
+			apply: (_target, that, args) => Reflect_apply(implementation, that, args),
+			getOwnPropertyDescriptor: getOwnPropertyDescriptorHandler,
+		});
+		this.box.unproxy.set(proxy, native);
+
+		return proxy;
 	}
 
 	rewriteUrl(url: string | URL, options?: RewriteUrlOptions): string {

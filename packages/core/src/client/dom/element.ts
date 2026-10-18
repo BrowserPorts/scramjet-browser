@@ -1,3 +1,4 @@
+import { internalAttribute, internalAttributePrefix, injectedAttribute } from "@/runtime-identity";
 import { htmlRules } from "@/shared/htmlRules";
 import {
 	String,
@@ -92,7 +93,7 @@ function collectAttributeMap(
 		client.natives.call("Element.prototype.getAttributeNames", element) ?? [];
 
 	for (const attrName of attrNames) {
-		if (String(attrName).startsWith("scramjet-attr")) continue;
+		if (String(attrName).startsWith(internalAttributePrefix)) continue;
 		const value = client.natives.call(
 			"Element.prototype.getAttribute",
 			element,
@@ -243,7 +244,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		apply(ctx) {
 			const [name] = ctx.args;
 
-			if (name.startsWith("scramjet-attr")) {
+			if (name.startsWith(internalAttributePrefix)) {
 				return ctx.return(null);
 			}
 
@@ -251,10 +252,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 				client.natives.call(
 					"Element.prototype.hasAttribute",
 					ctx.this,
-					`scramjet-attr-${name}`
+					internalAttribute(name)
 				)
 			) {
-				const attrib = ctx.fn.call(ctx.this, `scramjet-attr-${name}`);
+				const attrib = ctx.fn.call(ctx.this, internalAttribute(name));
 				if (attrib === null) return ctx.return("");
 
 				return ctx.return(attrib);
@@ -266,7 +267,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		apply(ctx) {
 			const attrNames = ctx.call() as string[];
 			const cleaned = attrNames.filter(
-				(attr) => !attr.startsWith("scramjet-attr")
+				(attr) => !attr.startsWith(internalAttributePrefix)
 			);
 
 			ctx.return(cleaned);
@@ -275,15 +276,70 @@ export default function (client: ScramjetClient, self: typeof window) {
 
 	client.Proxy("Element.prototype.getAttributeNode", {
 		apply(ctx) {
-			if (String(ctx.args[0]).startsWith("scramjet-attr"))
+			if (String(ctx.args[0]).startsWith(internalAttributePrefix))
 				return ctx.return(null);
 		},
 	});
 
 	client.Proxy("Element.prototype.hasAttribute", {
 		apply(ctx) {
-			if (String(ctx.args[0]).startsWith("scramjet-attr"))
+			if (String(ctx.args[0]).startsWith(internalAttributePrefix))
 				return ctx.return(false);
+		},
+	});
+
+	// The namespaced reads were unhooked, so they bypassed the masking above:
+	// `getAttributeNS(null, "scramjet-attr-src")` leaked the stored original and
+	// `getAttributeNS(null, "src")` returned nothing on a rewritten element. Keep
+	// them consistent with getAttribute: Scramjet's own attributes do not exist,
+	// and a rewritten attribute reports its stored original.
+	client.Proxy("Element.prototype.getAttributeNS", {
+		apply(ctx) {
+			const name = String(ctx.args[1]);
+
+			if (name.startsWith(internalAttributePrefix)) return ctx.return(null);
+
+			if (
+				client.natives.call(
+					"Element.prototype.hasAttribute",
+					ctx.this,
+					internalAttribute(name)
+				)
+			) {
+				const attrib = client.natives.call(
+					"Element.prototype.getAttribute",
+					ctx.this,
+					internalAttribute(name)
+				);
+				if (attrib === null) return ctx.return("");
+
+				return ctx.return(attrib);
+			}
+		},
+	});
+
+	client.Proxy("Element.prototype.hasAttributeNS", {
+		apply(ctx) {
+			const name = String(ctx.args[1]);
+
+			if (name.startsWith(internalAttributePrefix)) return ctx.return(false);
+
+			if (
+				client.natives.call(
+					"Element.prototype.hasAttribute",
+					ctx.this,
+					internalAttribute(name)
+				)
+			) {
+				return ctx.return(true);
+			}
+		},
+	});
+
+	client.Proxy("Element.prototype.getAttributeNodeNS", {
+		apply(ctx) {
+			if (String(ctx.args[1]).startsWith(internalAttributePrefix))
+				return ctx.return(null);
 		},
 	});
 
@@ -317,13 +373,13 @@ export default function (client: ScramjetClient, self: typeof window) {
 						ctx.this,
 						name
 					);
-					ctx.fn.call(ctx.this, `scramjet-attr-${name}`, value);
+					ctx.fn.call(ctx.this, internalAttribute(name), value);
 					ctx.return(undefined);
 
 					return;
 				}
 				ctx.args[1] = ret;
-				ctx.fn.call(ctx.this, `scramjet-attr-${ctx.args[0]}`, value);
+				ctx.fn.call(ctx.this, internalAttribute(ctx.args[0]), value);
 			}
 		},
 	});
@@ -358,7 +414,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				client.natives.call(
 					"Element.prototype.setAttribute",
 					ctx.this,
-					`scramjet-attr-${ctx.args[1]}`,
+					internalAttribute(ctx.args[1]),
 					value
 				);
 			}
@@ -390,11 +446,11 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Element.prototype.removeAttribute", {
 		apply(ctx) {
 			const name = String(ctx.args[0]);
-			if (name.startsWith("scramjet-attr")) return ctx.return(undefined);
+			if (name.startsWith(internalAttributePrefix)) return ctx.return(undefined);
 			if (
 				client.natives.call("Element.prototype.hasAttribute", ctx.this, name)
 			) {
-				ctx.fn.call(ctx.this, `scramjet-attr-${ctx.args[0]}`);
+				ctx.fn.call(ctx.this, internalAttribute(ctx.args[0]));
 			}
 		},
 	});
@@ -402,11 +458,11 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Element.prototype.toggleAttribute", {
 		apply(ctx) {
 			const name = String(ctx.args[0]);
-			if (name.startsWith("scramjet-attr")) return ctx.return(false);
+			if (name.startsWith(internalAttributePrefix)) return ctx.return(false);
 			if (
 				client.natives.call("Element.prototype.hasAttribute", ctx.this, name)
 			) {
-				ctx.fn.call(ctx.this, `scramjet-attr-${ctx.args[0]}`);
+				ctx.fn.call(ctx.this, internalAttribute(ctx.args[0]));
 			}
 		},
 	});
@@ -437,7 +493,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				client.natives.call(
 					"Element.prototype.setAttribute",
 					ctx.this,
-					"scramjet-attr-script-source-src",
+					internalAttribute("script-source-src"),
 					bytesToBase64(TextEncoder_encode(newval))
 				);
 			} else if (client.box.instanceof(ctx.this, "HTMLStyleElement")) {
@@ -467,7 +523,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				const scriptSource = client.natives.call(
 					"Element.prototype.getAttribute",
 					ctx.this,
-					"scramjet-attr-script-source-src"
+					internalAttribute("script-source-src")
 				);
 
 				if (scriptSource) {
@@ -506,7 +562,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 			client.natives.call(
 				"Element.prototype.setAttribute",
 				element,
-				"scramjet-attr-script-source-src",
+				internalAttribute("script-source-src"),
 				bytesToBase64(TextEncoder_encode(value))
 			);
 
@@ -522,7 +578,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 			const scriptSource = client.natives.call(
 				"Element.prototype.getAttribute",
 				element,
-				"scramjet-attr-script-source-src"
+				internalAttribute("script-source-src")
 			);
 			if (scriptSource) return atob(scriptSource);
 			return text;
@@ -622,6 +678,100 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Element.prototype.getHTML", {
 		apply(ctx) {
 			ctx.return(unrewriteHtml(ctx.call()));
+		},
+	});
+
+	// XMLSerializer was unhooked, so `new XMLSerializer().serializeToString(el)`
+	// emitted the raw `scramjet-attr-*` attributes and rewritten URLs. Run the
+	// output back through the same unrewrite the innerHTML/outerHTML getters use,
+	// which restores the original attributes and drops the scramjet ones.
+	client.Proxy("XMLSerializer.prototype.serializeToString", {
+		apply(ctx) {
+			const serialized = ctx.call() as string;
+			if (!serialized) return;
+
+			const node = ctx.args[0];
+			let foreignContext: ForeignContext = "html";
+			try {
+				if (node && client.box.instanceof(node, "Element")) {
+					foreignContext = insideForeignContext(client, node as Element);
+				}
+			} catch {
+				// A non-element node (document, fragment); fall back to html context.
+			}
+
+			return ctx.return(unrewriteHtml(serialized, foreignContext));
+		},
+	});
+
+	// MutationObserver was unhooked, so a page observer saw Scramjet's internal
+	// attribute mutations (`scramjet-attr-*`) and the injected scripts being
+	// added/removed. Filter those records so what the page observes matches the
+	// masked DOM it reads through getAttribute.
+	const nodeListAllInjected = (nodes: NodeList): boolean => {
+		for (const node of nodes) {
+			if (!client.box.instanceof(node, "Element")) return false;
+			if (
+				!client.natives.call(
+					"Element.prototype.hasAttribute",
+					node as Element,
+					injectedAttribute
+				)
+			) {
+				return false;
+			}
+		}
+
+		return true;
+	};
+	const filterMutationRecords = (
+		records: MutationRecord[]
+	): MutationRecord[] => {
+		return records.filter((record) => {
+			if (
+				record.type === "attributes" &&
+				record.attributeName &&
+				String(record.attributeName).startsWith(internalAttributePrefix)
+			) {
+				return false;
+			}
+
+			if (
+				record.type === "childList" &&
+				(record.addedNodes.length > 0 || record.removedNodes.length > 0) &&
+				nodeListAllInjected(record.addedNodes) &&
+				nodeListAllInjected(record.removedNodes)
+			) {
+				return false;
+			}
+
+			return true;
+		});
+	};
+
+	client.Proxy("MutationObserver", {
+		construct(ctx) {
+			const callback = ctx.args[0];
+			if (typeof callback !== "function") return;
+
+			ctx.args[0] = function (
+				this: MutationObserver,
+				records: MutationRecord[],
+				observer: MutationObserver
+			) {
+				const cleaned = filterMutationRecords(records);
+				if (cleaned.length === 0) return;
+
+				return callback.call(this, cleaned, observer);
+			};
+		},
+	});
+
+	client.Proxy("MutationObserver.prototype.takeRecords", {
+		apply(ctx) {
+			const records = ctx.call() as MutationRecord[];
+
+			return ctx.return(filterMutationRecords(records));
 		},
 	});
 

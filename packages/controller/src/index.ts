@@ -25,6 +25,7 @@ import {
 	setWasm,
 	Tap,
 } from "@mercuryworkshop/scramjet";
+import { identityName, wasmNamespace } from "@mercuryworkshop/scramjet";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
 	Controllerbound,
@@ -80,7 +81,17 @@ const scramjetConfig: Partial<ScramjetConfig> = {
 		...scramjetDefaultConfig.flags,
 		allowFailedIntercepts: false,
 	},
-	maskedfiles: ["inject.js", "scramjet.wasm.js"],
+	// The bundle filenames, so `performance.getEntries*` and (when cleanErrors is
+	// on) error stacks drop any resource/frame that names a Scramjet bundle.
+	// Derived from the paths above so it stays complete if they change — the old
+	// hardcoded list missed scramjet.js and the wasm binary. Matched by suffix
+	// (performance.ts / error.ts use `endsWith`).
+	maskedfiles: [
+		config.scramjetPath,
+		config.injectPath,
+		config.virtualWasmPath,
+		config.wasmPath,
+	].map((path) => path.split("/").pop() ?? path),
 };
 
 type PersistedCookieState = {
@@ -102,9 +113,9 @@ export class ManagedPlugin extends Plugin {
 	}
 }
 
-const COOKIE_DB_NAME = "__scramjet_controller";
+const COOKIE_DB_NAME = identityName("__scramjet_controller");
 const COOKIE_STORE_NAME = "state";
-const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
+const BROADCASTCHANNEL_NAME = identityName("__scramjet_controller_channel");
 const CONTROLLER_DETACH_TIMEOUT_MS = 5000;
 const CONTROLLER_READY_TIMEOUT_MS = 5000;
 
@@ -439,7 +450,7 @@ export class Controller {
 								.join(""),
 						);
 
-						this.wasmPayload = `self.WASM = '${b64}';`;
+						this.wasmPayload = `self[${JSON.stringify(wasmNamespace)}] = ${JSON.stringify(b64)};`;
 					}
 
 					return [
@@ -1074,8 +1085,21 @@ function yieldGetInjectScripts(
 			script(
 				"data:text/javascript;charset=utf-8;base64," +
 					base64Encode(`
-					document.querySelectorAll("script[scramjet-injected]").forEach(script => script.remove());
-					$scramjetController.load({
+					document.querySelectorAll(${JSON.stringify("script[" + sjconfig.identity.injectedAttribute + "]")}).forEach(script => script.remove());
+					// Capture load into a local and drop the bundle globals BEFORE
+					// running it. The controller already closed over core's exports
+					// (captured when controller.inject.js evaluated) and load() uses
+					// only module bindings, so neither global is needed once load is
+					// held. Deleting first means the globals are live only for the few
+					// statements between the inject bundle evaluating and here — never
+					// while load() does its work, and never once load() returns. (No
+					// guest script runs this early regardless; this just narrows the
+					// window the coordinator flagged.) Full removal would need an entry
+					// restructure — see the hardening notes.
+					const load = self[${JSON.stringify(sjconfig.identity.controllerNamespace)}].load;
+					delete self[${JSON.stringify(sjconfig.identity.controllerNamespace)}];
+					delete self[${JSON.stringify(sjconfig.identity.runtimeNamespace)}];
+					load({
 						config: ${JSON.stringify(config)},
 						sjconfig: ${JSON.stringify(sjconfig)},
 						prefix: new URL("${prefix.href}"),
@@ -1087,7 +1111,7 @@ function yieldGetInjectScripts(
 						codecDecode: ${codecDecode.toString()},
 						initHeaders: ${JSON.stringify(htmlcontext.headers ?? [])},
 						history: ${JSON.stringify(htmlcontext.history ?? [])},
-					})
+					});
 				`),
 			),
 		];
@@ -1136,10 +1160,13 @@ export class Frame {
 						"data:text/javascript;charset=utf-8;base64," +
 							base64Encode(`
 					(()=>{
-						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = $scramjet;
+						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = self[${JSON.stringify(this.controller.scramjetConfig.identity.runtimeNamespace)}];
 
-						if (self.WASM) setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
-						delete self.WASM;
+						if (self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}]) setWasm(Uint8Array.from(atob(self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}]), (c) => c.charCodeAt(0)));
+						delete self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}];
+						// core's exports are captured in the locals above; drop the
+						// bundle global so worker scripts cannot reach the core API.
+						delete self[${JSON.stringify(this.controller.scramjetConfig.identity.runtimeNamespace)}];
 
 						const sjconfig = ${JSON.stringify(this.controller.scramjetConfig)};
 						const prefix = new URL("${this.prefix}", location.href);

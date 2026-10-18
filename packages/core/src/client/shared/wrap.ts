@@ -64,6 +64,12 @@ export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 
 export const order = 4;
 export default function (client: ScramjetClient, self: GlobalThis) {
+	const properties: Record<string, string> = {
+		location: client.config.globals.wraplocation,
+		parent: client.config.globals.wrapparent,
+		top: client.config.globals.wraptop,
+		eval: client.config.globals.wrapeval,
+	};
 	const realLocationDescriptor = iswindow
 		? Object_getOwnPropertyDescriptor(self, "location")
 		: undefined;
@@ -82,7 +88,7 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 				str === "top" ||
 				str === "eval"
 			)
-				return client.config.globals.wrappropertybase + str;
+				return properties[str];
 
 			return str;
 		},
@@ -101,7 +107,7 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 
 	Object_defineProperty(
 		self.Object.prototype,
-		client.config.globals.wrappropertybase + "location",
+		client.config.globals.wraplocation,
 		{
 			get: function () {
 				// if (this.location.constructor.toString().includes("Location")) {
@@ -165,7 +171,7 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 	);
 	Object_defineProperty(
 		self.Object.prototype,
-		client.config.globals.wrappropertybase + "parent",
+		client.config.globals.wrapparent,
 		{
 			get: function () {
 				return client.wrapfn(this.parent);
@@ -180,7 +186,7 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 	);
 	Object_defineProperty(
 		self.Object.prototype,
-		client.config.globals.wrappropertybase + "top",
+		client.config.globals.wraptop,
 		{
 			get: function () {
 				return client.wrapfn(this.top);
@@ -194,7 +200,7 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 	);
 	Object_defineProperty(
 		self.Object.prototype,
-		client.config.globals.wrappropertybase + "eval",
+		client.config.globals.wrapeval,
 		{
 			get: function () {
 				return client.wrapfn(this.eval);
@@ -207,22 +213,34 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 		}
 	);
 
-	self.$scramitize = function (v) {
-		const t = typeof v;
-		if (t === "object" && v !== null) {
-			if (v === location) debugger;
-			if (iswindow) {
-				// if (v === self.parent) debugger;
-				if (v === self.top) debugger;
-			}
-		} else if (t === "string") {
-			if (v.includes("scramjet")) debugger;
-			if (v.includes("~/sj")) debugger;
-			if (v.includes(location.origin)) debugger;
-		}
+	// `$scramitize` is a debugging aid: the rewriter only emits `$scramitize(...)`
+	// calls when the `scramitize` flag is on, so install it only then. In a
+	// production build (flag off) it is never defined, so it cannot show up as an
+	// enumerable `self.$scramitize` to a page scanning `Object.keys(window)`, and
+	// its `debugger` statements never run. Defined non-enumerable even in dev.
+	if (client.flagEnabled("scramitize")) {
+		Object_defineProperty(self, "$scramitize", {
+			value: function (v) {
+				const t = typeof v;
+				if (t === "object" && v !== null) {
+					if (v === location) debugger;
+					if (iswindow) {
+						// if (v === self.parent) debugger;
+						if (v === self.top) debugger;
+					}
+				} else if (t === "string") {
+					if (v.includes("scramjet")) debugger;
+					if (v.includes("~/sj")) debugger;
+					if (v.includes(location.origin)) debugger;
+				}
 
-		return v;
-	};
+				return v;
+			},
+			writable: false,
+			configurable: false,
+			enumerable: false,
+		});
+	}
 
 	// location = "..." can't be rewritten as wrapfn(location) = ..., so instead it will actually be rewritten as
 	// ((t)=>$scramjet$tryset(location,"+=",t)||location+=t)(...);

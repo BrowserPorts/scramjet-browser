@@ -7,6 +7,7 @@ import {
 import {
 	CookieJar,
 	type CookieSyncOptions,
+	getClient,
 	SCRAMJETCLIENT,
 	ScramjetClient,
 	type ScramjetConfig,
@@ -18,6 +19,7 @@ import {
 	Tap,
 	type TrackedHistoryState,
 } from "@mercuryworkshop/scramjet";
+import { wasmNamespace } from "@mercuryworkshop/scramjet";
 import type { Config } from ".";
 import { CONTROLLERFRAME } from "./symbols";
 
@@ -59,14 +61,18 @@ type Init = {
 
 export function load(init: Init) {
 	if (SCRAMJETCLIENT in globalThis) {
-		((globalThis as any)[SCRAMJETCLIENT] as ScramjetClient).syncDocumentInit({
+		// Already hooked. The client lives off-global now, so reach it through the
+		// registry rather than the marker. If a parent in another bundle hooked
+		// this frame, its own client already holds the navigation metadata and
+		// there is nothing reachable here to sync.
+		getClient(globalThis)?.syncDocumentInit({
 			initHeaders: init.initHeaders,
 			history: init.history,
 			cookies: init.cookies,
 		});
 		return;
 	}
-	if (!("WASM" in self)) {
+	if (!(wasmNamespace in self)) {
 		throw new Error("WASM not found in global scope!");
 	}
 	if (
@@ -77,8 +83,8 @@ export function load(init: Init) {
 			"Scramjet document injection requires its storage partition key",
 		);
 	}
-	const wasm = Uint8Array.from(atob(String(self.WASM)), (c) => c.charCodeAt(0));
-	delete (self as any).WASM;
+	const wasm = Uint8Array.from(atob(String((self as unknown as Record<string, unknown>)[wasmNamespace])), (c) => c.charCodeAt(0));
+	delete (self as unknown as Record<string, unknown>)[wasmNamespace];
 	setWasm(wasm);
 
 	new ExecutionContextWrapper(globalThis, init);
@@ -209,9 +215,10 @@ class ExecutionContextWrapper {
 			isTopLevel = false;
 			let currentwin = this.global.window;
 			while (currentwin.parent !== currentwin) {
-				const currentclient = Reflect.get(currentwin, SCRAMJETCLIENT) as
-					| ScramjetClient
-					| undefined;
+				// Reachable only for ancestors this bundle hooked; an ancestor that
+				// booted its own bundle is skipped (its controller frame handle, if
+				// any, is resolved when that bundle runs this same walk).
+				const currentclient = getClient(currentwin);
 				if (!currentclient) {
 					currentwin = currentwin.parent.window;
 					continue;
@@ -283,9 +290,9 @@ class ExecutionContextWrapper {
 			isTopLevel,
 		};
 		if (controllerFrame)
-			Tap.dispatch(controllerFrame.hooks.init.pre, frameInitContext, {});
+			Tap.dispatchSync(controllerFrame.hooks.init.pre, frameInitContext, {});
 		this.client.hook();
 		if (controllerFrame)
-			Tap.dispatch(controllerFrame.hooks.init.post, frameInitContext, {});
+			Tap.dispatchSync(controllerFrame.hooks.init.post, frameInitContext, {});
 	}
 }

@@ -828,9 +828,13 @@ const controllerConfig = createGenericConfig({
     filename: "controller.[name].js",
     path: join(controllerdir, "dist"),
     iife: true,
+    // `assign` (not `var`) so the global is a configurable property the guest
+    // bootstrap can `delete` after boot, the way it deletes `self.WASM` and
+    // `self.$scramjet`. A top-level `var` global is non-configurable and would
+    // survive the delete, leaving `$scramjetController` observable on the page.
     library: {
-      type: "var",
-      name: "$scramjetController",
+      type: "assign",
+      name: "self.$scramjetController",
     },
   },
   target: "web",

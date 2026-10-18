@@ -1,3 +1,4 @@
+import { identityName } from "./runtime-identity";
 /**
  * @fileoverview
  * See `types.ts` for context on these symbols.
@@ -5,7 +6,7 @@
 
 import { Symbol_for } from "@/shared/snapshot";
 
-export const SCRAMJETCLIENTNAME = "scramjet client global";
+export const SCRAMJETCLIENTNAME = identityName("scramjet client global");
 
 /**
  * Brand for the registered-symbol key below.
@@ -23,9 +24,27 @@ export const SCRAMJETCLIENTNAME = "scramjet client global";
  * export that uses it, so a consumer resolves the property key by importing
  * `SCRAMJETCLIENT` from the package — no ambient stub and no separate tag to
  * import.
+ *
+ * NOTE: this symbol no longer carries the live `ScramjetClient`. The client is
+ * held in a module-level `WeakMap` (client/clients.ts) that a page script
+ * cannot reach. What remains on the global under this key is the inert
+ * {@link SCRAMJETMARKER} — a cross-realm, cross-bundle presence flag that lets
+ * one Scramjet realm avoid double-hooking another without exposing any internal
+ * state. Nothing reachable from it leads back to the client, its `natives` or
+ * the `SingletonBox`.
  */
 declare const SCRAMJETCLIENTBRAND: unique symbol;
 
 export const SCRAMJETCLIENT: typeof SCRAMJETCLIENTBRAND = Symbol_for(
 	SCRAMJETCLIENTNAME
 ) as typeof SCRAMJETCLIENTBRAND;
+
+/**
+ * The value stored on a hooked global under {@link SCRAMJETCLIENT}. It exposes
+ * nothing: its only job is to answer the `SCRAMJETCLIENT in global` /
+ * `global[SCRAMJETCLIENT]` presence checks that one realm uses to tell whether a
+ * related window (parent, opener, a nested frame it is about to hook) is already
+ * a Scramjet realm. Truthy and shared across bundles by value, never by
+ * identity.
+ */
+export const SCRAMJETMARKER = true;
