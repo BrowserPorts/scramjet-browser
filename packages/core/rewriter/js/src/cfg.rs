@@ -19,6 +19,10 @@ pub struct Config {
 	pub wrapfn: String,
 	pub setrealmfn: String,
 	pub wrappropertybase: String,
+	pub wraplocation: String,
+	pub wrapparent: String,
+	pub wraptop: String,
+	pub wrapeval: String,
 	pub wrappropertyfn: String,
 	pub cleanrestfn: String,
 	pub importfn: String,
@@ -43,4 +47,17 @@ pub struct Flags {
 	pub do_sourcemaps: bool,
 	pub disable_computed_wrap: bool,
 	pub destructure_rewrites: bool,
+}
+
+impl Config {
+	pub fn wrapped_property(&self, name: &str) -> Option<&str> {
+		let value = match name {
+			"location" => &self.wraplocation,
+			"parent" => &self.wrapparent,
+			"top" => &self.wraptop,
+			"eval" => &self.wrapeval,
+			_ => return None,
+		};
+		if value.is_empty() { None } else { Some(value.as_str()) }
+	}
 }

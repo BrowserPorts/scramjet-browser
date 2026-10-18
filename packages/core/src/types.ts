@@ -42,6 +42,10 @@ export interface ScramjetConfig {
 		setrealmfn: string;
 		wrapfn: string;
 		wrappropertybase: string;
+		wraplocation: string;
+		wrapparent: string;
+		wraptop: string;
+		wrapeval: string;
 		wrappropertyfn: string;
 		cleanrestfn: string;
 		importfn: string;

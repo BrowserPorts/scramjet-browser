@@ -166,9 +166,21 @@ impl<'alloc: 'data, 'data> Transform<'data> for JsChange<'alloc, 'data> {
 			} else {
 				transforms!["))"]
 			}),
-			Ty::RewriteProperty { ident } => LL::replace(transforms![&cfg.wrappropertybase, ident]),
+			Ty::RewriteProperty { ident } => {
+				if let Some(name) = cfg.wrapped_property(ident.as_str()) {
+					LL::replace(transforms![name])
+				} else {
+					LL::replace(transforms![&cfg.wrappropertybase, ident])
+				}
+			},
 			Ty::RebindProperty { ident, tempvar } => {
-				if tempvar {
+				if let Some(name) = cfg.wrapped_property(ident.as_str()) {
+					if tempvar {
+						LL::replace(transforms![name, ":", &cfg.templocid])
+					} else {
+						LL::replace(transforms![name, ":", ident])
+					}
+				} else if tempvar {
 					LL::replace(transforms![
 						&cfg.wrappropertybase,
 						ident,
