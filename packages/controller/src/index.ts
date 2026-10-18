@@ -3,7 +3,11 @@ import {
 	BareResponse,
 	type ProxyTransport,
 } from "@mercuryworkshop/proxy-transports";
-import { type MethodsDefinition, RpcHelper } from "@mercuryworkshop/rpc";
+import {
+	type MethodsDefinition,
+	RpcHelper,
+	serveRemoteTransport,
+} from "@mercuryworkshop/rpc";
 import {
 	type CookieStore,
 	type CookieSyncOptions,
@@ -32,7 +36,6 @@ import type {
 	SerializedCookieSyncEntry,
 	SWbound,
 	TransportToController,
-	WebSocketMessage,
 } from "./types";
 import { assertRuntimeScramjetVersion } from "./version";
 
@@ -79,25 +82,6 @@ const scramjetConfig: Partial<ScramjetConfig> = {
 	},
 	maskedfiles: ["inject.js", "scramjet.wasm.js"],
 };
-
-type TransportRequestOptions = {
-	proxy?: string | null;
-};
-
-interface ProxyAwareTransport extends ProxyTransport {
-	request(
-		...args: [
-			...Parameters<ProxyTransport["request"]>,
-			options?: TransportRequestOptions,
-		]
-	): ReturnType<ProxyTransport["request"]>;
-	connect(
-		...args: [
-			...Parameters<ProxyTransport["connect"]>,
-			options?: TransportRequestOptions,
-		]
-	): ReturnType<ProxyTransport["connect"]>;
-}
 
 type PersistedCookieState = {
 	updatedAt: number;
@@ -529,118 +513,29 @@ export class Controller {
 			}
 		},
 		initRemoteTransport: async ({ port }) => {
-			const rpc = new RpcHelper<TransportToController, ControllerToTransport>(
-				{
-					request: async ({ remote, method, body, headers, proxy }) => {
-						const transport = this.transport as ProxyAwareTransport;
-						const url = new URL(remote);
-						const response = await transport.request(
-							url,
-							method,
-							body,
-							headers,
-							undefined,
-							{
-								proxy: proxy ?? (await this.init.resolveProxy?.(url)) ?? null,
-							},
-						);
-						return [response, [response.body]];
-					},
-					sendSetCookie: async ({ cookies, options }) => {
-						await this.loadSavedCookies(true);
-						if (options?.clear) {
-							await this.cookieJar.clear();
-						}
-						await this.applyCookieSyncEntries(cookies, options);
-						await this.persistCookies();
-						await this.propagateCookieSync(cookies, options);
-					},
-					sendStorageMutation: async ({ mutations }) => {
-						const applyMutation = this.storage?.applyMutation;
-						if (!applyMutation) {
-							throw new Error(
-								"Scramjet storage mutation requires a configured storage partition",
-							);
-						}
-						await applyMutation.call(this.storage, mutations);
-					},
-					connect: async ({ url, protocols, requestHeaders, port, proxy }) => {
-						let resolve: (arg: TransportToController["connect"][1]) => unknown;
-						const promise = new Promise<TransportToController["connect"][1]>(
-							(res) => (resolve = res),
-						);
-						const transport = this.transport as ProxyAwareTransport;
-						const remote = new URL(url);
-						const [send, close] = transport.connect(
-							remote,
-							protocols,
-							requestHeaders,
-							(protocol, extensions) => {
-								resolve({
-									result: "success",
-									protocol: protocol,
-									extensions: extensions,
-								});
-							},
-							(data) => {
-								port.postMessage(
-									{
-										type: "data",
-										data: data,
-									} as WebSocketMessage,
-									data instanceof ArrayBuffer ? [data] : [],
-								);
-							},
-							(close, reason) => {
-								port.postMessage({
-									type: "close",
-									code: close,
-									reason: reason,
-								} as WebSocketMessage);
-							},
-							(error) => {
-								resolve({
-									result: "failure",
-									error: error,
-								});
-							},
-							{
-								proxy:
-									proxy ?? (await this.init.resolveProxy?.(remote)) ?? null,
-							},
-						);
-						port.onmessageerror = (ev) => {
-							console.error(
-								"Transport port messageerror (this should never happen!)",
-								ev,
-							);
-						};
-						port.onmessage = ({ data }: { data: WebSocketMessage }) => {
-							if (data.type === "data") {
-								send(data.data);
-							} else if (data.type === "close") {
-								close(data.code, data.reason);
-							}
-						};
-
-						return [await promise, []];
-					},
+			const rpc = serveRemoteTransport(port, {
+				transport: () => this.transport,
+				resolveProxy: (url) => this.init.resolveProxy?.(url),
+				sendSetCookie: async ({ cookies, options }) => {
+					await this.loadSavedCookies(true);
+					if (options?.clear) {
+						await this.cookieJar.clear();
+					}
+					await this.applyCookieSyncEntries(cookies, options);
+					await this.persistCookies();
+					await this.propagateCookieSync(cookies, options);
 				},
-				"transport",
-				(data, transfer) => port.postMessage(data, transfer),
-			);
+				sendStorageMutation: async ({ mutations }) => {
+					const applyMutation = this.storage?.applyMutation;
+					if (!applyMutation) {
+						throw new Error(
+							"Scramjet storage mutation requires a configured storage partition",
+						);
+					}
+					await applyMutation.call(this.storage, mutations);
+				},
+			});
 			this.transportChannels.add({ port, rpc });
-			port.onmessageerror = (ev) => {
-				console.error(
-					"Transport port messageerror (this should never happen!)",
-					ev,
-				);
-			};
-			port.onmessage = (e) => {
-				rpc.recieve(e.data);
-			};
-
-			rpc.call("ready", undefined, []);
 		},
 	};
 

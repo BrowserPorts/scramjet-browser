@@ -1,14 +1,18 @@
-import type {
-	RawHeaders,
-	TransferrableResponse,
-} from "@mercuryworkshop/proxy-transports";
+import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import type {
 	CookieSyncOptions,
 	ScramjetClient,
 	ScramjetDestination,
-	ScramjetStorageMutation,
 } from "@mercuryworkshop/scramjet";
 import type { Frame } from ".";
+import type { SerializedCookieSyncEntry } from "@mercuryworkshop/rpc";
+export type {
+	ControllerToTransport,
+	SerializedCookieSyncEntry,
+	TransportToController,
+	WebSocketData,
+	WebSocketMessage,
+} from "@mercuryworkshop/rpc";
 import type { CONTROLLERFRAME } from "./symbols";
 export type BodyType =
 	| string
@@ -41,11 +45,6 @@ export type TransferResponse = {
 	statusText: string;
 };
 
-export type SerializedCookieSyncEntry = {
-	url: string;
-	cookie: string;
-};
-
 export type ControllerDetachRequest = {
 	id: string;
 };
@@ -75,65 +74,6 @@ export type SWbound = {
 	];
 };
 
-export type TransportToController = {
-	request: [
-		{
-			remote: string;
-			method: string;
-			body: BodyInit | null;
-			headers: RawHeaders;
-			proxy?: string | null;
-			// signal: AbortSignal | undefined
-		},
-		TransferrableResponse,
-	];
-	sendSetCookie: [
-		{
-			cookies: SerializedCookieSyncEntry[];
-			options?: CookieSyncOptions;
-		},
-	];
-	sendStorageMutation: [
-		{
-			mutations: ScramjetStorageMutation[];
-		},
-	];
-	connect: [
-		{
-			url: string;
-			protocols: string[];
-			requestHeaders: RawHeaders;
-			port: MessagePort;
-			proxy?: string | null;
-		},
-		(
-			| {
-					result: "success";
-					protocol: string;
-					extensions: string;
-			  }
-			| {
-					result: "failure";
-					error: string;
-			  }
-		),
-	];
-};
-
-export type ControllerToTransport = {
-	ready: [];
-};
-export type WebSocketData = string | ArrayBuffer | Blob;
-export type WebSocketMessage =
-	| {
-			type: "data";
-			data: WebSocketData;
-	  }
-	| {
-			type: "close";
-			code: number;
-			reason: string;
-	  };
 export type FrameInitHooks = {
 	pre: {
 		context: {

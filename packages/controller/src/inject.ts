@@ -1,10 +1,9 @@
-import type {
-	ProxyTransport,
-	RawHeaders,
-	TransferrableResponse,
-} from "@mercuryworkshop/proxy-transports";
+import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 
-import { RpcHelper } from "@mercuryworkshop/rpc";
+import {
+	RemoteTransport,
+	type SerializedCookieSyncEntry,
+} from "@mercuryworkshop/rpc";
 import {
 	CookieJar,
 	type CookieSyncOptions,
@@ -15,176 +14,12 @@ import {
 	type ScramjetSerializedStorageState,
 	ScramjetStorageJar,
 	type ScramjetStorageManager,
-	type ScramjetStorageMutation,
 	setWasm,
 	Tap,
 	type TrackedHistoryState,
 } from "@mercuryworkshop/scramjet";
 import type { Config } from ".";
 import { CONTROLLERFRAME } from "./symbols";
-import type {
-	ControllerToTransport,
-	SerializedCookieSyncEntry,
-	TransportToController,
-	WebSocketMessage,
-} from "./types";
-
-const MessagePort_postMessage = MessagePort.prototype.postMessage;
-const postMessage = (
-	port: MessagePort,
-	data: any,
-	transfer?: Transferable[],
-) => {
-	MessagePort_postMessage.call(port, data, transfer as any);
-};
-
-class RemoteTransport implements ProxyTransport {
-	private readyResolve!: (value: undefined) => unknown;
-	private readyReject!: (reason: unknown) => unknown;
-	private readyPromise: Promise<undefined> = new Promise((resolve, reject) => {
-		this.readyResolve = resolve;
-		this.readyReject = reject;
-	});
-
-	public ready = false;
-	async init() {
-		await this.readyPromise;
-		this.ready = true;
-	}
-
-	fail(error: Error): undefined {
-		this.readyReject(error);
-		return undefined;
-	}
-
-	private rpc: RpcHelper<ControllerToTransport, TransportToController>;
-	constructor(public port: MessagePort) {
-		this.rpc = new RpcHelper<ControllerToTransport, TransportToController>(
-			{
-				ready: async () => {
-					this.readyResolve(undefined);
-				},
-			},
-			"transport",
-			(data, transfer) => {
-				postMessage(port, data, transfer);
-			},
-		);
-		port.onmessageerror = (ev) => {
-			console.error("onmessageerror (this should never happen!)", ev);
-		};
-		port.onmessage = (ev) => {
-			this.rpc.recieve(ev.data);
-		};
-		port.start();
-	}
-	connect(
-		url: URL,
-		protocols: string[],
-		requestHeaders: RawHeaders,
-		onopen: (protocol: string, extensions: string) => unknown,
-		onmessage: (data: Blob | ArrayBuffer | string) => unknown,
-		onclose: (code: number, reason: string) => unknown,
-		onerror: (error: string) => unknown,
-		options: { proxy?: string | null } = {},
-	): [
-		(data: Blob | ArrayBuffer | string) => unknown,
-		(code: number, reason: string) => unknown,
-	] {
-		const channel = new MessageChannel();
-		const port = channel.port1;
-		console.warn("connecting");
-		this.rpc
-			.call(
-				"connect",
-				{
-					url: url.href,
-					protocols,
-					requestHeaders,
-					port: channel.port2,
-					proxy: options.proxy,
-				},
-				[channel.port2],
-			)
-			.then((response) => {
-				console.log(response);
-				if (response.result === "success") {
-					onopen(response.protocol, response.extensions);
-				} else {
-					onerror(response.error);
-				}
-			});
-		port.onmessage = (ev) => {
-			const message = ev.data as WebSocketMessage;
-			if (message.type === "data") {
-				onmessage(message.data);
-			} else if (message.type === "close") {
-				onclose(message.code, message.reason);
-			}
-		};
-		port.onmessageerror = (ev) => {
-			console.error("onmessageerror (this should never happen!)", ev);
-			onerror("Message error in transport port");
-		};
-
-		return [
-			(data) => {
-				postMessage(
-					port,
-					{
-						type: "data",
-						data: data,
-					},
-					data instanceof ArrayBuffer ? [data] : [],
-				);
-			},
-			(code) => {
-				postMessage(port, {
-					type: "close",
-					code: code,
-				});
-			},
-		];
-	}
-
-	async request(
-		remote: URL,
-		method: string,
-		body: BodyInit | null,
-		headers: RawHeaders,
-		_signal: AbortSignal | undefined,
-		options: { proxy?: string | null } = {},
-	): Promise<TransferrableResponse> {
-		return await this.rpc.call("request", {
-			remote: remote.href,
-			method,
-			body,
-			headers,
-			proxy: options.proxy,
-		});
-	}
-
-	async sendSetCookie(
-		cookies: Array<{ url: URL; cookie: string }>,
-		options: CookieSyncOptions = {},
-	): Promise<undefined> {
-		await this.rpc.call("sendSetCookie", {
-			cookies: cookies.map(({ url, cookie }) => ({
-				url: url.href,
-				cookie,
-			})),
-			options,
-		});
-		return undefined;
-	}
-
-	async sendStorageMutation(
-		mutations: ScramjetStorageMutation[],
-	): Promise<boolean> {
-		await this.rpc.call("sendStorageMutation", { mutations });
-		return true;
-	}
-}
 
 // Keep host plumbing private: guest hooks remove the public native accessor.
 const hostServiceWorker = navigator.serviceWorker;
