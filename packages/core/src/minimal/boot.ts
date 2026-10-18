@@ -14,10 +14,11 @@ const taken = new WeakSet<object>();
 
 /**
  * Holds the document's own scripts back until async work finishes, such as waiting for the host's
- * link and storage. Call it from a classic script at the top of <head>: the browser stops parsing
- * once the script returns, the work runs, and the document is fetched again (from the HTTP cache),
- * or taken from what the work returned, and written back. Hooks installed before stay, since document.open keeps the window, and the
- * written document runs this script again, which then returns false.
+ * link and storage. Call it from a parser-blocking classic script at the top of <head>: the rest of
+ * the document is parsed as inert text once the script returns, the work runs, and the document is
+ * fetched again (from the HTTP cache), or taken from what the work returned, and written back.
+ * Hooks installed before stay, since document.open keeps the window, and the written document runs
+ * this script again, which then returns false.
  *
  * Returns whether it took the document over.
  */
@@ -30,9 +31,12 @@ export function takeOver(
 	taken.add(globalThis);
 	const url = location.href;
 	const fetchNative = fetch.bind(globalThis);
-	// document.open does nothing while the parser runs this script, so the load is stopped instead,
-	// which aborts the parser once this script returns
-	stop();
+	// document.open does nothing while the parser runs this script, and nothing ever again once the
+	// parser was aborted, so the load is not stopped. The rest of the document becomes the text of
+	// a hidden plaintext element instead: none of its scripts run, and the parser finishes normally,
+	// which leaves document.open working once the work is done. A document already parsed has no
+	// scripts left to hold back, and writing to it would replace it now
+	if (document.readyState === "loading") document.write("<plaintext hidden>");
 	// A srcdoc document has no URL to fetch again; its host hands the markup back instead
 	const refetch = location.protocol !== "about:";
 	const page = refetch
