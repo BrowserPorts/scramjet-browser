@@ -102,7 +102,7 @@ export type CodeRewriterHooks = {
     props: { source: string };
   };
   javascript: {
-    context: { url: string | null; meta: URLMeta; isModule: boolean };
+    context: { url: string | null; meta: URLMeta; isModule: boolean; functionBody?: boolean };
     props: { source: string };
   };
   css: {

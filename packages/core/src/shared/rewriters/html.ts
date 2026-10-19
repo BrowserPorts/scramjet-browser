@@ -559,14 +559,16 @@ function traverseParsedHtml(
 		}
 		const rewriteJs = providers().rewriteJs;
 		for (const [attr, value] of Object_entries(node.attribs)) {
-			if (rewriteJs && eventAttributes.includes(attr)) {
+			if (rewriteJs && (providers().isEventHandlerAttribute?.(attr) ?? eventAttributes.includes(attr))) {
 				if (htmlcontext.originalAttributes !== false)
 					node.attribs[internalAttribute(attr)] = value;
 				node.attribs[attr] = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
-					meta
+					meta,
+					false,
+					true
 				);
 			}
 		}

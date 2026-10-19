@@ -109,7 +109,8 @@ export function rewriteJs(
 	url: string | null,
 	context: ScramjetContext,
 	meta: URLMeta,
-	isModule = false
+	isModule = false,
+	functionBody = false
 ): string | Uint8Array {
 	let rewritten = false;
 	try {
@@ -151,7 +152,7 @@ export function rewriteJs(
 		const hooks = context.hooks?.rewriter.code;
 		if (hooks) {
 			const result = { source: typeof newjs === "string" ? newjs : TextDecoder_decode(newjs) as string };
-			Tap.dispatchSync(hooks.javascript, { url, meta, isModule }, result);
+			Tap.dispatchSync(hooks.javascript, { url, meta, isModule, functionBody }, result);
 			return result.source;
 		}
 		return newjs;

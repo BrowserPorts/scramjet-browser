@@ -46,6 +46,8 @@ export interface TextDecoderFacts {
 }
 
 export interface ScramjetProviders {
+	/** A standards-aware embedder can share its event attribute table with the HTML rewriter */
+	isEventHandlerAttribute?(name: string): boolean;
 	/**
    * Rewrites every URL in a stylesheet, including `url()` values and
    * `@import` targets, returning the stylesheet with each URL replaced by
@@ -133,6 +135,7 @@ export interface ScramjetProviders {
 		context: ScramjetContext,
 		meta: URLMeta,
 		isModule?: boolean,
+		functionBody?: boolean,
 	): string | Uint8Array;
 }
 
