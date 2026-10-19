@@ -20,7 +20,7 @@ import {
 	type TrackedHistoryState,
 } from "@mercuryworkshop/scramjet";
 import { wasmNamespace } from "@mercuryworkshop/scramjet";
-import type { Config } from ".";
+import type { Config, InjectionSources } from ".";
 import { CONTROLLERFRAME } from "./symbols";
 
 // Keep host plumbing private: guest hooks remove the public native accessor.
@@ -43,6 +43,7 @@ type Init = {
 	cookies: string;
 	storage?: ScramjetSerializedStorageState | null;
 	storagePartitionKey: string;
+	injectionSources: InjectionSources;
 	yieldGetInjectScripts: (
 		config: Config,
 		sjconfig: ScramjetConfig,
@@ -52,6 +53,7 @@ type Init = {
 		codecEncode: (input: string) => string,
 		codecDecode: (input: string) => string,
 		storagePartitionKey: string,
+		injectionSources?: InjectionSources,
 	) => any;
 	codecEncode: (input: string) => string;
 	codecDecode: (input: string) => string;
@@ -250,6 +252,7 @@ class ExecutionContextWrapper {
 					this.init.codecEncode,
 					this.init.codecDecode,
 					this.init.storagePartitionKey,
+					this.init.injectionSources,
 				),
 				codecEncode: this.init.codecEncode,
 				codecDecode: this.init.codecDecode,

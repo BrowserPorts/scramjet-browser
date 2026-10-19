@@ -53,6 +53,12 @@ export type Config = {
 	codec: Record<"encode" | "decode", (input: string) => string>;
 };
 
+export type InjectionSources = {
+	factory: string;
+	codecEncode: string;
+	codecDecode: string;
+};
+
 export const config: Config = {
 	prefix: "/~/sj/",
 	scramjetPath: "/scramjet/scramjet.js",
@@ -1076,7 +1082,14 @@ function yieldGetInjectScripts(
 	codecEncode: (input: string) => string,
 	codecDecode: (input: string) => string,
 	storagePartitionKey: string,
+	injectionSources?: InjectionSources,
 ) {
+	// Keep source transport independent of closures introduced by bootstrap transforms
+	const sources = injectionSources ?? {
+		factory: yieldGetInjectScripts.toString(),
+		codecEncode: codecEncode.toString(),
+		codecDecode: codecDecode.toString(),
+	};
 	const getInjectScripts: ScramjetInterface["getInjectScripts"] = (
 		meta,
 		handler,
@@ -1124,9 +1137,10 @@ function yieldGetInjectScripts(
 						cookies: ${JSON.stringify(cookieJar.dump())},
 						storage: ${JSON.stringify(storage?.dump?.() ?? null)},
 						storagePartitionKey: ${JSON.stringify(storagePartitionKey)},
-						yieldGetInjectScripts: ${yieldGetInjectScripts.toString()},
-						codecEncode: ${codecEncode.toString()},
-						codecDecode: ${codecDecode.toString()},
+						injectionSources: ${JSON.stringify(sources)},
+						yieldGetInjectScripts: ${sources.factory},
+						codecEncode: ${sources.codecEncode},
+						codecDecode: ${sources.codecDecode},
 						initHeaders: ${JSON.stringify(htmlcontext.headers ?? [])},
 						history: ${JSON.stringify(htmlcontext.history ?? [])},
 					});

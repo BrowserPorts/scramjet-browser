@@ -14,5 +14,6 @@ export function rewriteInjectedJs(
 	if (!hook) return source;
 	const props = { source };
 	Tap.dispatchSync(hook, { kind, meta, isModule }, props);
-	return props.source;
+	// Obfuscator helpers share the bootstrap's lifetime without becoming guest globals
+	return `(() => {\n${props.source}\n})();`;
 }
