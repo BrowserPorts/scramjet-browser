@@ -541,6 +541,9 @@ export class Controller {
 		},
 		initRemoteTransport: async ({ port }) => {
 			const rpc = serveRemoteTransport(port, {
+				linkWorkerTransport: async ({ port }) => {
+					await this.methods.initRemoteTransport({ port, prefix: this.prefix });
+				},
 				transport: () => this.transport,
 				resolveProxy: (url) => this.init.resolveProxy?.(url),
 				sendSetCookie: async ({ cookies, options }) => {
@@ -1198,7 +1201,7 @@ export class Frame {
 							base64Encode(
 								transform(`
 					(()=>{
-						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = self[${JSON.stringify(this.controller.scramjetConfig.identity.runtimeNamespace)}];
+						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm, createWorkerTransport } = self[${JSON.stringify(this.controller.scramjetConfig.identity.runtimeNamespace)}];
 
 						if (self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}]) setWasm(Uint8Array.from(atob(self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}]), (c) => c.charCodeAt(0)));
 						delete self[${JSON.stringify(this.controller.scramjetConfig.identity.wasmNamespace)}];
@@ -1211,7 +1214,8 @@ export class Frame {
 						const cookieJar = new CookieJar();
 						cookieJar.load(${JSON.stringify(this.controller.cookieJar.dump())});
 						const storageState = ${JSON.stringify(this.controller.storage?.dump?.() ?? null)};
-						const storage = storageState ? new ScramjetStorageJar(storageState) : undefined;
+						const transport = createWorkerTransport();
+						const storage = storageState ? new ScramjetStorageJar(storageState, mutation => transport.sendStorageMutation([mutation])) : undefined;
 
 						const context = {
 							config: sjconfig,
@@ -1227,7 +1231,10 @@ export class Frame {
 
 						const client = new ScramjetClient(globalThis, {
 							context,
-							transport: null,
+							transport,
+							linkWorkerTransport: port => transport.linkWorkerTransport(port),
+							sendSetCookie: (cookies, options) => transport.sendSetCookie(cookies, options),
+							history: [],
 						});
 
 						client.hook();

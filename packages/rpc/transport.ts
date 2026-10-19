@@ -21,6 +21,7 @@ export type CookieSyncOptions = { clear?: boolean };
 export type SerializedCookieSyncEntry = { url: string; cookie: string };
 
 export type TransportToController = {
+	linkWorkerTransport: [{ port: MessagePort }];
 	request: [
 		{
 			remote: string;
@@ -116,6 +117,12 @@ export class RemoteTransport implements ProxyTransport {
 
 	fail(error: Error): undefined {
 		this.readyReject(error);
+		return undefined;
+	}
+
+	/** Transfers a worker's channel to the controller that owns this transport */
+	async linkWorkerTransport(port: MessagePort): Promise<undefined> {
+		await this.rpc.call("linkWorkerTransport", { port }, [port]);
 		return undefined;
 	}
 
@@ -256,6 +263,7 @@ export class RemoteTransport implements ProxyTransport {
 }
 
 export type ServeTransportOptions = {
+	linkWorkerTransport?: MethodsDefinition<TransportToController>["linkWorkerTransport"];
 	/** The transport, or a getter for a side that swaps its transport while connected */
 	transport: ProxyTransport | (() => ProxyTransport);
 	resolveProxy?: (url: URL) => string | null | undefined | Promise<string | null | undefined>;
@@ -281,6 +289,7 @@ export function remoteTransportMethods(
 	const proxyFor = async (url: URL, proxy?: string | null) =>
 		proxy ?? (await options.resolveProxy?.(url)) ?? null;
 	return {
+		linkWorkerTransport: options.linkWorkerTransport ?? refuse("linkWorkerTransport"),
 		request: async (args) => {
 			const answered = await options.onRequest?.(args);
 			if (answered) return [answered, answered.body instanceof ReadableStream ? [answered.body] : []];

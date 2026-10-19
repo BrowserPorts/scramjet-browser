@@ -46,6 +46,7 @@ export * from "./shared";
 export * from "./fetch";
 export { BareResponse } from "@mercuryworkshop/proxy-transports";
 export * from "./client";
+export { createWorkerTransport } from "./client/worker-transport";
 
 export {
 	identityName,

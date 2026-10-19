@@ -261,6 +261,7 @@ class ExecutionContextWrapper {
 		this.client = new ScramjetClient(this.global, {
 			context,
 			transport: this.transport,
+			linkWorkerTransport: (port) => this.transport.linkWorkerTransport(port),
 			sendSetCookie: async (cookies, options) => {
 				await this.transport.sendSetCookie(cookies, options);
 			},

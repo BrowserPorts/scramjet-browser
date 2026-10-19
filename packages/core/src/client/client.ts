@@ -69,6 +69,7 @@ type ProxyApplyThis<T extends string> =
 		: ThisParameterType<Extract<GlobalTraverse<T>, AnyFunction>>;
 
 export type ScramjetClientInit = {
+	linkWorkerTransport: (port: MessagePort) => Promise<unknown>;
 	context: ScramjetContext;
 	transport: ProxyTransport;
 	sendSetCookie: (

@@ -48,6 +48,7 @@ export const runtimeNamespace = identityName("$scramjet");
 export const controllerNamespace = identityName("$scramjetController");
 export const wasmNamespace = identityName("WASM");
 export const messageFields = {
+	workerTransport: identityName("$scramjet$workerTransport"),
 	type: identityName("$scramjet$messagetype"),
 	origin: identityName("$scramjet$origin"),
 	data: identityName("$scramjet$data"),

@@ -1,5 +1,6 @@
 import { ScramjetClient } from "@client/index";
 import { Tap } from "@/Tap";
+import { linkWorkerTransport } from "@client/worker-transport";
 
 const workerCorrelations = new WeakMap<object, string>();
 
@@ -51,6 +52,7 @@ export default function (client: ScramjetClient, _self: GlobalThis) {
 
 			const worker = ctx.call();
 			workerCorrelations.set(worker, workerCorrelation);
+			linkWorkerTransport(client, worker);
 		},
 	});
 
@@ -96,7 +98,8 @@ export default function (client: ScramjetClient, _self: GlobalThis) {
 				}
 			}
 
-			ctx.call();
+			const worker = ctx.call();
+			linkWorkerTransport(client, worker.port);
 		},
 	});
 
