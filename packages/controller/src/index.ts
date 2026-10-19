@@ -36,6 +36,7 @@ import type {
 	ControllerToTransport,
 	FrameErrorHooks,
 	FrameInitHooks,
+	FrameLifecycleHooks,
 	SerializedCookieSyncEntry,
 	SWbound,
 	TransportToController,
@@ -836,6 +837,7 @@ export class Controller {
 		for (const frame of this.frames) {
 			let frameFailed = false;
 			try {
+				await Tap.dispatch(frame.hooks.lifecycle.close, { frame }, {});
 				if (frame.element[CONTROLLERFRAME] === frame) {
 					frame.element.removeAttribute("srcdoc");
 					frame.element.src = "about:blank";
@@ -1160,6 +1162,7 @@ export class Frame {
 		fetch: FetchHooks;
 		init: FrameInitHooks;
 		error: FrameErrorHooks;
+		lifecycle: FrameLifecycleHooks;
 	};
 
 	get context(): ScramjetContext {
@@ -1278,6 +1281,7 @@ export class Frame {
 			fetch: this.fetchHandler.hooks.fetch,
 			init: Tap.create<FrameInitHooks>(),
 			error: Tap.create<FrameErrorHooks>(),
+			lifecycle: Tap.create<FrameLifecycleHooks>(),
 		};
 
 		element[CONTROLLERFRAME] = this;

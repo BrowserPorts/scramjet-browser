@@ -106,6 +106,14 @@ export type FrameErrorHooks = {
 	};
 };
 
+export type FrameLifecycleHooks = {
+	/** Release plugin resources before the controller drops its frame and ports */
+	close: {
+		context: { frame: Frame };
+		props: {};
+	};
+};
+
 declare global {
 	interface HTMLIFrameElement {
 		[CONTROLLERFRAME]?: Frame;
