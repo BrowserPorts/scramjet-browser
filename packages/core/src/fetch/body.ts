@@ -3,6 +3,7 @@ import {
 	flagEnabled,
 	rewriteCss,
 	rewriteHtml,
+	rewriteInjectedJs,
 	rewriteJs,
 	rewriteWorkers,
 } from "@/shared";
@@ -186,6 +187,14 @@ function workerInjectScripts(
 	return handler.context.interface.getWorkerInjectScripts(
 		parsed.meta,
 		parsed.isModule,
-		script
+		script,
+		(source) =>
+			rewriteInjectedJs(
+				source,
+				"worker",
+				handler.context,
+				parsed.meta,
+				parsed.isModule
+			)
 	);
 }

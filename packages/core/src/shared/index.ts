@@ -25,11 +25,13 @@ export type ScramjetInterface = {
     handler: DomHandler,
     htmlcontext: HtmlContext,
     script: (src: string) => Element,
+    transform?: (source: string) => string,
   ): Element[];
   getWorkerInjectScripts?(
     meta: URLMeta,
     isModule: boolean,
     script: (src: string) => string,
+    transform?: (source: string) => string,
   ): string;
 };
 
@@ -90,6 +92,15 @@ export type HtmlRewriterHooks = {
 
 /** Synchronous transforms run inside Scramjet's rewriters before their result is exposed */
 export type CodeRewriterHooks = {
+  /** Runtime code is transformed without treating it as guest JavaScript */
+  injectedJavascript: {
+    context: {
+      kind: "document" | "worker" | "wasm";
+      meta: URLMeta;
+      isModule: boolean;
+    };
+    props: { source: string };
+  };
   javascript: {
     context: { url: string | null; meta: URLMeta; isModule: boolean };
     props: { source: string };

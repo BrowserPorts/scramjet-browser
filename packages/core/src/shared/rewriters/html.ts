@@ -5,6 +5,7 @@ import {
 } from "@/runtime-identity";
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
+import { rewriteInjectedJs } from "@rewriters/injected";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
 import { type ChildNode, Comment, DomHandler, Element } from "domhandler";
@@ -341,7 +342,8 @@ function rewriteHtmlInner(
 			meta,
 			handler,
 			htmlcontext,
-			script
+			script,
+			(source) => rewriteInjectedJs(source, "document", context, meta)
 		);
 
 		if (isQuirky) {

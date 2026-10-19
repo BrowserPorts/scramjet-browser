@@ -3,6 +3,7 @@ import { rewriteJs } from "@rewriters/js";
 import { URLMeta } from "@rewriters/url";
 import { TextDecoder_decode } from "@/shared/snapshot";
 import { base64Encode } from "@/shared/util";
+import { rewriteInjectedJs } from "./injected";
 
 export function rewriteWorkers(
   js: string | Uint8Array,
@@ -23,6 +24,7 @@ export function rewriteWorkers(
     meta,
     isModule,
     script,
+    (source) => rewriteInjectedJs(source, "worker", context, meta, isModule),
   );
 
   let rewritten = rewriteJs(js, url, context, meta, isModule);

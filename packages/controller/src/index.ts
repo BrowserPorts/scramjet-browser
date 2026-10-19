@@ -15,11 +15,13 @@ import {
 	Plugin,
 	providers,
 	rewriteUrl,
+	rewriteInjectedJs,
 	type ScramjetConfig,
 	type ScramjetContext,
 	ScramjetFetchHandler,
 	ScramjetHeaders,
 	type ScramjetInterface,
+	type URLMeta,
 	type ScramjetStorageManager,
 	defaultConfig as scramjetDefaultConfig,
 	setWasm,
@@ -453,9 +455,16 @@ export class Controller {
 						this.wasmPayload = `self[${JSON.stringify(wasmNamespace)}] = ${JSON.stringify(b64)};`;
 					}
 
+					const url = new URL(data.rawUrl) as URLMeta["base"];
+					const body = rewriteInjectedJs(
+						this.wasmPayload,
+						"wasm",
+						frame.fetchHandler.context,
+						{ origin: url, base: url },
+					);
 					return [
 						{
-							body: this.wasmPayload,
+							body,
 							status: 200,
 							statusText: "OK",
 							headers: [["Content-Type", "application/javascript"]],
@@ -1073,6 +1082,7 @@ function yieldGetInjectScripts(
 		handler,
 		htmlcontext,
 		script,
+		transform = (source) => source,
 	) => {
 		function base64Encode(text: string) {
 			return btoa(
@@ -1091,7 +1101,8 @@ function yieldGetInjectScripts(
 			script(config.injectPath),
 			script(
 				"data:text/javascript;charset=utf-8;base64," +
-					base64Encode(`
+					base64Encode(
+						transform(`
 					document.querySelectorAll(${JSON.stringify("script[" + sjconfig.identity.injectedAttribute + "]")}).forEach(script => script.remove());
 					// Capture load into a local and drop the bundle globals BEFORE
 					// running it. The controller already closed over core's exports
@@ -1120,6 +1131,7 @@ function yieldGetInjectScripts(
 						history: ${JSON.stringify(htmlcontext.history ?? [])},
 					});
 				`),
+					),
 			),
 		];
 	};
@@ -1158,6 +1170,7 @@ export class Frame {
 					meta,
 					type,
 					script,
+					transform = (source) => source,
 				) => {
 					let str = "";
 
@@ -1165,7 +1178,8 @@ export class Frame {
 					str += script(this.prefix + this.controller.config.virtualWasmPath);
 					str += script(
 						"data:text/javascript;charset=utf-8;base64," +
-							base64Encode(`
+							base64Encode(
+								transform(`
 					(()=>{
 						const { ScramjetClient, CookieJar, ScramjetStorageJar, setWasm } = self[${JSON.stringify(this.controller.scramjetConfig.identity.runtimeNamespace)}];
 
@@ -1202,6 +1216,7 @@ export class Frame {
 						client.hook();
 					})();
 					`),
+							),
 					);
 
 					return str;
