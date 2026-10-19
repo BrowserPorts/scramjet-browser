@@ -69,6 +69,7 @@ export { rewriteHtml, rewriteSrcset, type HtmlContext } from "@rewriters/html";
 export { rewriteCss } from "@rewriters/css";
 export {
 	getScriptBlockTypeString,
+	isJavascriptMimeType,
 	isModuleScriptType,
 	isScriptType,
 } from "@/shared/mime";
