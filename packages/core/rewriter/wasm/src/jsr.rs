@@ -43,7 +43,11 @@ extern "C" {
 }
 
 
-pub struct WasmUrlRewriter(Function);
+pub struct WasmUrlRewriter {
+	codec: Function,
+	moduleparam: String,
+	originparam: String,
+}
 
 impl UrlRewriter for WasmUrlRewriter {
 	fn rewrite(
@@ -59,17 +63,23 @@ impl UrlRewriter for WasmUrlRewriter {
 			.to_string();
 
 		let mut rewritten = self
-			.0
+			.codec
 			.call1(&JsValue::NULL, &url.into())
 			.map_err(RewriterError::from)?
 			.as_string()
 			.ok_or_else(|| RewriterError::not_str("url rewriter output"))?;
 
 		if module {
-			// TODO: keep this in sync with QP.isModule or find a way to make this use the real rewriteUrl function
+			// The host supplies the same parameter names used by its HTML and fetch rewriters
 			let origin = Url::new(&flags.base).map_err(RewriterError::from)?.origin();
 			let encoded_origin: String = encode_uri_component(&origin).into();
-			rewritten.push_str("?%24module=module&%24io=");
+			let moduleparam: String = encode_uri_component(&self.moduleparam).into();
+			let originparam: String = encode_uri_component(&self.originparam).into();
+			rewritten.push('?');
+			rewritten.push_str(&moduleparam);
+			rewritten.push_str("=module&");
+			rewritten.push_str(&originparam);
+			rewritten.push('=');
 			rewritten.push_str(&encoded_origin);
 		}
 
@@ -85,12 +95,14 @@ pub fn create_js() -> Result<JsRewriter> {
 	Ok(Rewriter::new())
 }
 
-pub fn get_url_rewriter(func: Object) -> Result<WasmUrlRewriter> {
-	Ok(WasmUrlRewriter(
-		func
+pub fn get_url_rewriter(func: Object, config: &Object) -> Result<WasmUrlRewriter> {
+	Ok(WasmUrlRewriter {
+		codec: func
 			.dyn_into()
 			.map_err(|_| RewriterError::not_fn("scramjet.codec.encode"))?,
-	))
+		moduleparam: get_str(config, "moduleparam")?,
+		originparam: get_str(config, "originparam")?,
+	})
 }
 
 pub fn create_js_output(out: RewriteResult, url: String, src: String) -> Result<JsRewriterOutput> {

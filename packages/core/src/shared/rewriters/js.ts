@@ -3,6 +3,7 @@ import { URLMeta } from "@rewriters/url";
 
 import { getRewriter, JsRewriterOutput } from "@rewriters/wasm";
 import { Tap } from "@/Tap";
+import { QP } from "@/fetch/qp";
 import {
 	Array_from,
 	TextDecoder_decode,
@@ -44,6 +45,8 @@ function rewriteJsWasm(
 				{
 					...context.config.globals,
 					prefix: context.prefix.pathname,
+					moduleparam: QP.isModule,
+					originparam: QP.initiatorOrigin,
 				},
 				flagsobj,
 				context.interface.codecEncode,
@@ -57,6 +60,8 @@ function rewriteJsWasm(
 				{
 					...context.config.globals,
 					prefix: context.prefix.pathname,
+					moduleparam: QP.isModule,
+					originparam: QP.initiatorOrigin,
 				},
 				flagsobj,
 				context.interface.codecEncode,

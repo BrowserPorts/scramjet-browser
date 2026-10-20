@@ -113,7 +113,7 @@ impl Rewriter {
 	) -> Result<JsRewriterOutput> {
 		let config = get_js_config(jsconfig)?;
 		let flags = get_js_flags(jsflags, base, module)?;
-		let rewriter = get_url_rewriter(encode_url)?;
+		let rewriter = get_url_rewriter(encode_url, jsconfig)?;
 
 		let out = match self.js.rewrite(&self.alloc, &js, config, flags, &rewriter) {
 			Ok(x) => x,
