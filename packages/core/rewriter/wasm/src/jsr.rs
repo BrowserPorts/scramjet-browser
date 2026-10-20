@@ -99,7 +99,7 @@ pub fn get_url_rewriter(func: Object, config: &Object) -> Result<WasmUrlRewriter
 	Ok(WasmUrlRewriter {
 		codec: func
 			.dyn_into()
-			.map_err(|_| RewriterError::not_fn("scramjet.codec.encode"))?,
+			.map_err(|_| RewriterError::not_fn("URL encoder"))?,
 		moduleparam: get_str(config, "moduleparam")?,
 		originparam: get_str(config, "originparam")?,
 	})

@@ -23,14 +23,14 @@ const taken = new WeakSet<object>();
  * Returns whether it took the document over.
  */
 export function takeOver(
-	work: () => Promise<string | void>,
+	work: () => Promise<unknown>,
 	transform: (html: string) => string | Promise<string> = (html) => html,
-	written: () => void = () => {}
+	written: () => unknown = () => undefined,
+	fetchDocument: typeof fetch = fetch.bind(globalThis)
 ): boolean {
 	if (taken.has(globalThis) || typeof document === "undefined") return false;
 	taken.add(globalThis);
 	const url = location.href;
-	const fetchNative = fetch.bind(globalThis);
 	// Required plugins may wrap author-facing sinks while preparation runs
 	// The document hook already transformed the replacement before these sinks receive it
 	const openDocument = document.open.bind(document);
@@ -45,7 +45,7 @@ export function takeOver(
 	// A srcdoc document has no URL to fetch again; its host hands the markup back instead
 	const refetch = location.protocol !== "about:";
 	const page = refetch
-		? fetchNative(url, {
+		? fetchDocument(url, {
 				cache: "force-cache",
 				credentials: "same-origin",
 			}).then((response) => response.text())
@@ -66,7 +66,7 @@ export function takeOver(
 				writeDocument(html);
 				closeDocument();
 			},
-			(error) => console.error("Scramjet could not load the page again", error)
+			(error) => console.error("Page preparation failed", error)
 		);
 	return true;
 }
@@ -137,7 +137,9 @@ export function start(
 				{ window: globalThis as unknown as Window },
 				{}
 			);
-		}
+		},
+		// Preparation can still be installing request hooks while the original document loads
+		client.nativeFetch
 	);
 	return client;
 }
