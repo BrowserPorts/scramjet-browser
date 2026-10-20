@@ -130,6 +130,8 @@ export class RemoteTransport implements ProxyTransport {
 	constructor(sink: RpcSink, options: { ready?: boolean } = {}) {
 		const methods: MethodsDefinition<ControllerToTransport> = {
 			ready: async () => {
+				// The handshake publishes readiness before a socket can ask for initialization
+				this.ready = true;
 				this.readyResolve(undefined);
 			},
 		};
@@ -151,7 +153,10 @@ export class RemoteTransport implements ProxyTransport {
 			port.start();
 		}
 		// A link that was handed over already connected needs no ready message
-		if (options.ready) this.readyResolve(undefined);
+		if (options.ready) {
+			this.ready = true;
+			this.readyResolve(undefined);
+		}
 	}
 
 	connect(
@@ -169,6 +174,20 @@ export class RemoteTransport implements ProxyTransport {
 	] {
 		const channel = new MessageChannel();
 		const port = channel.port1;
+		let settled = false;
+		const pending: WebSocketMessage[] = [];
+		const receive = (message: WebSocketMessage) => {
+			if (message.type === "data") onmessage(message.data);
+			else if (message.type === "close") onclose(message.code, message.reason);
+		};
+		// Socket events and the connect reply arrive over separate ports
+		const complete = (notify: () => unknown) => {
+			settled = true;
+			notify();
+			queueMicrotask(() => {
+				for (const message of pending.splice(0)) receive(message);
+			});
+		};
 		this.rpc
 			.call(
 				"connect",
@@ -184,20 +203,17 @@ export class RemoteTransport implements ProxyTransport {
 			.then(
 				(response) => {
 					if (response.result === "success") {
-						onopen(response.protocol, response.extensions);
+						complete(() => onopen(response.protocol, response.extensions));
 					} else {
-						onerror(response.error);
+						complete(() => onerror(response.error));
 					}
 				},
-				(error) => onerror(String(error))
+				(error) => complete(() => onerror(String(error)))
 			);
 		port.onmessage = (ev) => {
 			const message = ev.data as WebSocketMessage;
-			if (message.type === "data") {
-				onmessage(message.data);
-			} else if (message.type === "close") {
-				onclose(message.code, message.reason);
-			}
+			if (settled) receive(message);
+			else pending.push(message);
 		};
 		port.onmessageerror = (ev) => {
 			console.error("onmessageerror (this should never happen!)", ev);

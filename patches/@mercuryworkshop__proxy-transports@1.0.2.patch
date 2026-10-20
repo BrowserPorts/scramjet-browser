@@ -1,0 +1,283 @@
+diff --git a/dist/index.js b/dist/index.js
+index ac30dcbd498c818d6092b91b08fe42102e9fd30e..e3d715e0f2e4ad8afd385e73b2dd49bec1b04dd0 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -6,6 +6,7 @@
+ 
+ 	const WebSocketFields = {
+ 	    CLOSED: WebSocket.CLOSED,
++	    CLOSING: WebSocket.CLOSING,
+ 	    CONNECTING: WebSocket.CONNECTING,
+ 	    OPEN: WebSocket.OPEN,
+ 	};
+@@ -21,63 +22,86 @@
+ 	        super();
+ 	        this.transport = transport;
+ 	        this.url = remote.toString();
+-	        if (!requestHeaders) {
+-	            requestHeaders = [];
+-	        }
+-	        if (!protocols) {
+-	            protocols = [];
+-	        }
+-	        if (typeof protocols === "string") {
+-	            protocols = [protocols];
+-	        }
+-	        const onopen = (protocol, extensions) => {
+-	            this.protocol = protocol;
+-	            this.extensions = extensions;
+-	            this.readyState = WebSocketFields.OPEN;
+-	            const event = new Event("open");
+-	            this.dispatchEvent(event);
+-	        };
+-	        const onmessage = async (payload) => {
+-	            const event = new MessageEvent("message", { data: payload });
+-	            this.dispatchEvent(event);
+-	        };
+-	        const onclose = (code, reason) => {
++	        requestHeaders = requestHeaders || [];
++	        protocols = protocols || [];
++	        if (typeof protocols === "string") protocols = [protocols];
++	        let send;
++	        let close;
++	        let closed = false;
++	        const pendingMessages = [];
++	        const finish = (code, reason) => {
++	            if (closed) return;
++	            closed = true;
++	            pendingMessages.length = 0;
+ 	            this.readyState = WebSocketFields.CLOSED;
+-	            const event = new CloseEvent("close", { code, reason });
+-	            this.dispatchEvent(event);
++	            this.dispatchEvent(new CloseEvent("close", { code, reason }));
+ 	        };
+ 	        const onerror = () => {
+-	            this.readyState = WebSocketFields.CLOSED;
+-	            const event = new Event("error");
+-	            this.dispatchEvent(event);
++	            if (closed) return;
++	            this.dispatchEvent(new Event("error"));
++	            finish(1006, "");
++	        };
++	        this._data = (data) => {
++	            if (this.readyState === WebSocketFields.OPEN) send(data);
++	        };
++	        this._close = (code, reason) => {
++	            if (this.readyState === WebSocketFields.CLOSED || this.readyState === WebSocketFields.CLOSING) return;
++	            const connecting = this.readyState === WebSocketFields.CONNECTING;
++	            this.readyState = WebSocketFields.CLOSING;
++	            if (close) close(code, reason);
++	            if (connecting) queueMicrotask(onerror);
++	        };
++	        const onopen = (protocol, extensions) => {
++	            queueMicrotask(() => {
++	                if (this.readyState !== WebSocketFields.CONNECTING) return;
++	                this.protocol = protocol;
++	                this.extensions = extensions;
++	                this.readyState = WebSocketFields.OPEN;
++	                this.dispatchEvent(new Event("open"));
++	                for (const payload of pendingMessages.splice(0)) onmessage(payload);
++	            });
++	        };
++	        const onmessage = (payload) => {
++	            if (this.readyState === WebSocketFields.CONNECTING) {
++	                pendingMessages.push(payload);
++	            } else if (this.readyState === WebSocketFields.OPEN) {
++	                this.dispatchEvent(new MessageEvent("message", { data: payload }));
++	            }
+ 	        };
+ 	        (async () => {
+-	            if (!transport.ready) {
+-	                await transport.init();
++	            try {
++	                if (!transport.ready) await transport.init();
++	                if (this.readyState !== WebSocketFields.CONNECTING) return;
++	                [send, close] = transport.connect(new URL(remote), protocols, requestHeaders, onopen, onmessage, finish, onerror);
++	            } catch {
++	                queueMicrotask(onerror);
+ 	            }
+-	            const [_data, _close] = transport.connect(new URL(remote), protocols, requestHeaders, onopen, onmessage, onclose, onerror);
+-	            this._data = _data;
+-	            this._close = _close;
+ 	        })();
+ 	    }
+-	    async send(data) {
+-	        if (!this.transport.ready) {
+-	            await this.transport.init();
+-	        }
++	    send(data) {
+ 	        if (this.readyState === WebSocketFields.CONNECTING) {
+-	            throw new DOMException("Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.");
++	            throw new DOMException("The WebSocket connection is still opening", "InvalidStateError");
+ 	        }
+-	        // we can't check typeof Uint8Array here directly as it may come from another realm
+-	        if (typeof data === "object" && "buffer" in data && data.buffer) {
+-	            let _data = data;
+-	            // this is neccesary in case the buffer is a slice of a larger array
+-	            // in which case you risk edge cases such as sending an entire wasm memory buffer over the websocket
+-	            data = _data.buffer.slice(_data.byteOffset, _data.byteOffset + _data.byteLength);
++	        if (this.readyState !== WebSocketFields.OPEN) return;
++	        if (ArrayBuffer.isView(data)) {
++	            data = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+ 	        }
+ 	        this._data(data);
+ 	    }
+ 	    close(code, reason) {
+-	        this._close(code, reason);
++	        if (typeof code === "symbol" || typeof code === "bigint") throw new TypeError("The close code must be a number");
++	        const number = code === undefined ? 1000 : Number(code);
++	        const integer = Number.isFinite(number) ? Math.trunc(number) : 0;
++	        const converted = ((integer % 65536) + 65536) % 65536;
++	        if (converted !== 1000 && (converted < 3000 || converted > 4999)) {
++	            throw new DOMException("The close code must be 1000 or between 3000 and 4999", "InvalidAccessError");
++	        }
++	        if (typeof reason === "symbol") throw new TypeError("The close reason must be text");
++	        const text = reason === undefined ? "" : String(reason);
++	        if (new TextEncoder().encode(text).byteLength > 123) {
++	            throw new DOMException("The close reason exceeds 123 UTF-8 bytes", "SyntaxError");
++	        }
++	        this._close(converted, text);
+ 	    }
+ 	}
+ 
+diff --git a/dist/index.mjs b/dist/index.mjs
+index db2c1a89f86bf6d321e5dce6b4a2e991cd946695..2943162f41f27a90e8f3c84c03245a943c1c596a 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1,5 +1,6 @@
+ const WebSocketFields = {
+     CLOSED: WebSocket.CLOSED,
++    CLOSING: WebSocket.CLOSING,
+     CONNECTING: WebSocket.CONNECTING,
+     OPEN: WebSocket.OPEN,
+ };
+@@ -15,63 +16,86 @@ class BareCompatibleWebSocket extends EventTarget {
+         super();
+         this.transport = transport;
+         this.url = remote.toString();
+-        if (!requestHeaders) {
+-            requestHeaders = [];
+-        }
+-        if (!protocols) {
+-            protocols = [];
+-        }
+-        if (typeof protocols === "string") {
+-            protocols = [protocols];
+-        }
+-        const onopen = (protocol, extensions) => {
+-            this.protocol = protocol;
+-            this.extensions = extensions;
+-            this.readyState = WebSocketFields.OPEN;
+-            const event = new Event("open");
+-            this.dispatchEvent(event);
+-        };
+-        const onmessage = async (payload) => {
+-            const event = new MessageEvent("message", { data: payload });
+-            this.dispatchEvent(event);
+-        };
+-        const onclose = (code, reason) => {
++        requestHeaders = requestHeaders || [];
++        protocols = protocols || [];
++        if (typeof protocols === "string") protocols = [protocols];
++        let send;
++        let close;
++        let closed = false;
++        const pendingMessages = [];
++        const finish = (code, reason) => {
++            if (closed) return;
++            closed = true;
++            pendingMessages.length = 0;
+             this.readyState = WebSocketFields.CLOSED;
+-            const event = new CloseEvent("close", { code, reason });
+-            this.dispatchEvent(event);
++            this.dispatchEvent(new CloseEvent("close", { code, reason }));
+         };
+         const onerror = () => {
+-            this.readyState = WebSocketFields.CLOSED;
+-            const event = new Event("error");
+-            this.dispatchEvent(event);
++            if (closed) return;
++            this.dispatchEvent(new Event("error"));
++            finish(1006, "");
++        };
++        this._data = (data) => {
++            if (this.readyState === WebSocketFields.OPEN) send(data);
++        };
++        this._close = (code, reason) => {
++            if (this.readyState === WebSocketFields.CLOSED || this.readyState === WebSocketFields.CLOSING) return;
++            const connecting = this.readyState === WebSocketFields.CONNECTING;
++            this.readyState = WebSocketFields.CLOSING;
++            if (close) close(code, reason);
++            if (connecting) queueMicrotask(onerror);
++        };
++        const onopen = (protocol, extensions) => {
++            queueMicrotask(() => {
++                if (this.readyState !== WebSocketFields.CONNECTING) return;
++                this.protocol = protocol;
++                this.extensions = extensions;
++                this.readyState = WebSocketFields.OPEN;
++                this.dispatchEvent(new Event("open"));
++                for (const payload of pendingMessages.splice(0)) onmessage(payload);
++            });
++        };
++        const onmessage = (payload) => {
++            if (this.readyState === WebSocketFields.CONNECTING) {
++                pendingMessages.push(payload);
++            } else if (this.readyState === WebSocketFields.OPEN) {
++                this.dispatchEvent(new MessageEvent("message", { data: payload }));
++            }
+         };
+         (async () => {
+-            if (!transport.ready) {
+-                await transport.init();
++            try {
++                if (!transport.ready) await transport.init();
++                if (this.readyState !== WebSocketFields.CONNECTING) return;
++                [send, close] = transport.connect(new URL(remote), protocols, requestHeaders, onopen, onmessage, finish, onerror);
++            } catch {
++                queueMicrotask(onerror);
+             }
+-            const [_data, _close] = transport.connect(new URL(remote), protocols, requestHeaders, onopen, onmessage, onclose, onerror);
+-            this._data = _data;
+-            this._close = _close;
+         })();
+     }
+-    async send(data) {
+-        if (!this.transport.ready) {
+-            await this.transport.init();
+-        }
++    send(data) {
+         if (this.readyState === WebSocketFields.CONNECTING) {
+-            throw new DOMException("Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.");
++            throw new DOMException("The WebSocket connection is still opening", "InvalidStateError");
+         }
+-        // we can't check typeof Uint8Array here directly as it may come from another realm
+-        if (typeof data === "object" && "buffer" in data && data.buffer) {
+-            let _data = data;
+-            // this is neccesary in case the buffer is a slice of a larger array
+-            // in which case you risk edge cases such as sending an entire wasm memory buffer over the websocket
+-            data = _data.buffer.slice(_data.byteOffset, _data.byteOffset + _data.byteLength);
++        if (this.readyState !== WebSocketFields.OPEN) return;
++        if (ArrayBuffer.isView(data)) {
++            data = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+         }
+         this._data(data);
+     }
+     close(code, reason) {
+-        this._close(code, reason);
++        if (typeof code === "symbol" || typeof code === "bigint") throw new TypeError("The close code must be a number");
++        const number = code === undefined ? 1000 : Number(code);
++        const integer = Number.isFinite(number) ? Math.trunc(number) : 0;
++        const converted = ((integer % 65536) + 65536) % 65536;
++        if (converted !== 1000 && (converted < 3000 || converted > 4999)) {
++            throw new DOMException("The close code must be 1000 or between 3000 and 4999", "InvalidAccessError");
++        }
++        if (typeof reason === "symbol") throw new TypeError("The close reason must be text");
++        const text = reason === undefined ? "" : String(reason);
++        if (new TextEncoder().encode(text).byteLength > 123) {
++            throw new DOMException("The close reason exceeds 123 UTF-8 bytes", "SyntaxError");
++        }
++        this._close(converted, text);
+     }
+ }
+ 

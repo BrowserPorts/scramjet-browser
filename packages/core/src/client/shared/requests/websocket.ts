@@ -2,6 +2,7 @@ import { type BareCompatibleWebSocket } from "@mercuryworkshop/proxy-transports"
 import { ScramjetClient } from "@client/index";
 import {
 	Object_setPrototypeOf,
+	Reflect_apply,
 	Reflect_get,
 	_URL,
 	_WeakMap,
@@ -83,11 +84,15 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 			};
 
 			function fakeEventSend(fakeev: Event) {
-				state["on" + fakeev.type]?.(trustEvent(fakeev));
+				const handler = state["on" + fakeev.type];
+				if (typeof handler === "function")
+					Reflect_apply(handler, fakeWebSocket, [trustEvent(fakeev)]);
 				fakeWebSocket.dispatchEvent(fakeev);
 			}
 
 			barews.addEventListener("open", () => {
+				state.protocol = barews.protocol;
+				state.extensions = barews.extensions;
 				fakeEventSend(new Event("open"));
 			});
 			barews.addEventListener("close", (ev) => {

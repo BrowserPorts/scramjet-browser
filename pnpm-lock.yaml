@@ -23,6 +23,9 @@ overrides:
   htmlparser2: 12.0.0
 
 patchedDependencies:
+  '@mercuryworkshop/proxy-transports@1.0.2':
+    hash: b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42
+    path: patches/@mercuryworkshop__proxy-transports@1.0.2.patch
   htmlparser2@12.0.0:
     hash: 741b06dbf8a09e52a2116a4a219a8625dbebe8d75d37e1210314f06aa952ce9b
     path: patches/htmlparser2@12.0.0.patch
@@ -95,7 +98,7 @@ importers:
         version: 2.0.5
       '@mercuryworkshop/proxy-transports':
         specifier: 'catalog:'
-        version: 1.0.2
+        version: 1.0.2(patch_hash=b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42)
       '@mercuryworkshop/scramjet-controller':
         specifier: workspace:*
         version: link:../controller
@@ -107,7 +110,7 @@ importers:
         version: 3.2.1
       '@mercuryworkshop/proxy-transports':
         specifier: 'catalog:'
-        version: 1.0.2
+        version: 1.0.2(patch_hash=b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42)
     devDependencies:
       '@mercuryworkshop/rpc':
         specifier: workspace:*
@@ -126,7 +129,7 @@ importers:
     dependencies:
       '@mercuryworkshop/proxy-transports':
         specifier: 'catalog:'
-        version: 1.0.2
+        version: 1.0.2(patch_hash=b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42)
       '@mercuryworkshop/rpc':
         specifier: workspace:*
         version: link:../rpc
@@ -252,7 +255,7 @@ importers:
     dependencies:
       '@mercuryworkshop/proxy-transports':
         specifier: 'catalog:'
-        version: 1.0.2
+        version: 1.0.2(patch_hash=b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42)
     devDependencies:
       typescript:
         specifier: ^5.9.3
@@ -3733,7 +3736,7 @@ snapshots:
     dependencies:
       libcurl.js: 0.7.4
 
-  '@mercuryworkshop/proxy-transports@1.0.2': {}
+  '@mercuryworkshop/proxy-transports@1.0.2(patch_hash=b2c41f3abef3e0d7f3ab1906cb799ab75c305cd5842a7545200b2e2541b63c42)': {}
 
   '@mercuryworkshop/wisp-js@0.4.1':
     dependencies:
