@@ -25,7 +25,6 @@ function messageClientId(event: {
 	return typeof source.id === "string" ? source.id : null;
 }
 
-const cookieResolvers: Record<string, () => undefined> = {};
 const workerId = makeId();
 const REVIVAL_CLAIM_TIMEOUT_MS = 1000;
 const controllerClaimResolvers = new Map<
@@ -126,16 +125,6 @@ requestControllerRevival().catch((error) => {
 addEventListener("message", (e) => {
 	if (!e.data) return;
 	if (typeof e.data != "object") return;
-	if (e.data.$sw$setCookieDone && typeof e.data.$sw$setCookieDone == "object") {
-		const done = e.data.$sw$setCookieDone;
-
-		const resolver = cookieResolvers[done.id];
-		if (resolver) {
-			resolver();
-			delete cookieResolvers[done.id];
-		}
-	}
-
 	if (
 		e.data.$sw$initRemoteTransport &&
 		typeof e.data.$sw$initRemoteTransport == "object"
@@ -170,60 +159,11 @@ class ControllerReference {
 		private connectionId: string | undefined,
 		private port: MessagePort,
 	) {
-		this.rpc = new RpcHelper(
+		this.rpc = new RpcHelper<SWbound, Controllerbound>(
 			{
-				sendSetCookie: async ({ cookies, options }) => {
-					const clients = (await self.clients.matchAll()).filter((client) =>
-						new URL(client.url).pathname.startsWith(this.prefix),
-					);
-					const ids: string[] = [];
-					const promises: Promise<string>[] = [];
-					let timeoutId: ReturnType<typeof setTimeout> | undefined;
-					try {
-						for (const client of clients) {
-							const id = makeId();
-							ids.push(id);
-							promises.push(
-								new Promise<string>((resolve) => {
-									cookieResolvers[id] = () => {
-										resolve(id);
-										return undefined;
-									};
-								}),
-							);
-							client.postMessage({
-								$controller$setCookie: {
-									cookies,
-									options,
-									id,
-								},
-							});
-						}
-
-						if (promises.length > 0) {
-							const timeoutPromise = new Promise<undefined>((resolve) => {
-								timeoutId = setTimeout(() => {
-									const pending = ids.filter(
-										(id) => cookieResolvers[id] !== undefined,
-									);
-									// A frame can navigate away during delivery. The controller's
-									// cookie jar is already updated; a missed frame acknowledgement
-									// must not turn a successful upstream response into a failure.
-									console.warn(
-										`Cookie sync acknowledgement expired for ${pending.length} frame(s)`,
-									);
-									resolve(undefined);
-								}, 1000);
-							});
-
-							await Promise.race([Promise.all(promises), timeoutPromise]);
-						}
-					} finally {
-						if (timeoutId !== undefined) clearTimeout(timeoutId);
-						for (const id of ids) {
-							delete cookieResolvers[id];
-						}
-					}
+				sendSetCookie: async () => {
+					// cookies sync over each frame's transport port now, so this only keeps tabs that
+					// loaded the previous controller from waiting forever once this worker takes over
 				},
 			},
 			"tabchannel-" + id,

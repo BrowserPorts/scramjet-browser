@@ -7,7 +7,6 @@
 		"cssurls-computed-style",
 		"cssurls-cssom-write-serialization",
 		"cssurls-cssrule-style-property",
-		"domattr-attributes-namednodemap",
 		"domattr-integrity-property",
 		"domattr-mutationobserver-records",
 		"domattr-selector-literal-value",

@@ -20,6 +20,22 @@ export type CookieSyncOptions = { clear?: boolean };
 
 export type SerializedCookieSyncEntry = { url: string; cookie: string };
 
+/** A snapshot replaces a page's jar before any cookies in the same update are set */
+export type CookieSyncUpdate = {
+	snapshot?: string;
+	cookies?: SerializedCookieSyncEntry[];
+	options?: CookieSyncOptions;
+};
+
+/**
+ * Where a page keeps its copy of the serving side's cookie jar. A cookie the page set stays tracked
+ * until the serving side has applied it, so a snapshot that arrives first can't drop it
+ */
+export type CookieSyncSink = {
+	apply(update: CookieSyncUpdate): unknown;
+	track(entries: SerializedCookieSyncEntry[], applied: Promise<unknown>): Promise<unknown>;
+};
+
 export type TransportToController = {
 	linkWorkerTransport: [{ port: MessagePort }];
 	request: [
@@ -43,6 +59,8 @@ export type TransportToController = {
 			mutations: StorageMutation[];
 		},
 	];
+	/** A page that is hidden or gone stops receiving cookie updates, and gets a snapshot when shown */
+	setCookieReceiver: [{ active: boolean }];
 	connect: [
 		{
 			url: string;
@@ -60,6 +78,8 @@ export type TransportToController = {
 
 export type ControllerToTransport = {
 	ready: [];
+	/** Keeps the page's cookie jar in step with the serving side's, in order */
+	cookieSync: [CookieSyncUpdate];
 };
 
 export type WebSocketData = string | ArrayBuffer | Blob;
@@ -127,12 +147,18 @@ export class RemoteTransport implements ProxyTransport {
 	}
 
 	private rpc: RpcHelper<ControllerToTransport, TransportToController>;
-	constructor(sink: RpcSink, options: { ready?: boolean } = {}) {
+	private cookies: CookieSyncSink | undefined;
+	constructor(sink: RpcSink, options: { ready?: boolean; cookies?: CookieSyncSink } = {}) {
+		this.cookies = options.cookies;
 		const methods: MethodsDefinition<ControllerToTransport> = {
 			ready: async () => {
 				// The handshake publishes readiness before a socket can ask for initialization
 				this.ready = true;
 				this.readyResolve(undefined);
+			},
+			// A side with no jar of its own, such as a worker, has nothing to keep in step
+			cookieSync: async (update) => {
+				this.cookies?.apply(update);
 			},
 		};
 		if ("channel" in sink) {
@@ -262,12 +288,19 @@ export class RemoteTransport implements ProxyTransport {
 		cookies: Array<{ url: URL; cookie: string }>,
 		options: CookieSyncOptions = {}
 	): Promise<undefined> {
-		await this.rpc.call("sendSetCookie", {
-			cookies: cookies.map(({ url, cookie }) => ({
-				url: url.href,
-				cookie,
-			})),
-			options,
+		const entries = cookies.map(({ url, cookie }) => ({
+			url: url.href,
+			cookie,
+		}));
+		const applied = this.rpc.call("sendSetCookie", { cookies: entries, options });
+		await (this.cookies ? this.cookies.track(entries, applied) : applied);
+		return undefined;
+	}
+
+	/** Says whether this page can receive cookie updates; a hidden page must not hold up responses */
+	setCookieReceiver(active: boolean): undefined {
+		this.rpc.call("setCookieReceiver", { active }).catch((error) => {
+			console.error("Scramjet cookie receiver update failed:", error);
 		});
 		return undefined;
 	}
@@ -285,6 +318,8 @@ export type ServeTransportOptions = {
 	resolveProxy?: (url: URL) => string | null | undefined | Promise<string | null | undefined>;
 	sendSetCookie?: MethodsDefinition<TransportToController>["sendSetCookie"];
 	sendStorageMutation?: MethodsDefinition<TransportToController>["sendStorageMutation"];
+	/** Defaults to ignoring it, for a serving side that sends no cookie updates */
+	setCookieReceiver?: MethodsDefinition<TransportToController>["setCookieReceiver"];
 	/** Lets the serving side rewrite or refuse a request before it leaves */
 	onRequest?: (
 		args: TransportToController["request"][0]
@@ -330,6 +365,7 @@ export function remoteTransportMethods(
 		sendSetCookie: options.sendSetCookie ?? refuse("sendSetCookie"),
 		sendStorageMutation:
 			options.sendStorageMutation ?? refuse("sendStorageMutation"),
+		setCookieReceiver: options.setCookieReceiver ?? (async () => {}),
 		connect: async ({ url, protocols, requestHeaders, port, proxy }) => {
 			let resolve!: (arg: TransportToController["connect"][1]) => unknown;
 			const promise = new Promise<TransportToController["connect"][1]>(

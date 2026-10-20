@@ -8,6 +8,8 @@ import type { Frame } from ".";
 import type { SerializedCookieSyncEntry } from "@mercuryworkshop/rpc";
 export type {
 	ControllerToTransport,
+	CookieSyncSink,
+	CookieSyncUpdate,
 	SerializedCookieSyncEntry,
 	TransportToController,
 	WebSocketData,
