@@ -873,6 +873,20 @@ return { apply, construct };
 			enumerable: originalDescriptor?.enumerable ?? false,
 			configurable: originalDescriptor?.configurable ?? true,
 		});
+		if (handler.construct && typeof value === "function") {
+			const prototype = Object_getOwnPropertyDescriptor(value, "prototype")?.value;
+			if (prototype && (typeof prototype === "object" || typeof prototype === "function")) {
+				const constructorDescriptor = Object_getOwnPropertyDescriptor(prototype, "constructor");
+				if (
+					constructorDescriptor &&
+					constructorDescriptor.value === value &&
+					(constructorDescriptor.configurable || constructorDescriptor.writable)
+				) {
+					constructorDescriptor.value = proxy;
+					Object_defineProperty(prototype, "constructor", constructorDescriptor);
+				}
+			}
+		}
 	}
 	Trap<T extends string>(name: T, handler: Trap<T>): void;
 	Trap<const T extends readonly string[]>(
