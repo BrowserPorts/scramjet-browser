@@ -1,6 +1,6 @@
 import { IncrementalHtmlRewriter, rewriteHtml } from "@rewriters/html";
 import { ScramjetClient } from "@client/index";
-import { String } from "@/shared/snapshot";
+import { String, _RegExp } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient, _self: Self) {
 	function resetDocumentWriter(document: Document) {
@@ -136,7 +136,7 @@ export default function (client: ScramjetClient, _self: Self) {
 			"$1*$2"
 		);
 		s = s.replace(
-			/\[\s*scramjet-(?:attr[\w-]*|injected)[^\]]*\]/gi,
+			new _RegExp("\\[\\s*scramjet-(?:attr[\\w-]*|injected)[^\\]]*\\]", "gi"),
 			":not(*)"
 		);
 
