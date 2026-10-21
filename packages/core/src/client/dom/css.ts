@@ -3,6 +3,9 @@ import { ScramjetClient } from "@client/index";
 import { Reflect_apply, Reflect_get, Reflect_set } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient) {
+	const declarationTargets = new WeakMap<CSSStyleDeclaration, CSSStyleDeclaration>();
+	const declarationProxies = new WeakMap<CSSStyleDeclaration, CSSStyleDeclaration>();
+
 	client.Proxy("CSSStyleDeclaration.prototype.setProperty", {
 		apply(ctx) {
 			if (!ctx.args[1]) return;
@@ -25,9 +28,12 @@ export default function (client: ScramjetClient) {
 
 	client.Trap("CSSStyleDeclaration.prototype.cssText", {
 		set(ctx, value: string) {
+			ctx.this = declarationTargets.get(ctx.this) ?? ctx.this;
 			ctx.set(rewriteCss(value, client.context, client.meta, "declarations"));
 		},
 		get(ctx) {
+			// Plugins can retain this accessor and call it with our style facade
+			ctx.this = declarationTargets.get(ctx.this) ?? ctx.this;
 			return unrewriteCss(ctx.get(), client.context, "declarations");
 		},
 	});
@@ -77,8 +83,10 @@ export default function (client: ScramjetClient) {
 			// since the prototype chain is fucked
 
 			const style = ctx.get() as CSSStyleDeclaration;
+			const cached = declarationProxies.get(style);
+			if (cached) return cached;
 
-			return new Proxy(style, {
+			const proxy = new Proxy(style, {
 				get(target, prop) {
 					const value = Reflect_get(target, prop);
 
@@ -107,6 +115,9 @@ export default function (client: ScramjetClient) {
 					);
 				},
 			});
+			declarationTargets.set(proxy, style);
+			declarationProxies.set(style, proxy);
+			return proxy;
 		},
 		set(ctx, value: string) {
 			// this will actually run the trap for cssText. don't rewrite it here
