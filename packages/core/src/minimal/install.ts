@@ -25,6 +25,16 @@ export const WORKER_INIT = identityName("scramjet-minimal-init");
 /** Hands a shared worker stand-in one more connection */
 export const SHARED_CONNECT = identityName("scramjet-minimal-connect");
 
+/** Neutral runtime bundles receive the publication identity through their config */
+export function workerMessageTypes(
+	config: Pick<ScramjetMinimalConfig, "identityKey"> = {}
+) {
+	return {
+		init: identityName("scramjet-minimal-init", config.identityKey),
+		connect: identityName("scramjet-minimal-connect", config.identityKey),
+	};
+}
+
 const registry = new NativeMap<string, ScramjetMinimalPlugin>();
 
 /**
@@ -219,14 +229,15 @@ export type WorkerInit = {
  * global of Scramjet's. It waits for the page's link, installs the registered plugins, then runs
  * the worker's own script and hands it the messages that arrived meanwhile.
  */
-export function worker(): Promise<void> {
+export function worker(): Promise<undefined> {
 	const scope = globalThis as typeof globalThis & {
-		importScripts: (...urls: string[]) => void;
+		importScripts: (...urls: string[]) => unknown;
 		onconnect?: ((event: MessageEvent) => unknown) | null;
 	};
 	const buffered: MessageEvent[] = [];
 	let ready = false;
 	let shared = false;
+	let messageTypes = workerMessageTypes();
 	const connect = (port: MessagePort) =>
 		scope.dispatchEvent(
 			new MessageEvent("connect", { ports: [port], data: "" })
@@ -237,7 +248,7 @@ export function worker(): Promise<void> {
 		"message",
 		(event) => {
 			if (!ready) return;
-			if (!shared || event.data?.type !== SHARED_CONNECT || !event.ports[0])
+			if (!shared || event.data?.type !== messageTypes.connect || !event.ports[0])
 				return;
 			event.stopImmediatePropagation();
 			connect(event.ports[0]);
@@ -249,10 +260,21 @@ export function worker(): Promise<void> {
 			if (ready) return;
 			event.stopImmediatePropagation();
 			const init = event.data as WorkerInit | undefined;
-			if (init?.type !== WORKER_INIT || !event.ports[0] || clients.has(scope)) {
+			let expected: ReturnType<typeof workerMessageTypes> | undefined;
+			try {
+				if (init?.config && typeof init.config === "object")
+					expected = workerMessageTypes(init.config);
+			} catch {
+				// Author messages can arrive before the host's initialization message
+			}
+			if (
+				!expected || init?.type !== expected.init ||
+				!event.ports[0] || clients.has(scope)
+			) {
 				buffered.push(event);
 				return;
 			}
+			messageTypes = expected;
 			shared = init.shared === true;
 			if (shared) {
 				// A SharedWorker stand-in turns each connection into a connect event, as a shared
@@ -288,7 +310,7 @@ export function worker(): Promise<void> {
 				for (const queued of buffered.splice(0)) {
 					if (
 						shared &&
-						queued.data?.type === SHARED_CONNECT &&
+						queued.data?.type === messageTypes.connect &&
 						queued.ports[0]
 					) {
 						connect(queued.ports[0]);
@@ -302,7 +324,7 @@ export function worker(): Promise<void> {
 						})
 					);
 				}
-				resolve();
+				resolve(undefined);
 			};
 			// Plugins prepare before the worker's own script, as they do before a page's
 			prepare(client, link, init.payload).then(() => {

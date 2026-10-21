@@ -23,6 +23,8 @@ export type { ScramjetMinimalRoute };
 export type ScramjetMinimalConfig = {
 	/** Host-selected message key used before required plugins receive their settings */
 	linkKey?: string;
+	/** Publication identity shared by required plugins and their worker protocol */
+	identityKey?: readonly number[];
 	/** Fetch native element resources through the plugin pipeline before the browser loads them */
 	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */

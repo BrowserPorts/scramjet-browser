@@ -21,6 +21,7 @@ export {
 	workerLink,
 	WORKER_INIT,
 	SHARED_CONNECT,
+	workerMessageTypes,
 	type InstallOptions,
 } from "./install";
 export {

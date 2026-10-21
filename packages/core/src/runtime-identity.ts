@@ -14,12 +14,20 @@ if (
 )
 	throw new TypeError("Invalid Scramjet identity key");
 
-export function identityName(value: string): string {
-	if (!key) return value;
+export function identityName(
+	value: string,
+	identityKey: readonly number[] | undefined = key
+): string {
+	if (!identityKey) return value;
+	if (
+		identityKey.length !== 32 ||
+		identityKey.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)
+	)
+		throw new TypeError("Invalid Scramjet identity key");
 	const bytes = TextEncoder_encode(value);
 	let result = "_";
 	for (let index = 0; index < bytes.length; index++)
-		result += (bytes[index] ^ key[index % key.length])
+		result += (bytes[index] ^ identityKey[index % identityKey.length])
 			.toString(16)
 			.padStart(2, "0");
 	return result;
