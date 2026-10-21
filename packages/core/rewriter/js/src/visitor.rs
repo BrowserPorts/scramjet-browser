@@ -637,7 +637,10 @@ where
 		if let Some(source) = &it.source {
 			self.rewrite_url(source, true);
 		}
-		audit_skip!(it.declaration, "export {x} is safe because you can only export locals, which the only unsafe `top/parent` obviously can't be");
+		// Exported initializers and function bodies can read or navigate the current realm
+		if let Some(declaration) = &it.declaration {
+			self.visit_declaration(declaration);
+		}
 		audit_skip!(it.specifiers, "export {x as y} is safe because you can only export locals");
 	}
 
