@@ -2,33 +2,39 @@ import { ScramjetContext } from "@/shared";
 import { providers } from "@/shared/providers";
 import { rewriteUrl, unrewriteUrl, URLMeta } from "@rewriters/url";
 import { ScramjetClient } from "@client/index";
+import { _WeakMap } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient, self: Self) {
 	let worker;
 	// if (self.Worker && flagEnabled("syncxhr", client.url)) {
 	// 	worker = client.natives.construct("Worker", config.files.sync);
 	// }
-	const ARGS = Symbol("xhr original args");
-	const HEADERS = Symbol("xhr headers");
+	// Request bookkeeping stays outside the properties a page can reflect
+	const argumentsByRequest = new _WeakMap<object, unknown[]>([]);
+	const headersByRequest = new _WeakMap<object, Record<string, string>>([]);
 
 	client.Proxy("XMLHttpRequest.prototype.open", {
 		apply(ctx) {
 			if (ctx.args[1]) ctx.args[1] = client.rewriteUrl(ctx.args[1]);
 			if (ctx.args[2] === undefined) ctx.args[2] = true;
-			ctx.this[ARGS] = ctx.args;
+			argumentsByRequest.set(ctx.this, ctx.args);
 		},
 	});
 
 	client.Proxy("XMLHttpRequest.prototype.setRequestHeader", {
 		apply(ctx) {
-			const headers = ctx.this[HEADERS] || (ctx.this[HEADERS] = {});
+			let headers = headersByRequest.get(ctx.this);
+			if (!headers) {
+				headers = {};
+				headersByRequest.set(ctx.this, headers);
+			}
 			headers[ctx.args[0]] = ctx.args[1];
 		},
 	});
 
 	client.Proxy("XMLHttpRequest.prototype.send", {
 		apply(ctx) {
-			const args = ctx.this[ARGS];
+			const args = argumentsByRequest.get(ctx.this);
 			if (!args || args[2]) return;
 
 			if (!client.flagEnabled("syncxhr")) {
@@ -48,7 +54,7 @@ export default function (client: ScramjetClient, self: Self) {
 			client.natives.call("Worker.prototype.postMessage", worker, {
 				sab,
 				args,
-				headers: ctx.this[HEADERS],
+				headers: headersByRequest.get(ctx.this),
 				body: ctx.args[0],
 			});
 
