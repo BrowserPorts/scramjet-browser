@@ -220,6 +220,7 @@ if (runs.jsurls) {
   check("jsurls: static link", count(r, "ju_1") === 1, count(r, "ju_1"));
   check("jsurls: dynamic link", count(r, "ju_dyn") === 1, count(r, "ju_dyn"));
   check("jsurls: form action", count(r, "ju_form") === 1, count(r, "ju_form"));
+  check("jsurls: a javascript: url given to location runs in the realm", count(r, "ju_location") === 1, count(r, "ju_location"));
   check("jsurls: modified click does not run it", count(r, "ju_mod") === 0);
   check("jsurls: a cancelled click does not run it", count(r, "ju_cancelled") === 0);
   check("jsurls: href reads back as written", r.extra.__hrefRead === "javascript:@@run:ju_dyn" && r.extra.__hrefAttr === "javascript:@@run:ju_dyn", [r.extra.__hrefRead, r.extra.__hrefAttr]);

@@ -11,6 +11,7 @@ import { RealmSupport } from "@client/realm-mode";
 import { createWrapFn } from "@client/shared/wrap";
 import { LifecycleHooks } from "@client/events";
 import {
+	isJavascriptUrl,
 	rewriteUrl,
 	RewriteUrlOptions,
 	unrewriteUrl,
@@ -657,6 +658,13 @@ export class ScramjetClient {
 
 	set url(url: _URL | string) {
 		url = String(url);
+
+		// A javascript: URL runs code and leaves the page where it is, so in realm mode it is
+		// the realm's to run and the browser is never asked to navigate to it
+		if (this.realm && isJavascriptUrl(url)) {
+			this.realm.navigateToJavascriptUrl(url);
+			return;
+		}
 
 		Tap.dispatch(
 			this.hooks.lifecycle.navigate,

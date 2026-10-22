@@ -106,7 +106,9 @@ const scenarios = {
   hd_inner(c) { c.sink.ran.push("hd_inner"); }, hd_adjacent(c) { c.sink.ran.push("hd_adjacent"); },
 
   // javascript: urls
-  jsurls({ win, doc }) {
+  jsurls({ win, doc, client }) {
+    // what the embedder does when the page assigns a javascript: url to location
+    client.url = "javascript:@@run:ju_location";
     const l = doc.getElementById("l1"); l.click();
     const m = doc.createElement("a"); m.href = "javascript:@@run:ju_dyn"; doc.body.appendChild(m); m.click();
     win.__hrefRead = m.href; win.__hrefAttr = m.getAttribute("href");
@@ -117,6 +119,7 @@ const scenarios = {
     cancelled.addEventListener("click", (e) => e.preventDefault()); cancelled.click();
   },
   ju_1(c) { c.sink.ran.push("ju_1"); }, ju_dyn(c) { c.sink.ran.push("ju_dyn"); }, ju_mod(c) { c.sink.ran.push("ju_mod"); },
+  ju_location(c) { c.sink.ran.push("ju_location"); },
   ju_form(c) { c.sink.ran.push("ju_form"); }, ju_cancelled(c) { c.sink.ran.push("ju_cancelled"); },
 
   // frames the page makes: one that loads a page, one that is written into, one with srcdoc

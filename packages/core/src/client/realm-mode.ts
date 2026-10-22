@@ -332,6 +332,14 @@ export class RealmSupport {
 		);
 	}
 
+	/**
+	 * Runs the code of a `javascript:` URL as a navigation to it does, in a task of its own
+	 * rather than inside the call that asked for it.
+	 */
+	navigateToJavascriptUrl(url: string): void {
+		this.later(() => this.runJavascriptUrl(url));
+	}
+
 	private later(task: () => void): void {
 		this.client.natives.call("setTimeout", this.client.global, () => {
 			try {
