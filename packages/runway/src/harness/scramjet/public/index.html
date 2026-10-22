@@ -2,6 +2,7 @@
 <html>
 	<head>
 		<title>Scramjet Test Harness</title>
+		<!-- runway realm head -->
 		<script src="/scramjet/scramjet.js"></script>
 		<script src="/controller/controller.api.js"></script>
 		<script src="/libcurl/index.js"></script>
@@ -29,6 +30,16 @@
 			let scramjetFrame;
 
 			async function init() {
+				// Realm mode (RUNWAY_REALM=1): the engine is loaded and preloaded before
+				// anything else, since a frame builds its realm without waiting
+				let realm = null;
+				if (window.__runwayRealm) {
+					statusEl.textContent = "Loading the realm engine";
+					const { prepareRealm } = await import("/runway-realm.js");
+					realm = await prepareRealm();
+					window.__runwayRealmEngine = realm.engine;
+				}
+
 				statusEl.textContent = "Registering service worker...";
 
 				const registration = await navigator.serviceWorker.register("/sw.js");
@@ -36,18 +47,9 @@
 				// Wait for the service worker to be ready
 				if (!navigator.serviceWorker.controller) {
 					statusEl.textContent = "Waiting for service worker to activate...";
-					await new Promise((resolve) => {
-						if (registration.active) {
-							resolve();
-							return;
-						}
-						const sw = registration.installing || registration.waiting;
-						if (sw) {
-							sw.addEventListener("statechange", () => {
-								if (sw.state === "activated") resolve();
-							});
-						}
-					});
+					// A worker that activated before a statechange listener was attached
+					// left the old wait hanging, so the harness waits on ready instead
+					await navigator.serviceWorker.ready;
 					// Wait for controller
 					if (!navigator.serviceWorker.controller) {
 						await new Promise((resolve) => {
@@ -63,7 +65,7 @@
 				statusEl.textContent = "Initializing controller...";
 
 				const innerTransport = new LibcurlClient({
-					wisp: "ws://localhost:4501/",
+					wisp: `ws://localhost:${Number(location.port) + 1}/`,
 				});
 				const transport = new RunwayCleartextHttpsTransport(innerTransport);
 
@@ -76,12 +78,17 @@
 					serviceworker: sw,
 					transport,
 					storagePartitionKey: "runway:harness",
+					// Realm mode merges the guest page's config into the Scramjet config
+					...(realm ? { scramjetConfig: realm.config } : {}),
 				});
 				window.__runwayController = controller;
 
 				await controller.ready;
 
-				scramjetFrame = controller.createFrame(testframe);
+				scramjetFrame = controller.createFrame(
+					testframe,
+					realm ? { plugins: [realm.createPlugin()] } : undefined
+				);
 				window.__runwayScramjetFrame = scramjetFrame;
 
 				statusEl.textContent = "Ready - waiting for test...";

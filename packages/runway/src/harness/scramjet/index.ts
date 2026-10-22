@@ -3,14 +3,17 @@ import path from "path";
 import { fileURLToPath } from "url";
 import http from "http";
 import { server as wisp, logging } from "@mercuryworkshop/wisp-js/server";
+import { mountRealm, realmMode } from "./realm.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Resolve paths relative to the package root (runway/)
 const packageRoot = path.resolve(__dirname, "../../..");
 
-export const PORT = 4500;
-export const WISP_PORT = 4501;
+// RUNWAY_PORT moves the harness for a side run; the tests that look for the
+// harness origin in what a page reads name 4500, so a full run keeps it
+export const PORT = Number(process.env.RUNWAY_PORT ?? 4500);
+export const WISP_PORT = PORT + 1;
 
 export async function startHarness() {
 	const app = express();
@@ -41,6 +44,10 @@ export async function startHarness() {
 			)
 		)
 	);
+
+	if (realmMode) {
+		mountRealm(app, path.join(__dirname, "public"));
+	}
 
 	app.use(express.static(path.join(__dirname, "public")));
 

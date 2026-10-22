@@ -643,9 +643,24 @@ async function main() {
 	const allTests = await discoverTests();
 
 	// Filter tests if a pattern is provided
-	const tests = testFilter
-		? allTests.filter((t) => t.name.includes(testFilter!))
-		: allTests;
+	// RUNWAY_EXCLUDE leaves out tests whose names start with any of its
+	// comma-separated prefixes, for a test that takes the shared browser down
+	const excluded = (process.env.RUNWAY_EXCLUDE ?? "")
+		.split(",")
+		.map((prefix) => prefix.trim())
+		.filter(Boolean);
+	// RUNWAY_ONLY runs exactly the tests it names, comma-separated
+	const only = new Set(
+		(process.env.RUNWAY_ONLY ?? "")
+			.split(",")
+			.map((name) => name.trim())
+			.filter(Boolean)
+	);
+	const tests = (
+		testFilter ? allTests.filter((t) => t.name.includes(testFilter!)) : allTests
+	)
+		.filter((t) => only.size === 0 || only.has(t.name))
+		.filter((t) => !excluded.some((prefix) => t.name.startsWith(prefix)));
 	const parallelism = Math.max(
 		1,
 		Number(process.env.RUNWAY_PARALLEL ?? parallelArg ?? 1)
@@ -655,6 +670,10 @@ async function main() {
 	const updateFailingTests = process.env.RUNWAY_UPDATE_FAILING === "1";
 	const failingTestsPath = path.join(__dirname, "..", "failing_tests.json");
 	const runBareTests = !fastMode;
+	// RUNWAY_TIMEOUT_SCALE multiplies every test's timeout, for realm mode,
+	// whose guest is a jitless interpreter
+	const timeoutScale = Math.max(1, Number(process.env.RUNWAY_TIMEOUT_SCALE ?? 1));
+	const realmMode = process.env.RUNWAY_REALM === "1";
 
 	if (testFilter) {
 		console.log(`� Filter: "${testFilter}"`);
@@ -676,6 +695,11 @@ async function main() {
 	if (omitWpt) {
 		console.log("🚫 WPT tests omitted via OMIT_WPT=1\n");
 	}
+	if (realmMode) {
+		console.log(
+			`🧱 Realm mode: page scripts run in the V8-Wasm guest realm, timeouts x${timeoutScale}\n`
+		);
+	}
 
 	if (tests.length === 0) {
 		console.log(
@@ -690,6 +714,38 @@ async function main() {
 	let scramjetUrl = "";
 	let bareUrl = "";
 	let browser: Browser | null = null;
+	// The tests each worker is running, named when the browser goes away under them
+	const inFlight = new Set<string>();
+	let closing = false;
+	const launchBrowser = async (): Promise<Browser> => {
+		const launched = await chromium.launch({
+			headless: process.env.HEADED !== "1",
+			// A system Chrome when Playwright has no browser of its own, and the
+			// one realm mode needs, since its engine suspends on JSPI (Chrome 137+)
+			...(process.env.CHROME_PATH
+				? { executablePath: process.env.CHROME_PATH }
+				: {}),
+		});
+		launched.on("disconnected", () => {
+			if (launched !== browser || closing) return;
+			console.log(
+				`💥 Browser disconnected while running: ${[...inFlight].join(", ")}`
+			);
+		});
+		return launched;
+	};
+	// A browser that crashed takes only the tests it was running with it, and
+	// the next test starts a new one
+	let relaunching: Promise<Browser> | null = null;
+	const ensureBrowser = async (): Promise<Browser> => {
+		if (browser && browser.isConnected()) return browser;
+		relaunching ??= launchBrowser().then((launched) => {
+			browser = launched;
+			relaunching = null;
+			return launched;
+		});
+		return relaunching;
+	};
 	if (needsHarness) {
 		// Start the harness servers
 		const { startHarness, PORT: HARNESS_PORT } = await import(
@@ -708,9 +764,7 @@ async function main() {
 		}
 		console.log();
 
-		browser = await chromium.launch({
-			headless: process.env.HEADED !== "1",
-		});
+		browser = await launchBrowser();
 	} else {
 		console.log("🧪 Direct tests only: skipping harness/browser startup\n");
 	}
@@ -738,7 +792,7 @@ async function main() {
 		try {
 			await page.waitForFunction(
 				() => typeof (window as any).__runwayNavigate === "function",
-				{ timeout: 30000 }
+				{ timeout: 30000 * timeoutScale }
 			);
 		} catch {
 			const statusText = await page.evaluate(() => {
@@ -770,8 +824,9 @@ async function main() {
 			if (!browser) {
 				throw new Error("Browser is unavailable for harness-based tests");
 			}
+			const browserNow = await ensureBrowser();
 			return {
-				scramjet: await createTestPage(browser, {
+				scramjet: await createTestPage(browserNow, {
 					name: "scramjet",
 					onConsistent: (source, label, value) =>
 						consistencyHandler(source, label, value),
@@ -779,7 +834,7 @@ async function main() {
 					installBindings: installScramjetBindings,
 				}),
 				bare: workerNeedsBare
-					? await createTestPage(browser, {
+					? await createTestPage(browserNow, {
 							name: "bare",
 							onConsistent: (source, label, value) =>
 								consistencyHandler(source, label, value),
@@ -800,6 +855,7 @@ async function main() {
 			}
 
 			const start = Date.now();
+			inFlight.add(test.name);
 			let result: TestResult | { status: "error"; message: string } | null =
 				null;
 			let started = false;
@@ -864,7 +920,7 @@ async function main() {
 						testPages.scramjet.watchPage,
 						test,
 						serverResult,
-						test.timeoutMs
+						Math.round((test.timeoutMs ?? 30000) * timeoutScale)
 					);
 					const barePromise = runBareForTest
 						? runTestOnHarness(
@@ -876,7 +932,7 @@ async function main() {
 								testPages.bare!.watchPage,
 								test,
 								serverResult,
-								test.timeoutMs
+								Math.round((test.timeoutMs ?? 30000) * timeoutScale)
 							)
 						: null;
 
@@ -884,7 +940,9 @@ async function main() {
 						? await Promise.all([scramjetPromise, barePromise!])
 						: [await scramjetPromise, null];
 
-					const consistencyResult = await consistencyTracker.finalize(30000);
+					const consistencyResult = await consistencyTracker.finalize(
+						30000 * timeoutScale
+					);
 
 					let computedResult: TestResult;
 					if (!runBareForTest) {
@@ -939,6 +997,7 @@ async function main() {
 			}
 
 			const duration = Date.now() - start;
+			inFlight.delete(test.name);
 			const finalResult =
 				result ?? ({ status: "error", message: "Unknown error" } as const);
 			results.push({
@@ -1001,6 +1060,7 @@ async function main() {
 	await Promise.all(
 		workerBuckets.map((bucket, index) => runTestsForWorker(index + 1, bucket))
 	);
+	closing = true;
 	await browser?.close();
 
 	if (coverageEnabled && needsHarness) {
@@ -1142,6 +1202,24 @@ async function main() {
 	console.log(
 		`\n✅ ${passed} passed | ❌ ${failed} failed | 💥 ${errors} errors\n`
 	);
+	// Every test's outcome as data, for comparing two runs
+	if (process.env.RUNWAY_RESULTS) {
+		await writeFile(
+			process.env.RUNWAY_RESULTS,
+			JSON.stringify(
+				results.map((r) => ({
+					name: r.test.name,
+					status: r.result.status,
+					message: r.result.message,
+					details: (r.result as TestResult).details,
+					duration: r.duration,
+				})),
+				null,
+				1
+			) + "\n",
+			"utf-8"
+		);
+	}
 	const selectedTestNames = new Set(tests.map((test) => test.name));
 	const actualFailing = results
 		.filter((r) => r.result.status !== "pass")
