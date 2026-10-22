@@ -322,6 +322,26 @@ function makeEmbedder(sink) {
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }
+    // The same client in its ordinary mode, which has to go on working as it did
+    if (!wanted || wanted === "default") {
+      const ordinary = new $scramjetController.Controller({
+        serviceworker: sw,
+        transport,
+        storagePartitionKey: "e2e:ordinary",
+        scramjetConfig: { ...$scramjet.defaultConfigDev, flags: { ...$scramjet.defaultConfigDev.flags, realmExecution: false } },
+      });
+      await ordinary.wait();
+      report.ordinary = {};
+      for (const page of await (await fetch(TARGET + "/_ordinary")).json()) {
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText = "width:600px;height:300px";
+        document.body.append(iframe);
+        ordinary.createFrame(iframe, {}).go(TARGET + "/" + page);
+        await waitFor(() => iframe.contentWindow && iframe.contentWindow.__done, 10000);
+        await sleep(500);
+        report.ordinary[page] = JSON.parse(JSON.stringify(iframe.contentWindow.__t || null));
+      }
+    }
   } catch (e) {
     report.fatal = String(e && e.stack || e);
   }

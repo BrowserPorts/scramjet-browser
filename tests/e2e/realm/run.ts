@@ -66,7 +66,33 @@ const PAGES: Record<string, string> = {
     `<script>@@run:markupdone</script>`),
 };
 
+// Pages for the ordinary mode, where the page's own code runs in the frame after the rewriter
+const ORDINARY: Record<string, string> = {
+  ordinary: page("ordinary", `<button id="b" onclick="window.__t.handler=(window.__t.handler||0)+1">b</button><script>
+window.__t = {}; window.__t.inline = 1;
+document.getElementById("b").click();
+var s = document.createElement("script"); s.text = "window.__t.dynText = 1"; document.head.appendChild(s);
+window.__t.textRead = s.text;
+var s2 = document.createElement("script"); s2.textContent = "window.__t.dynTC = 1"; document.head.appendChild(s2);
+var s3 = document.createElement("script"); s3.appendChild(document.createTextNode("window.__t.dynNode = 1")); document.head.appendChild(s3);
+var s4 = document.createElement("script"); s4.src = "/ord1.js"; document.head.appendChild(s4);
+var t = document.createTextNode("x"); var s5 = document.createElement("script"); s5.appendChild(t); t.data = "window.__t.dynData = 1"; document.head.appendChild(s5);
+window.__t.dataRead = t.data;
+window.__t.loc = location.href; window.__t.origin = location.origin;
+window.__t.topSame = (top === window);
+var a = document.createElement("a"); a.href = "JavaScript:window.__t.jsu=1"; document.body.appendChild(a); a.click();
+window.__t.hrefBack = a.getAttribute("href");
+setTimeout("window.__t.timerStr = 1", 0);
+eval("window.__t.evalDirect = 1");
+new Function("window.__t.fn = 1")();
+var st = document.createElement("script"); st.type = "\u000btext/javascript"; st.text = "window.__t.vtType = 1"; document.head.appendChild(st);
+var sj = document.createElement("script"); sj.type = "application/json"; sj.text = '{"a":1}'; document.head.appendChild(sj); window.__t.json = sj.text;
+setTimeout(function () { window.__done = 1; }, 800);
+</script>`),
+};
+
 const RAW: Record<string, string> = {
+  "/ord1.js": "window.__t.dynSrc = 1",
   "/ext1.js": "@@run:ext1",
   "/d_ext.js": "@@run:d_ext",
   "/d_ext2.js": "@@run:d_ext2",
@@ -121,6 +147,8 @@ const hostServer = serve(HOST, (u, method, body) => {
 const targetServer = serve(TARGET, (u, method) => {
 	const name = u.pathname.slice(1);
 	if (method === "OPTIONS") return { headers: { ...CORS, "access-control-allow-headers": "*", "access-control-allow-methods": "*" }, body: "" };
+	if (u.pathname === "/_ordinary") return { headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(Object.keys(ORDINARY)) };
+	if (ORDINARY[name]) return { headers: { ...CORS, "content-type": "text/html; charset=utf-8" }, body: ORDINARY[name] };
 	if (u.pathname === "/_pages") return { headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(Object.keys(PAGES)) };
 	if (PAGES[name]) return { headers: { ...CORS, "content-type": "text/html; charset=utf-8", "content-security-policy": "script-src 'self'" }, body: PAGES[name] };
 	if (RAW[u.pathname]) return { headers: { ...CORS, "content-type": "text/javascript" }, body: RAW[u.pathname] };
@@ -195,6 +223,14 @@ if (runs.jsurls) {
   check("jsurls: modified click does not run it", count(r, "ju_mod") === 0);
   check("jsurls: a cancelled click does not run it", count(r, "ju_cancelled") === 0);
   check("jsurls: href reads back as written", r.extra.__hrefRead === "javascript:@@run:ju_dyn" && r.extra.__hrefAttr === "javascript:@@run:ju_dyn", [r.extra.__hrefRead, r.extra.__hrefAttr]);
+}
+if (report.ordinary) {
+  const o = report.ordinary.ordinary ?? {};
+  for (const k of ["inline", "handler", "dynText", "dynTC", "dynNode", "dynSrc", "dynData", "jsu", "timerStr", "evalDirect", "fn", "vtType"]) check(`ordinary: ${k} ran`, o[k] === 1, o);
+  check("ordinary: the page reads back what it wrote", o.textRead === "window.__t.dynText = 1" && o.dataRead === "window.__t.dynData = 1" && o.json === '{"a":1}', o);
+  check("ordinary: location is the page's own address", o.loc === `http://127.0.0.1:${TARGET}/ordinary` && o.origin === `http://127.0.0.1:${TARGET}`, [o.loc, o.origin]);
+  check("ordinary: top is the page's own window", o.topSame === true, o.topSame);
+  check("ordinary: a javascript: link keeps the href the page gave", o.hrefBack === "JavaScript:window.__t.jsu=1", o.hrefBack);
 }
 if (runs.frames) {
   const r = runs.frames;
