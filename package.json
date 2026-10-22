@@ -13,6 +13,7 @@
 		"test:package": "ava tests/ci/packageValidation.js tests/ci/siblingDeclarations.js",
 		"test:consumer": "node tools/consumer-declaration-check.mjs",
 		"test:rewriter-build": "ava tests/ci/rewriterBuildScript.js",
+		"test:e2e:realm": "node --no-warnings=ExperimentalWarning tests/e2e/realm/run.ts",
 		"preinstall": "npx only-allow pnpm"
 	},
 	"ava": {
