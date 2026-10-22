@@ -165,23 +165,27 @@ function doUnrewrite(
 	return ctx.return(newString);
 }
 
+// A realm never rewrites page script, so it has no rewrites to take back out of a
+// function's source. It still shows the native source for what the client replaced
 export const enabled = (client: ScramjetClient) =>
-	client.flagEnabled("sourcemaps") && !client.flagEnabled("realmExecution");
+	client.flagEnabled("sourcemaps") || client.flagEnabled("realmExecution");
 
 export default function (client: ScramjetClient, self: Self) {
+	const unrewrites = !client.flagEnabled("realmExecution");
 	// every script will push a sourcemap
-	Object_defineProperty(self, client.config.globals.pushsourcemapfn, {
-		value: (buf: Array<number>, tag: string) => {
-			// const before = performance.now();
-			registerRewrites(client, buf, tag);
-			// if (client.flagEnabled("rewriterLogs")) {
-			// 	dbg.time(client.meta, before, `scramtag parse for ${tag}`);
-			// }
-		},
-		enumerable: false,
-		writable: false,
-		configurable: false,
-	});
+	if (unrewrites)
+		Object_defineProperty(self, client.config.globals.pushsourcemapfn, {
+			value: (buf: Array<number>, tag: string) => {
+				// const before = performance.now();
+				registerRewrites(client, buf, tag);
+				// if (client.flagEnabled("rewriterLogs")) {
+				// 	dbg.time(client.meta, before, `scramtag parse for ${tag}`);
+				// }
+			},
+			enumerable: false,
+			writable: false,
+			configurable: false,
+		});
 
 	// when we rewrite javascript it will make function.toString leak internals
 	// this can lead to double rewrites which is bad
@@ -195,6 +199,7 @@ export default function (client: ScramjetClient, self: Self) {
 				// since we know it's a native function, no need to unrewrite
 				return;
 			}
+			if (!unrewrites) return;
 			// const before = performance.now();
 			doUnrewrite(client, ctx);
 			// dbg.time(client.meta, before, `scramtag unrewrite for ${ctx.fn.name}`);

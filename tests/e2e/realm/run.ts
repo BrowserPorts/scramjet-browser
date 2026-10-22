@@ -212,6 +212,7 @@ if (runs.markup) {
   check("markup: a script with non-ASCII text reads back as the page wrote it", m && m.text === "@@run:nonascii /* \u00e9\u2603\u{1f600} */", m && m.text);
   check("markup: the page's source and the nonce are not in a script's attributes", m && m.names.every((n: string) => n === "id") && m.attrs.every((n: string) => n === "id"), m && [m.names, m.attrs]);
   check("markup: markup read back carries no internal attribute or nonce", m && !/scramjet|nonce/i.test(m.outer + m.holderHtml + m.svgHtml), m && [m.outer, m.holderHtml, m.svgHtml]);
+  check("markup: the nonce accessors answer for the native ones", m && m.nonceGetter === "get nonce|function get nonce() { [native code] }" && m.nonceSetter === "set nonce|1", m && [m.nonceGetter, m.nonceSetter]);
   check("markup: markup read back keeps the page's script text", m && m.holderHtml.includes("@@run:nonascii") && m.svgHtml.includes("window.__pwn_svgSplitB=1") && m.svgHtml.includes("<!--c-->"), m && [m.holderHtml, m.svgHtml]);
 }
 if (runs.dynscripts) {

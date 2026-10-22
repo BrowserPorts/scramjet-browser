@@ -141,7 +141,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 				attr
 			);
 			Object_defineProperty(element.prototype, attr, {
-				get() {
+				// Reflecting on either answers for the native accessor, name and source
+				get: client.maskAccessor(descriptor?.get, function (this: any) {
 					if (["src", "data", "href", "action", "formaction"].includes(attr)) {
 						const value = descriptor.get.call(this);
 						// A link or form whose javascript: URL moved into the realm reports the
@@ -169,9 +170,9 @@ export default function (client: ScramjetClient, self: typeof window) {
 					}
 
 					return descriptor.get.call(this);
-				},
+				}),
 
-				set(value) {
+				set: client.maskAccessor(descriptor?.set, function (this: any, value: unknown) {
 					// if (
 					// 	this.tagName === "IFRAME" &&
 					// 	attr === "src" &&
@@ -181,7 +182,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 					// 	return;
 					// }
 					return this.setAttribute(attr, value);
-				},
+				}),
 			});
 		}
 	}

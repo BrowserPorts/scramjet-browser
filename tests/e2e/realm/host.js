@@ -46,6 +46,14 @@ const scenarios = {
       outer: na.outerHTML,
       holderHtml: doc.getElementById("holder").innerHTML,
       svgHtml: doc.getElementById("svgholder").innerHTML,
+      nonceGetter: (() => {
+        const get = win.Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, "nonce").get;
+        return get.name + "|" + win.Function.prototype.toString.call(get);
+      })(),
+      nonceSetter: (() => {
+        const set = win.Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, "nonce").set;
+        return set.name + "|" + set.length;
+      })(),
     };
   },
 
