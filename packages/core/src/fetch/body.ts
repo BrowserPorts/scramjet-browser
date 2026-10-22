@@ -84,8 +84,13 @@ export async function rewriteBody(
 			// do not attempt to rewrite a 404 response
 			if (response.ok) {
 				const ct = response.headers.get("content-type");
-				// don't rewrite invalid module scripts when the server declares a non-JS type
+				// don't rewrite invalid module scripts when the server declares a non-JS type.
+				// A realm never does this: the type the url was tagged with is what the page
+				// asked for when it set src, and the element can be made a classic script
+				// afterwards. The browser then runs the body whatever its type, so the body
+				// has to be a stub. A module load of it is still refused for the type
 				if (
+					!flagEnabled("realmExecution", handler.context, parsed.meta.base) &&
 					parsed.isModule &&
 					ct &&
 					!providers().contentTypeIsSupportedJavascript(ct)

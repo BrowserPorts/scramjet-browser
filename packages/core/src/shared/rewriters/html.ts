@@ -715,7 +715,7 @@ function traverseParsedHtml(
 
 			setElementText(node, JSON_stringify(map));
 			// An import map is script as far as the browser's policy goes
-			const mapNonce = markupNonce(context, htmlcontext);
+			const mapNonce = inTemplate ? undefined : markupNonce(context, htmlcontext);
 			if (mapNonce !== undefined) node.attribs.nonce = mapNonce;
 		} catch (e) {
 			dbg.error("Failed to parse importmap JSON:", e);
@@ -757,12 +757,21 @@ function traverseParsedHtml(
 			);
 			// Only a script this function accounted for carries the nonce, so one it
 			// misread is refused by the browser
-			const inlineNonce = markupNonce(context, htmlcontext);
+			const inlineNonce = inTemplate
+				? undefined
+				: markupNonce(context, htmlcontext);
 			if (inlineNonce !== undefined) node.attribs.nonce = inlineNonce;
 		}
 	}
 
-	const externalNonce = markupNonce(context, htmlcontext);
+	// Inert template content is not run where it is. A script there that held the nonce would
+	// admit whatever text the page gave it after cloning it into the document, and the
+	// nonce would be readable from the template's attributes, which are not hidden while
+	// the content is detached. It is stubbed, and the client gives it the nonce when the
+	// page inserts it
+	const externalNonce = inTemplate
+		? undefined
+		: markupNonce(context, htmlcontext);
 	if (
 		externalNonce !== undefined &&
 		node.name === "script" &&
