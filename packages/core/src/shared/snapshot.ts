@@ -53,6 +53,14 @@ export const TextEncoder_encode = textEncoder.encode.bind(textEncoder);
 const textDecoder = new TextDecoder();
 export const TextDecoder_decode = textDecoder.decode.bind(textDecoder);
 
+// Keeps a leading byte order mark, which is part of the text a page wrote
+const textDecoderKeepingBom = new TextDecoder("utf-8", { ignoreBOM: true });
+export const TextDecoder_decodeKeepingBom =
+	textDecoderKeepingBom.decode.bind(textDecoderKeepingBom);
+export const String_charCodeAt = Function_prototype_call.bind(
+	globalThis.String.prototype.charCodeAt
+) as (str: string, index: number) => number;
+
 const performance = globalThis.performance;
 export const Performance_now = performance.now.bind(performance);
 

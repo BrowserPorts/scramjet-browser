@@ -10,7 +10,13 @@ import type { DocumentPolicy } from "@rewriters/policy";
 import { scriptTextRewriter } from "@rewriters/script-text";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
-import { type ChildNode, Comment, DomHandler, Element } from "domhandler";
+import {
+	type ChildNode,
+	Comment,
+	DomHandler,
+	Element,
+	Text,
+} from "domhandler";
 import { ElementType, Parser } from "htmlparser2";
 import type { TrackedHistoryState } from "@/fetch";
 import type { ScramjetContext } from "@/shared";
@@ -35,9 +41,10 @@ import {
 	Performance_now,
 	String,
 	String_fromCodePoint,
+	TextDecoder_decode,
 	TextEncoder_encode,
 } from "@/shared/snapshot";
-import { bytesToBase64 } from "@/shared/util";
+import { base64ToText, bytesToBase64 } from "@/shared/util";
 import { Tap } from "@/Tap";
 import { flagEnabled } from "@/shared/flags";
 
@@ -444,6 +451,54 @@ export function rewriteHtml(
 // 	origin?: URL;
 // };
 
+/**
+ * The text a script or style element holds, the way a browser counts it: the
+ * data of its Text children, in order. A comment or element between them is not
+ * part of it, so the first child cannot stand for the whole (an SVG script can
+ * start with a comment).
+ */
+function elementText(node: Element): string {
+	let text = "";
+	for (const child of node.children) {
+		if (child.type === ElementType.Text) text += (child as Text).data;
+		else if (child.type === ElementType.CDATA)
+			text += elementText(child as unknown as Element);
+	}
+	return text;
+}
+
+function elementHasText(node: Element): boolean {
+	for (const child of node.children) {
+		if (child.type === ElementType.Text || child.type === ElementType.CDATA)
+			return true;
+	}
+	return false;
+}
+
+/**
+ * Makes `text` the only text the element holds, in the place its first text
+ * was. Text left beside it would run or apply as the page wrote it, past the
+ * rewrite and, for a script, under the nonce the rewritten text earns. Comments
+ * and elements between the text stay where they were.
+ */
+function setElementText(node: Element, text: string) {
+	const replacement = new Text(text);
+	replacement.parent = node;
+	const children: ChildNode[] = [];
+	let placed = false;
+	for (const child of node.children) {
+		if (child.type === ElementType.Text || child.type === ElementType.CDATA) {
+			if (!placed) {
+				children.push(replacement);
+				placed = true;
+			}
+			continue;
+		}
+		children.push(child);
+	}
+	node.children = children;
+}
+
 export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 	const handler = new DomHandler((err, dom) => dom);
 	const parser = new Parser(handler, {
@@ -460,8 +515,13 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 			if (!(internalAttribute("nonce") in node.attribs)) delete node.attribs.nonce;
 			for (const key in node.attribs) {
 				if (key === internalAttribute("script-source-src")) {
-					if (node.children[0] && "data" in node.children[0])
-						node.children[0].data = atob(node.attribs[key]);
+					const text = node.children.find(
+						(child) => child.type === ElementType.Text
+					);
+					if (text && "data" in text) text.data = base64ToText(node.attribs[key]);
+					// The page's source is restored, and the attribute that held it is
+					// not part of what the page wrote
+					delete node.attribs[key];
 					continue;
 				}
 
@@ -628,15 +688,19 @@ function traverseParsedHtml(
 		}
 	}
 
-	if (node.name === "style" && node.children[0] !== undefined)
-		node.children[0].data = rewriteCss(node.children[0].data, context, meta);
+	if (node.name === "style" && elementHasText(node)) {
+		setElementText(
+			node,
+			rewriteCss(elementText(node), context, meta)
+		);
+	}
 
 	if (
 		node.name === "script" &&
 		node.attribs.type?.toLowerCase() === "importmap" &&
-		node.children[0] !== undefined
+		elementHasText(node)
 	) {
-		const json = node.children[0].data;
+		const json = elementText(node);
 		try {
 			const map = JSON_parse(json);
 			if (map.imports) {
@@ -649,7 +713,7 @@ function traverseParsedHtml(
 				}
 			}
 
-			node.children[0].data = JSON_stringify(map);
+			setElementText(node, JSON_stringify(map));
 			// An import map is script as far as the browser's policy goes
 			const mapNonce = markupNonce(context, htmlcontext);
 			if (mapNonce !== undefined) node.attribs.nonce = mapNonce;
@@ -657,11 +721,7 @@ function traverseParsedHtml(
 			dbg.error("Failed to parse importmap JSON:", e);
 		}
 	}
-	if (
-		node.name === "script" &&
-		node.attribs &&
-		node.children[0] !== undefined
-	) {
+	if (node.name === "script" && node.attribs && elementHasText(node)) {
 		const scriptBlockType = getScriptBlockTypeString(
 			"type" in node.attribs ? node.attribs.type : undefined,
 			"language" in node.attribs ? node.attribs.language : undefined,
@@ -670,7 +730,7 @@ function traverseParsedHtml(
 		);
 		const rewriteJs = scriptTextRewriter(context, meta);
 		if (rewriteJs && isScriptType(scriptBlockType)) {
-			let js = node.children[0].data;
+			let js = elementText(node);
 			const module = isModuleScriptType(scriptBlockType);
 			if (htmlcontext.originalAttributes !== false)
 				node.attribs[internalAttribute("script-source-src")] = bytesToBase64(
@@ -682,12 +742,18 @@ function traverseParsedHtml(
 				const htmlcomment = /<!--[\s\S]*?-->/g;
 				js = js.replace(htmlcomment, "");
 			}
-			node.children[0].data = rewriteJs(
+			const rewritten = rewriteJs(
 				js,
 				"(inline script element)",
 				context,
 				meta,
 				module
+			);
+			setElementText(
+				node,
+				typeof rewritten === "string"
+					? rewritten
+					: TextDecoder_decode(rewritten)
 			);
 			// Only a script this function accounted for carries the nonce, so one it
 			// misread is refused by the browser

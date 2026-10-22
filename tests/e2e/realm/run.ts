@@ -60,6 +60,12 @@ const PAGES: Record<string, string> = {
     `<a id="m1" href=" javascript:window.__pwn_jsSpace=1">l</a>` +
     `<svg><script href="/raw.js"></script></svg><svg><script xlink:href="/raw.js"></script></svg>` +
     `<svg><script>window.__pwn_svgInline=1</script></svg>` +
+    `<svg><script><!--c-->window.__pwn_svgCommentFirst=1</script></svg>` +
+    `<svg><script><!--c-->@@run:svg_comment</script></svg>` +
+    `<svg><script><![CDATA[window.__pwn_svgCdata=1]]></script></svg>` +
+    `<svg><script><!--c--></script></svg>` +
+    `<div id="svgholder"><svg><script>@@run:svg_split;window.__pwn_svgSplitA=1<!--c-->window.__pwn_svgSplitB=1</script></svg></div>` +
+    `<div id="holder"><script id="na">@@run:nonascii /* \u00e9\u2603\u{1f600} */</script></div>` +
     `<img src="x:1" onerror="window.__pwn_imgHandler=1">` +
     `<script src="data:text/javascript,window.__pwn_dataSrc=1"></script>` +
     `<script src="//127.0.0.1:${TARGET}/raw.js"></script>` +
@@ -197,6 +203,16 @@ if (runs.static) {
   check("static: module", has(r, "@@run:mod1", "module"));
   check("static: handler resolved from the attribute", has(r, "@@run:h1", "handler"));
   check("static: no violations", r.violations.length === 0, r.violations);
+}
+if (runs.markup) {
+  const r = runs.markup;
+  check("markup: an svg script that starts with a comment reaches the realm", count(r, "svg_comment") === 1, count(r, "svg_comment"));
+  check("markup: an svg script split by a comment reaches the realm once", count(r, "svg_split") === 1, count(r, "svg_split"));
+  const m = r.extra.__markupRead;
+  check("markup: a script with non-ASCII text reads back as the page wrote it", m && m.text === "@@run:nonascii /* \u00e9\u2603\u{1f600} */", m && m.text);
+  check("markup: the page's source and the nonce are not in a script's attributes", m && m.names.every((n: string) => n === "id") && m.attrs.every((n: string) => n === "id"), m && [m.names, m.attrs]);
+  check("markup: markup read back carries no internal attribute or nonce", m && !/scramjet|nonce/i.test(m.outer + m.holderHtml + m.svgHtml), m && [m.outer, m.holderHtml, m.svgHtml]);
+  check("markup: markup read back keeps the page's script text", m && m.holderHtml.includes("@@run:nonascii") && m.svgHtml.includes("window.__pwn_svgSplitB=1") && m.svgHtml.includes("<!--c-->"), m && [m.holderHtml, m.svgHtml]);
 }
 if (runs.dynscripts) {
   const r = runs.dynscripts;

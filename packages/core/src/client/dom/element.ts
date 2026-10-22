@@ -6,9 +6,8 @@ import {
 	TextEncoder_encode,
 	Object_keys,
 	Object_defineProperty,
-	atob,
 } from "@/shared/snapshot";
-import { bytesToBase64 } from "@/shared/util";
+import { base64ToText, bytesToBase64 } from "@/shared/util";
 import { rewriteCss, unrewriteCss } from "@rewriters/css";
 import { rewriteHtml, unrewriteHtml } from "@rewriters/html";
 import { rewriteJs } from "@rewriters/js";
@@ -250,6 +249,18 @@ export default function (client: ScramjetClient, self: typeof window) {
 			? String(name).toLowerCase()
 			: name;
 
+	// A script the rewriter or the client stamped carries the document's nonce. The page has no
+	// attribute of that name unless it gave the element one, and then the page's own copy is kept
+	// beside it
+	const stampedNonce = (element: Element, name: unknown): boolean =>
+		client.realm !== null &&
+		String(name).toLowerCase() === "nonce" &&
+		!client.natives.call(
+			"Element.prototype.hasAttribute",
+			element,
+			internalAttribute("nonce")
+		);
+
 	client.Proxy("Element.prototype.getAttribute", {
 		apply(ctx) {
 			const [name] = ctx.args;
@@ -257,6 +268,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (name.startsWith(internalAttributePrefix)) {
 				return ctx.return(null);
 			}
+
+			if (stampedNonce(ctx.this, name)) return ctx.return(null);
 
 			if (
 				client.natives.call(
@@ -280,23 +293,48 @@ export default function (client: ScramjetClient, self: typeof window) {
 		apply(ctx) {
 			const attrNames = ctx.call() as string[];
 			const cleaned = attrNames.filter(
-				(attr) => !attr.startsWith(internalAttributePrefix)
+				(attr) =>
+					!attr.startsWith(internalAttributePrefix) &&
+					!stampedNonce(ctx.this, attr)
 			);
 
 			ctx.return(cleaned);
 		},
 	});
 
+	client.Proxy("Element.prototype.hasAttributes", {
+		apply(ctx) {
+			const attrNames =
+				(client.natives.call(
+					"Element.prototype.getAttributeNames",
+					ctx.this
+				) as string[]) ?? [];
+			ctx.return(
+				attrNames.some(
+					(attr) =>
+						!attr.startsWith(internalAttributePrefix) &&
+						!stampedNonce(ctx.this, attr)
+				)
+			);
+		},
+	});
+
 	client.Proxy("Element.prototype.getAttributeNode", {
 		apply(ctx) {
-			if (String(ctx.args[0]).startsWith(internalAttributePrefix))
+			if (
+				String(ctx.args[0]).startsWith(internalAttributePrefix) ||
+				stampedNonce(ctx.this, ctx.args[0])
+			)
 				return ctx.return(null);
 		},
 	});
 
 	client.Proxy("Element.prototype.hasAttribute", {
 		apply(ctx) {
-			if (String(ctx.args[0]).startsWith(internalAttributePrefix))
+			if (
+				String(ctx.args[0]).startsWith(internalAttributePrefix) ||
+				stampedNonce(ctx.this, ctx.args[0])
+			)
 				return ctx.return(false);
 		},
 	});
@@ -311,6 +349,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 			const name = String(ctx.args[1]);
 
 			if (name.startsWith(internalAttributePrefix)) return ctx.return(null);
+			if (ctx.args[0] == null && stampedNonce(ctx.this, name))
+				return ctx.return(null);
 
 			if (
 				client.natives.call(
@@ -336,6 +376,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 			const name = String(ctx.args[1]);
 
 			if (name.startsWith(internalAttributePrefix)) return ctx.return(false);
+			if (ctx.args[0] == null && stampedNonce(ctx.this, name))
+				return ctx.return(false);
 
 			if (
 				client.natives.call(
@@ -351,7 +393,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 
 	client.Proxy("Element.prototype.getAttributeNodeNS", {
 		apply(ctx) {
-			if (String(ctx.args[1]).startsWith(internalAttributePrefix))
+			if (
+				String(ctx.args[1]).startsWith(internalAttributePrefix) ||
+				(ctx.args[0] == null && stampedNonce(ctx.this, ctx.args[1]))
+			)
 				return ctx.return(null);
 		},
 	});
@@ -574,7 +619,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				);
 
 				if (scriptSource) {
-					return atob(scriptSource);
+					return base64ToText(scriptSource);
 				}
 
 				return ctx.get();
@@ -624,7 +669,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				element,
 				internalAttribute("script-source-src")
 			);
-			if (scriptSource) return atob(scriptSource);
+			if (scriptSource) return base64ToText(scriptSource);
 			return client.realm ? client.realm.unstub(text) : text;
 		}
 		if (client.box.instanceof(element, "HTMLStyleElement")) {

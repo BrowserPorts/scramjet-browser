@@ -33,7 +33,21 @@ const scenarios = {
   mod1(ctx) { ctx.sink.ran.push("mod1"); },
   h1(ctx) { ctx.sink.ran.push("h1"); },
   clickb({ doc }) { doc.getElementById("b").click(); },
-  markupdone(ctx) { ctx.sink.ran.push("markupdone"); },
+  svg_comment(ctx) { ctx.sink.ran.push("svg_comment"); },
+  svg_split(ctx) { ctx.sink.ran.push("svg_split"); },
+  nonascii(ctx) { ctx.sink.ran.push("nonascii"); },
+  markupdone({ win, doc, sink }) {
+    sink.ran.push("markupdone");
+    const na = doc.getElementById("na");
+    win.__markupRead = {
+      text: na.text,
+      names: na.getAttributeNames(),
+      attrs: Array.from(na.attributes, (a) => a.name),
+      outer: na.outerHTML,
+      holderHtml: doc.getElementById("holder").innerHTML,
+      svgHtml: doc.getElementById("svgholder").innerHTML,
+    };
+  },
 
   // dynamic scripts
   dynscripts({ win, doc }) {
@@ -325,7 +339,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }

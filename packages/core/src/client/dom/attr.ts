@@ -1,4 +1,4 @@
-import { internalAttributePrefix } from "@/runtime-identity";
+import { internalAttribute, internalAttributePrefix } from "@/runtime-identity";
 import { ScramjetClient } from "@client/index";
 import {
 	Number,
@@ -15,6 +15,20 @@ export default function (client: ScramjetClient) {
 	client.Trap("Element.prototype.attributes", {
 		get(ctx) {
 			const map = ctx.get() as NamedNodeMap;
+			// The getter above only answers for a real element
+			// eslint-disable-next-line scramjet-core/no-poisoned-ctx-value
+			const element = ctx.this as Element;
+			// The nonce Scramjet stamped on a script is not an attribute the page sees,
+			// unless the page gave the element one of its own
+			const stamped = (name: unknown): boolean =>
+				client.realm !== null &&
+				typeof name === "string" &&
+				name.toLowerCase() === "nonce" &&
+				!client.natives.call(
+					"Element.prototype.hasAttribute",
+					element,
+					internalAttribute("nonce")
+				);
 			const proxy = new Proxy(map, {
 				get(target, prop, _receiver) {
 					const value = Reflect_get(target, prop);
@@ -42,7 +56,8 @@ export default function (client: ScramjetClient) {
 										const name = Reflect_get(attribute, "name");
 										if (
 											typeof name === "string" &&
-											!String_startsWith(name, internalAttributePrefix)
+											!String_startsWith(name, internalAttributePrefix) &&
+											!stamped(name)
 										) {
 											yield attribute;
 										}
@@ -110,6 +125,7 @@ export default function (client: ScramjetClient) {
 					if (prop.startsWith(internalAttributePrefix)) return false;
 					if (map[prop]?.name?.startsWith(internalAttributePrefix))
 						return false;
+					if (stamped(prop) || stamped(map[prop]?.name)) return false;
 
 					return Reflect_has(target, prop);
 				},
