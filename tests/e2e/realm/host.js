@@ -129,8 +129,40 @@ const scenarios = {
   },
   sh_inner(c) { c.sink.ran.push("sh_inner"); }, sh_unsafe(c) { c.sink.ran.push("sh_unsafe"); },
 
+  // a frame window the page reaches by index or by name, never through contentWindow, is hooked at once, so
+  // it holds the document's one policy of each kind and the page cannot make its own
+  childwin({ win, doc, sink }) {
+    const results = {};
+    const probe = (label, w) => {
+      const out = {};
+      try { w.trustedTypes.createPolicy("default", { createScript: (t) => t }); out.defaultPolicy = "created"; } catch (e) { out.defaultPolicy = "refused"; }
+      try { w.eval("1"); out.eval = "ran"; } catch (e) { out.eval = String(e && e.message); }
+      try { new w.Function("1"); } catch (e) { out.fn = String(e && e.message); }
+      try { w.setTimeout("1", 0); } catch (e) { out.timer = String(e && e.message); }
+      out.leak = Object.values(out).some((v) => typeof v === "string" && sink.nonce && v.includes(sink.nonce));
+      results[label] = out;
+    };
+    const first = doc.createElement("iframe"); doc.body.appendChild(first);
+    probe("appendChild", win[0]);
+    const host = doc.createElement("div"); doc.body.appendChild(host);
+    host.innerHTML = '<iframe name="viaInner"></iframe>';
+    probe("innerHTML", win.viaInner);
+    host.insertAdjacentHTML("beforeend", '<iframe name="viaAdjacent"></iframe>');
+    probe("insertAdjacentHTML", win.viaAdjacent);
+    const fragment = doc.createDocumentFragment();
+    const inFragment = doc.createElement("iframe"); inFragment.name = "viaFragment"; fragment.append(inFragment);
+    host.append(fragment);
+    probe("fragment", win.viaFragment);
+    doc.write('<iframe name="viaWrite"></iframe>');
+    probe("document.write", win.viaWrite);
+    const shadow = doc.createElement("div"); doc.body.appendChild(shadow);
+    shadow.attachShadow({ mode: "open" }).innerHTML = '<iframe name="viaShadow"></iframe>';
+    probe("shadow", shadow.shadowRoot.firstChild.contentWindow);
+    win.__childwin = results;
+  },
+
   // what the browser tells a page about a violation, and a nonce forged through an attribute node
-  reports({ win, doc }) {
+  reports({ win, doc, sink }) {
     const seen = [];
     doc.addEventListener("securitypolicyviolation", (e) => seen.push("doc:" + e.originalPolicy), true);
     doc.addEventListener("securitypolicyviolation", (e) => seen.push("docb:" + e.originalPolicy));
@@ -145,9 +177,12 @@ const scenarios = {
     const m = doc.createElement("div"); m.attributes.setNamedItem(Object.assign(doc.createAttribute("nonce"), { value: "FORGED2" }));
     const rawGet = Element.prototype.getAttribute;
     win.__forged = { rawScript: rawGet.call(s, "nonce"), rawDiv: rawGet.call(m, "nonce"), rawNs: rawGet.call(ns, "nonce"), pageNs: ns.getAttribute("nonce"), pageScript: s.getAttribute("nonce"), pageDiv: m.getAttribute("nonce"), prop: s.nonce };
-    try { win.eval("1"); } catch (e) { /* refused */ }
-    try { new win.Function("return 1"); } catch (e) { /* refused */ }
-    try { win.setTimeout("1", 0); } catch (e) { /* refused */ }
+    const messages = [];
+    const attempt = (f) => { try { f(); } catch (e) { messages.push(String(e && e.message) + "\n" + String(e && e.stack)); } };
+    attempt(() => win.eval("1"));
+    attempt(() => new win.Function("return 1"));
+    attempt(() => win.setTimeout("1", 0));
+    win.__refusals = { count: messages.length, leaksNonce: messages.some((m) => sink.nonce && m.includes(sink.nonce)), text: messages[0] };
     win.__reports = { seen, reports };
     setTimeout(() => { win.__reports = { seen, reports }; }, 400);
   },
@@ -263,6 +298,16 @@ const scenarios = {
   child_inline(c) { c.sink.ran.push("child_inline"); }, blank_inline(c) { c.sink.ran.push("blank_inline"); },
   blank_handler(c) { c.sink.ran.push("blank_handler"); }, srcdoc_inline(c) { c.sink.ran.push("srcdoc_inline"); },
   blank_dynamic(c) { c.sink.ran.push("blank_dynamic"); },
+
+  // a frame that has a window before its document arrives gets the document's scripts too. Its window is kept
+  // when the first navigation of a frame is to the same origin, and the client that hooked it earlier is a
+  // copy of the runtime the new document cannot reach
+  navframe({ doc }) {
+    const later = doc.createElement("iframe"); doc.body.appendChild(later); later.contentWindow; later.src = "/navA";
+    const early = doc.createElement("iframe"); early.src = "/navB"; doc.body.appendChild(early); early.contentWindow;
+    const indexed = doc.createElement("iframe"); indexed.src = "/navC"; doc.body.appendChild(indexed);
+  },
+  nav_a(c) { c.sink.ran.push("nav_a"); }, nav_b(c) { c.sink.ran.push("nav_b"); }, nav_c(c) { c.sink.ran.push("nav_c"); },
 
   // frames whose document is a blob or a data url
   uriframes({ win, doc }) {
@@ -382,6 +427,7 @@ function makeEmbedder(sink) {
       tap.tap(frame.hooks.init.post, ({ window: win, client, nonce }) => {
         const doc = win.document;
         sink.nonceSeen = typeof nonce === "string" && nonce.length > 0;
+        sink.nonce = nonce;
         const listener = (e) => {
           e.preventDefault(); e.stopImmediatePropagation();
           const d = e.detail;
@@ -393,9 +439,12 @@ function makeEmbedder(sink) {
             try { scenarios[m[1]]({ win, doc, d, sink, client }); } catch (err) { sink.errors.push(m[1] + ": " + err.name + ": " + err.message); }
           }
         };
+        // Errors that reach the frame's window, such as a stub that no listener took
+        win.addEventListener("error", (e) => (sink.frameErrors = sink.frameErrors || []).push(String(e.message)));
         // The page is shown no policy violation, so the embedder asks the client for them
         client.realm.onViolation((r) => sink.violations.push((r.directive || "") + "|" + (r.blockedUri || "inline") + "|" + String(r.sample || "").slice(0, 60)));
-        const install = () => { doc.addEventListener(eventType, listener, true); };
+        // A window a navigation reused has a new document, so the listener goes on whichever is current
+        const install = () => { win.document.addEventListener(eventType, listener, true); };
         install();
         client.realm.onReset(install);
         sink.docs++;
@@ -430,7 +479,7 @@ function makeEmbedder(sink) {
 
     const pages = await (await fetch(TARGET + "/_pages")).json();
     for (const page of pages) {
-      if (wanted && wanted !== page) continue;
+      if (wanted && !wanted.split(",").includes(page)) continue;
       const iframe = document.createElement("iframe");
       iframe.style.cssText = "width:600px;height:300px";
       document.body.append(iframe);
@@ -443,9 +492,11 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__childwin", "__refusals", "__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
-      report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
+      report.runs[page] = { frameErrors: sink.frameErrors || [], bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
+      // A page is done once its result is read, and a frame left behind is a window the next ones share the thread with
+      iframe.remove();
     }
     // The same client in its ordinary mode, which has to go on working as it did
     if (!wanted || wanted === "default") {

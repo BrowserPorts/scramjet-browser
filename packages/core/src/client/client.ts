@@ -614,6 +614,7 @@ export class ScramjetClient {
 		if (init.cookies !== undefined) {
 			this.context.cookieJar.load(init.cookies);
 		}
+		this.realm?.documentReplaced();
 	}
 
 	hook() {

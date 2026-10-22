@@ -663,6 +663,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 					? client.realm.writeScriptText(ctx.this, String(newval))
 					: ctx.set(newval)
 			);
+			// A frame the markup made is in the document now, and its window can be reached
+			client.realm?.hookFramesUnder(ctx.this);
 		},
 		get(ctx) {
 			if (isScriptElement(ctx.this)) {
@@ -830,6 +832,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Trap("Element.prototype.outerHTML", {
 		set(ctx, value: string) {
 			const html = String(value);
+			const parent = client.descriptors.get(
+				"Node.prototype.parentElement",
+				ctx.this
+			);
 			ctx.set(
 				rewriteHtml(html, client.context, client.meta, {
 					loadScripts: false,
@@ -843,6 +849,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 					foreignContext: insideForeignContext(client, ctx.this),
 				})
 			);
+			client.realm?.hookFramesUnder(parent);
 		},
 		get(ctx) {
 			return unrewriteHtml(ctx.get(), insideForeignContext(client, ctx.this));
@@ -863,6 +870,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 				apisource: "set Element.prototype.setHTMLUnsafe",
 				foreignContext: foreignContextForElement(client, ctx.this),
 			});
+			if (!client.realm) return;
+			const result = ctx.call();
+			client.realm.hookFramesUnder(ctx.this);
+			ctx.return(result);
 		},
 	});
 
@@ -898,6 +909,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 					newval = String(value);
 				}
 				ctx.set(newval);
+				client.realm?.hookFramesUnder(ctx.this);
 			},
 			get(ctx) {
 				return unrewriteHtml(ctx.get());
@@ -909,6 +921,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 					String(ctx.args[0]),
 					"set ShadowRoot.prototype.setHTMLUnsafe"
 				);
+				if (!client.realm) return;
+				const result = ctx.call();
+				client.realm.hookFramesUnder(ctx.this);
+				ctx.return(result);
 			},
 		});
 		client.Proxy("ShadowRoot.prototype.getHTML", {
@@ -1026,6 +1042,13 @@ export default function (client: ScramjetClient, self: typeof window) {
 				apisource: "set Element.prototype.insertAdjacentHTML",
 				foreignContext: foreignContextForElement(client, ctx.this),
 			});
+			if (!client.realm) return;
+			// The markup lands inside the element, or beside it, so a frame in it has a window now
+			const result = ctx.call();
+			client.realm.hookFramesUnder(
+				client.descriptors.get("Node.prototype.parentElement", ctx.this) ?? ctx.this
+			);
+			ctx.return(result);
 		},
 	});
 

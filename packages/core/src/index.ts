@@ -28,6 +28,7 @@ export const versionInfo: ScramjetVersionInfo = {
 };
 
 export { defaultConfig, defaultConfigDev } from "./config";
+export { realmDocumentEventType } from "@rewriters/realm";
 
 // The full builds rewrite script text met inside HTML and URLs with the wasm rewriter; builds
 // without it leave script text as it is

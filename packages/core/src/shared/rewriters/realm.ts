@@ -70,6 +70,17 @@ export function embedText(value: string): string {
 	);
 }
 
+/**
+ * The event a document that reuses a hooked window sends the window's client. The client may
+ * belong to another copy of the runtime than the one in the new document, which cannot reach
+ * it any other way, and it holds the window's realm and its listeners on a document that is
+ * gone. The window outlives its documents, so the client listens on it. The page never learns
+ * the event type, so it cannot send one.
+ */
+export function realmDocumentEventType(eventType: string): string {
+	return `${eventType}:document`;
+}
+
 function dispatch(eventType: string, target: string): string {
 	// The event is cancelable and the listener cancels it, so a stub that nothing
 	// took is an error and never a silently skipped script

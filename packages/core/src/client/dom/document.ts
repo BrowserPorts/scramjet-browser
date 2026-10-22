@@ -38,26 +38,27 @@ export default function (client: ScramjetClient, _self: Self) {
 	client.Proxy("Document.prototype.write", {
 		apply(ctx) {
 			const writer = getDocumentWriter(ctx.this);
-			ctx.return(
-				client.natives.call(
-					"Document.prototype.write",
-					ctx.this,
-					writer.write(ctx.args.join(""))
-				)
+			const result = client.natives.call(
+				"Document.prototype.write",
+				ctx.this,
+				writer.write(ctx.args.join(""))
 			);
+			// A frame the markup made is in the document, and its window can be reached
+			client.realm?.hookFramesUnder(ctx.this);
+			ctx.return(result);
 		},
 	});
 
 	client.Proxy("Document.prototype.writeln", {
 		apply(ctx) {
 			const writer = getDocumentWriter(ctx.this);
-			ctx.return(
-				client.natives.call(
-					"Document.prototype.write",
-					ctx.this,
-					writer.write(ctx.args.join("") + "\n")
-				)
+			const result = client.natives.call(
+				"Document.prototype.write",
+				ctx.this,
+				writer.write(ctx.args.join("") + "\n")
 			);
+			client.realm?.hookFramesUnder(ctx.this);
+			ctx.return(result);
 		},
 	});
 

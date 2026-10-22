@@ -9,6 +9,7 @@ import {
 import {
 	CookieJar,
 	getClient,
+	realmDocumentEventType,
 	SCRAMJETCLIENT,
 	ScramjetClient,
 	type ScramjetConfig,
@@ -38,6 +39,7 @@ const rootServiceWorker = SCRAMJETCLIENT in globalThis
 			);
 
 const EventTarget_addEventListener = EventTarget.prototype.addEventListener;
+const EventTarget_dispatchEvent = EventTarget.prototype.dispatchEvent;
 
 /**
  * The controller frame whose iframe holds the document at `win`, found by the iframes
@@ -153,11 +155,25 @@ export function load(init: Init) {
 		// there is nothing reachable here to sync.
 		// The reused window's jar is kept in step over its transport, so the cookies baked into
 		// this document are older than the ones it already has
-		getClient(globalThis)?.syncDocumentInit({
+		const sync = {
 			initHeaders: init.initHeaders,
 			history: init.history,
 			...(init.nonce === undefined ? {} : { nonce: init.nonce }),
-		});
+		};
+		const hooked = getClient(globalThis);
+		if (hooked !== undefined) {
+			hooked.syncDocumentInit(sync);
+		} else {
+			// The client that hooked this window is a copy this one cannot reach, and in realm
+			// mode it holds the window's realm. It listens on the window for the new document
+			const eventType = init.sjconfig.realm?.eventType;
+			if (typeof eventType === "string" && eventType !== "") {
+				EventTarget_dispatchEvent.call(
+					globalThis,
+					new CustomEvent(realmDocumentEventType(eventType), { detail: sync }),
+				);
+			}
+		}
 		return;
 	}
 	if (!(wasmNamespace in self)) {

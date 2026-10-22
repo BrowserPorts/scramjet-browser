@@ -49,6 +49,11 @@ const PAGES: Record<string, string> = {
   attacks: page("attacks", `<script>@@run:attacks</script>`),
   modflip: page("modflip", `<script>@@run:modflip</script>`),
   batch: page("batch", `<script>@@run:batch</script>`),
+  navframe: page("navframe", `<script>@@run:navframe</script>`),
+  navA: page("navA", `<script>@@run:nav_a</script>`),
+  navB: page("navB", `<script>@@run:nav_b</script>`),
+  navC: page("navC", `<script>@@run:nav_c</script>`),
+  childwin: page("childwin", `<script>@@run:childwin</script>`),
   shadow: page("shadow", `<script>@@run:shadow</script>`),
   tpl: page("tpl", `<template id="t"><script>@@run:tplinner</script></template><script>@@run:tpl</script>`),
   reports: page("reports", `<script>@@run:reports</script>`),
@@ -114,8 +119,11 @@ const RAW: Record<string, string> = {
 
 const CORS = { "access-control-allow-origin": "*", "access-control-expose-headers": "*" };
 
-let resolveResult: (r: any) => void;
-const result = new Promise<any>((r) => (resolveResult = r));
+// Each batch of pages runs in a host page of its own. A host page that has made about twenty frames
+// stops answering, whatever the frames hold, so a run of more pages than that goes in batches
+let resolveResult: (r: any) => void = () => {};
+let result = new Promise<any>((r) => (resolveResult = r));
+const BATCH = 10;
 
 type Handler = (url: URL, method: string, body: string) => { status?: number; headers?: Record<string, string>; body: string | Buffer };
 
@@ -167,23 +175,42 @@ const targetServer = serve(TARGET, (u, method) => {
 	return { status: 404, headers: CORS, body: "not found" };
 });
 
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), "sj-e2e-"));
-const chrome = spawn(
-	CHROME,
-	["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--disable-features=Translate", `http://127.0.0.1:${HOST}/${ONLY ? `?only=${ONLY}` : ""}`],
-	{ stdio: "ignore" },
-);
+async function runBatch(only: string | undefined): Promise<any> {
+	result = new Promise<any>((r) => (resolveResult = r));
+	const profile = fs.mkdtempSync(path.join(os.tmpdir(), "sj-e2e-"));
+	const chrome = spawn(
+		CHROME,
+		["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--disable-features=Translate", `http://127.0.0.1:${HOST}/${only ? `?only=${only}` : ""}`],
+		{ stdio: "ignore" },
+	);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<any>((r) => (timer = setTimeout(() => r({ fatal: "timed out waiting for the host page" }), Number(process.env.E2E_TIMEOUT ?? 300000))));
+	const batchReport: any = await Promise.race([result, timeout]);
+	clearTimeout(timer);
+	chrome.kill();
+	try {
+		fs.rmSync(profile, { recursive: true, force: true });
+	} catch {
+		// a profile that is still in use is the temp directory's to clean up
+	}
+	return batchReport;
+}
 
-const timeout = new Promise<any>((r) => setTimeout(() => r({ fatal: "timed out waiting for the host page" }), 150000));
-const report: any = await Promise.race([result, timeout]);
-chrome.kill();
+const names = Object.keys(PAGES);
+const batches: (string | undefined)[] = ONLY ? [ONLY] : [...Array.from({ length: Math.ceil(names.length / BATCH) }, (_, i) => names.slice(i * BATCH, (i + 1) * BATCH).join(",")), "default"];
+const report: any = { runs: {} };
+for (const only of batches) {
+	const part = await runBatch(only);
+	if (part.fatal) {
+		report.fatal = part.fatal;
+		break;
+	}
+	Object.assign(report.runs, part.runs);
+	if (part.ordinary) report.ordinary = part.ordinary;
+	report.env = part.env;
+}
 hostServer.close();
 targetServer.close();
-try {
-	fs.rmSync(profile, { recursive: true, force: true });
-} catch {
-	// a profile that is still in use is the temp directory's to clean up
-}
 
 if (process.env.E2E_DUMP) console.log(JSON.stringify(report, null, 1));
 
@@ -235,8 +262,21 @@ if (runs.shadow) {
   const m = r.extra.__shadowRead;
   check("shadow: shadow markup reads back as the page wrote it", m && m.inner.includes('onerror="@@run:sh_inner"') && m.html.includes('onerror="@@run:sh_unsafe"') && !/scramjet|var d=/i.test(m.inner + m.html), m);
 }
+if (runs.navframe) {
+  const r = runs.navframe;
+  for (const n of ["nav_a", "nav_b", "nav_c"]) check(`navframe: ${n}, in a frame that had a window before its document, reached the realm`, count(r, n) === 1, [n, count(r, n), r.frameErrors]);
+}
+if (runs.childwin) {
+  const r = runs.childwin;
+  const c = r.extra.__childwin;
+  for (const way of ["appendChild", "innerHTML", "insertAdjacentHTML", "fragment", "document.write", "shadow"]) {
+    check(`childwin: a frame made by ${way} is hooked before the page can reach its window`, c && c[way] && c[way].defaultPolicy === "refused", c && c[way]);
+    check(`childwin: a refused eval, Function or timer in a frame made by ${way} does not name the nonce`, c && c[way] && c[way].leak === false, c && c[way]);
+  }
+}
 if (runs.reports) {
   const r = runs.reports;
+  check("reports: a refused eval, Function or string timer does not name the nonce", r.extra.__refusals && r.extra.__refusals.count > 0 && r.extra.__refusals.leaksNonce === false, r.extra.__refusals);
   const rep = r.extra.__reports;
   check("reports: the page was told of no violation and no policy", rep && rep.seen.length === 0 && rep.reports.length === 0, rep);
   check("reports: the embedder was told of the violations", r.violations.length > 0, r.violations);

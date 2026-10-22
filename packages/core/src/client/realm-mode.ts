@@ -20,6 +20,7 @@ import { isEventHandlerAttribute } from "@rewriters/html";
 import {
 	createRealmHandlerStub,
 	isRealmStub,
+	realmDocumentEventType,
 	type RealmScriptDetail,
 	realmScriptFor,
 	readRealmStubSource,
@@ -38,6 +39,9 @@ export interface ViolationReport {
 	sample: string;
 }
 
+const FRAME_SELECTOR = "iframe,frame,object,embed";
+const FRAME_AND_SCRIPT_SELECTOR = `script,${FRAME_SELECTOR}`;
+
 /**
  * What a document that runs its scripts in an embedder's realm needs from its
  * client. The browser runs a script only if the page's policy admits it, and the
@@ -54,6 +58,8 @@ export class RealmSupport {
 	private readonly violationListeners = new _Set<(report: ViolationReport) => void>();
 	/** The document's one Trusted Types policy for script, or null when the document has none */
 	private scriptPolicy: { createScript(text: string): unknown } | null = null;
+	/** The default policy is made once for the window, which keeps it when a navigation reuses the window */
+	private defaultPolicyTaken = false;
 	private installed = false;
 
 	constructor(
@@ -114,10 +120,13 @@ export class RealmSupport {
 		const onlyHandlerStub = (text: string) =>
 			text === handlerStub ? text : null;
 		try {
-			Reflect_apply(factory.createPolicy, factory, [
-				"default",
-				{ createHTML: same, createScriptURL: same, createScript: onlyHandlerStub },
-			]);
+			if (!this.defaultPolicyTaken) {
+				Reflect_apply(factory.createPolicy, factory, [
+					"default",
+					{ createHTML: same, createScriptURL: same, createScript: onlyHandlerStub },
+				]);
+				this.defaultPolicyTaken = true;
+			}
 			this.scriptPolicy = Reflect_apply(factory.createPolicy, factory, [
 				trustedTypesPolicyName(nonce),
 				{ createScript: same },
@@ -127,6 +136,17 @@ export class RealmSupport {
 			// by the client, and the browser refuses what the page makes. That fails closed
 			this.scriptPolicy = null;
 		}
+	}
+
+	/**
+	 * A navigation that kept this window, as the first one of a frame does from its blank
+	 * document, gave it a new document. That document has its own policy and nonce, and none of
+	 * this client's listeners, and its scripts run once the page's own bootstrap has returned.
+	 * What the guest holds stays, as the window's own globals do in a browser.
+	 */
+	documentReplaced(): void {
+		this.takePolicies();
+		this.reinstall();
 	}
 
 	/**
@@ -285,34 +305,104 @@ export class RealmSupport {
 
 	/** The script elements in or under the nodes an insertion call is given */
 	scriptsIn(values: readonly unknown[]): Element[] {
-		const found: Element[] = [];
+		return this.insertedIn(values).scripts;
+	}
+
+	/** The frame elements in or under the nodes an insertion call is given */
+	framesIn(values: readonly unknown[]): Element[] {
+		return this.insertedIn(values).frames;
+	}
+
+	/** The script and frame elements in or under the nodes an insertion call is given, found in one pass */
+	insertedIn(values: readonly unknown[]): { scripts: Element[]; frames: Element[] } {
+		const scripts: Element[] = [];
+		const frames: Element[] = [];
+		const sort = (element: Element) => {
+			if (this.isScriptElement(element)) scripts.push(element);
+			else if (this.isFrameElement(element)) frames.push(element);
+		};
 		for (const value of values) {
 			if (value === null || typeof value !== "object") continue;
-			if (this.isScriptElement(value)) {
-				found.push(value);
-			} else if (this.client.box.instanceof(value, "Element")) {
-				found.push(
-					...Array_from(
-						this.client.natives.call(
-							"Element.prototype.querySelectorAll",
-							value as Element,
-							"script"
-						)
+			if (this.client.box.instanceof(value, "Element")) {
+				sort(value as Element);
+				for (const found of Array_from(
+					this.client.natives.call(
+						"Element.prototype.querySelectorAll",
+						value as Element,
+						FRAME_AND_SCRIPT_SELECTOR
 					)
-				);
+				)) {
+					sort(found as Element);
+				}
 			} else if (this.client.box.instanceof(value, "DocumentFragment")) {
-				found.push(
-					...Array_from(
-						this.client.natives.call(
-							"DocumentFragment.prototype.querySelectorAll",
-							value as DocumentFragment,
-							"script"
-						)
+				for (const found of Array_from(
+					this.client.natives.call(
+						"DocumentFragment.prototype.querySelectorAll",
+						value as DocumentFragment,
+						FRAME_AND_SCRIPT_SELECTOR
 					)
-				);
+				)) {
+					sort(found as Element);
+				}
 			}
 		}
-		return found;
+		return { scripts, frames };
+	}
+
+	isFrameElement(node: unknown): node is Element {
+		return (
+			this.client.box.instanceof(node, "HTMLIFrameElement") ||
+			this.client.box.instanceof(node, "HTMLFrameElement") ||
+			this.client.box.instanceof(node, "HTMLObjectElement") ||
+			this.client.box.instanceof(node, "HTMLEmbedElement")
+		);
+	}
+
+	/**
+	 * Gives the window of each of these frames its client now, if it has none. A same-origin
+	 * frame has a window of its own the moment it is in the document, and the page can reach
+	 * it by index or by name, a way that does not pass through the properties that hook it
+	 * when they are read. A window the client has not reached has none of the client's hooks,
+	 * so what the page does there is not held to anything.
+	 */
+	hookFrames(frames: readonly Element[]): void {
+		for (const frame of frames) {
+			if (!this.client.descriptors.get("Node.prototype.isConnected", frame)) continue;
+			try {
+				// Reading the property is what hooks the window
+				Reflect_get(frame, "contentWindow");
+			} catch {
+				// A frame of another origin has no window to reach
+			}
+		}
+	}
+
+	/** Hooks the windows of the frames under a node the page has just put markup in */
+	hookFramesUnder(root: unknown): void {
+		if (root === null || typeof root !== "object") return;
+		let found: ArrayLike<Element>;
+		if (this.client.box.instanceof(root, "Element")) {
+			found = this.client.natives.call(
+				"Element.prototype.querySelectorAll",
+				root as Element,
+				FRAME_SELECTOR
+			) as unknown as ArrayLike<Element>;
+		} else if (this.client.box.instanceof(root, "Document")) {
+			found = this.client.natives.call(
+				"Document.prototype.querySelectorAll",
+				root as Document,
+				FRAME_SELECTOR
+			) as unknown as ArrayLike<Element>;
+		} else if (this.client.box.instanceof(root, "DocumentFragment")) {
+			found = this.client.natives.call(
+				"DocumentFragment.prototype.querySelectorAll",
+				root as DocumentFragment,
+				FRAME_SELECTOR
+			) as unknown as ArrayLike<Element>;
+		} else {
+			return;
+		}
+		this.hookFrames(Array_from(found));
 	}
 
 	/**
@@ -525,6 +615,15 @@ export class RealmSupport {
 		if (source !== null) detail.s = source;
 	};
 
+	private readonly onDocumentEvent = (event: Event): void => {
+		const detail = Reflect_get(event, "detail") as
+			| Parameters<ScramjetClient["syncDocumentInit"]>[0]
+			| null;
+		if (detail === null || typeof detail !== "object") return;
+		this.client.natives.call("Event.prototype.stopImmediatePropagation", event);
+		this.client.syncDocumentInit(detail);
+	};
+
 	private readonly onViolationEvent = (event: Event): void => {
 		// The browser reports a violation to the page's listeners, and the report holds the
 		// policy it enforced. This listener is first, and nothing after it gets the event
@@ -625,6 +724,11 @@ export class RealmSupport {
 			"securitypolicyviolation",
 			this.onViolationEvent
 		);
+		add(
+			this.client.global as unknown as EventTarget,
+			realmDocumentEventType(this.eventType),
+			this.onDocumentEvent
+		);
 		add(this.client.global as unknown as EventTarget, "click", this.onClick);
 		add(this.client.global as unknown as EventTarget, "submit", this.onSubmit);
 	}
@@ -671,6 +775,7 @@ export class RealmSupport {
 			"Element.prototype.setAttribute",
 			"Element.prototype.querySelectorAll",
 			"DocumentFragment.prototype.querySelectorAll",
+			"Document.prototype.querySelectorAll",
 			"Document.prototype.querySelector",
 		]) {
 			touch(natives, name);
