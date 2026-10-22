@@ -3,7 +3,7 @@ import {
 	flagEnabled,
 	rewriteCss,
 	rewriteHtml,
-	rewriteInjectedJs,
+	getWorkerInjectScripts,
 	rewriteJs,
 	rewriteWorkers,
 } from "@/shared";
@@ -163,7 +163,7 @@ export async function rewriteBody(
 			const workerProps: typeof handler.hooks.fetch.worker.props = {
 				body: rewritten,
 				contentType: response.headers.get("content-type") ?? "",
-				inject: workerInjectScripts(handler, parsed),
+				inject: getWorkerInjectScripts(handler.context, parsed.meta, parsed.isModule),
 				source: TextDecoder_decode(bytes),
 			};
 			await Tap.dispatchSeries(
@@ -176,25 +176,4 @@ export async function rewriteBody(
 		default:
 			return response.body;
 	}
-}
-
-function workerInjectScripts(
-	handler: ScramjetFetchHandler,
-	parsed: ScramjetFetchParsed
-): string {
-	const script = (script: string) =>
-		parsed.isModule ? `import "${script}"\n` : `importScripts("${script}");\n`;
-	return handler.context.interface.getWorkerInjectScripts(
-		parsed.meta,
-		parsed.isModule,
-		script,
-		(source) =>
-			rewriteInjectedJs(
-				source,
-				"worker",
-				handler.context,
-				parsed.meta,
-				parsed.isModule
-			)
-	);
 }

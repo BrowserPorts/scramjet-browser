@@ -95,7 +95,7 @@ export type CodeRewriterHooks = {
   /** Runtime code is transformed without treating it as guest JavaScript */
   injectedJavascript: {
     context: {
-      kind: "document" | "worker" | "wasm";
+      kind: "document" | "workerPrelude" | "worker" | "wasm";
       meta: URLMeta;
       isModule: boolean;
     };
