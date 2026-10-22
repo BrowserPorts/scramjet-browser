@@ -134,3 +134,11 @@ test("a javascript: url is inert in realm mode before it reaches any rewriter", 
 	t.true(inert !== -1 && rewriter !== -1);
 	t.true(inert < rewriter);
 });
+
+test("no site flag can turn realm execution on or off for one site", (t) => {
+	const source = readFileSync(path.join(core, "shared/flags.ts"), "utf8");
+	const realm = source.indexOf('flag === "realmExecution"');
+	const sites = source.indexOf("siteFlags");
+	t.true(realm !== -1 && sites !== -1);
+	t.true(realm < sites, "the realm flag is answered before site flags are consulted");
+});
