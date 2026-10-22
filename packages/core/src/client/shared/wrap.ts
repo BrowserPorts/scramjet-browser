@@ -63,6 +63,9 @@ export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 }
 
 export const order = 4;
+// Rewritten code is what calls these helpers, and in realm mode nothing is rewritten
+export const enabled = (client: ScramjetClient) =>
+	!client.flagEnabled("realmExecution");
 export default function (client: ScramjetClient, self: GlobalThis) {
 	const properties: Record<string, string> = {
 		location: client.config.globals.wraplocation,

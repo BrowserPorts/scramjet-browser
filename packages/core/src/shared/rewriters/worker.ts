@@ -1,7 +1,7 @@
 import { flagEnabled, ScramjetContext } from "@/shared";
 import { rewriteJs } from "@rewriters/js";
 import { URLMeta } from "@rewriters/url";
-import { TextDecoder_decode } from "@/shared/snapshot";
+import { Error, TextDecoder_decode } from "@/shared/snapshot";
 import { base64Encode } from "@/shared/util";
 import { rewriteInjectedJs } from "./injected";
 
@@ -44,6 +44,13 @@ export function rewriteWorkers(
   meta: URLMeta,
   isModule: boolean,
 ) {
+  // The worker's own client would read the same realmExecution flag and skip the
+  // helpers a rewritten worker script calls, and there is no worker realm yet,
+  // so a worker cannot run in either way.
+  if (flagEnabled("realmExecution", context, meta.origin)) {
+    throw new Error("workers are not supported while realmExecution is on");
+  }
+
   let str = getWorkerInjectScripts(context, meta, isModule);
 
   const code = rewriteJs(js, url, context, meta, isModule);

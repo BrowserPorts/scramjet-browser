@@ -137,7 +137,28 @@ export interface ScramjetProviders {
 		isModule?: boolean,
 		functionBody?: boolean,
 	): string | Uint8Array;
+
+	/**
+	 * Takes the place of `rewriteJs` while the `realmExecution` flag is on. The
+	 * embedder keeps the original source and runs it in its own realm, and this
+	 * returns the text the page carries in its place. That text must never hold
+	 * page code, because it runs in this document's own realm. `handler` is a
+	 * function body (event handler attributes), `module` is a module, and script
+	 * text from a `javascript:` URL arrives as `classic` with `url` set to
+	 * JAVASCRIPT_URL_LABEL. With the flag on and no provider registered,
+	 * rewriting fails instead of falling back to the wasm rewriter.
+	 */
+	realmScript?(
+		js: string | Uint8Array,
+		url: string | null,
+		context: ScramjetContext,
+		meta: URLMeta,
+		kind: RealmScriptKind,
+	): string | Uint8Array;
 }
+
+/** What a piece of script text is, as far as running it in a realm goes */
+export type RealmScriptKind = "classic" | "module" | "handler";
 
 // regex from vk6 (https://github.com/ading2210)
 const urlRegex =

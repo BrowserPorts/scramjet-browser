@@ -6,6 +6,7 @@ import {
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
 import { rewriteInjectedJs } from "@rewriters/injected";
+import { scriptTextRewriter } from "@rewriters/script-text";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
 import { type ChildNode, Comment, DomHandler, Element } from "domhandler";
@@ -557,7 +558,7 @@ function traverseParsedHtml(
 				}
 			}
 		}
-		const rewriteJs = providers().rewriteJs;
+		const rewriteJs = scriptTextRewriter(context, meta);
 		for (const [attr, value] of Object_entries(node.attribs)) {
 			if (rewriteJs && (providers().isEventHandlerAttribute?.(attr) ?? eventAttributes.includes(attr))) {
 				if (htmlcontext.originalAttributes !== false)
@@ -611,7 +612,7 @@ function traverseParsedHtml(
 			"type" in node.attribs,
 			"language" in node.attribs
 		);
-		const rewriteJs = providers().rewriteJs;
+		const rewriteJs = scriptTextRewriter(context, meta);
 		if (rewriteJs && isScriptType(scriptBlockType)) {
 			let js = node.children[0].data;
 			const module = isModuleScriptType(scriptBlockType);
@@ -619,8 +620,12 @@ function traverseParsedHtml(
 				node.attribs[internalAttribute("script-source-src")] = bytesToBase64(
 					TextEncoder_encode(js)
 				);
-			const htmlcomment = /<!--[\s\S]*?-->/g;
-			js = js.replace(htmlcomment, "");
+			// A realm runs the source as written, so a comment marker inside a
+			// string has to stay where the page put it
+			if (!flagEnabled("realmExecution", context, meta.base)) {
+				const htmlcomment = /<!--[\s\S]*?-->/g;
+				js = js.replace(htmlcomment, "");
+			}
 			node.children[0].data = rewriteJs(
 				js,
 				"(inline script element)",

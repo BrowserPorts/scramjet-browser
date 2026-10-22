@@ -1,6 +1,10 @@
 import { ScramjetClient } from "@client/index";
 import { Object_defineProperty, _URL } from "@/shared/snapshot";
 
+// import() and import.meta are only rewritten into these helpers in rewritten code
+export const enabled = (client: ScramjetClient) =>
+	!client.flagEnabled("realmExecution");
+
 export default function (client: ScramjetClient, self: Self) {
 	const boundimport = client.natives.call(
 		"Function",

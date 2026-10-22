@@ -3,7 +3,7 @@ import { ScramjetClient } from "@client/index";
 import { Reflect_apply } from "@/shared/snapshot";
 
 export const enabled = (client: ScramjetClient) =>
-	client.flagEnabled("captureErrors");
+	client.flagEnabled("captureErrors") && !client.flagEnabled("realmExecution");
 export function argdbg(arg, recurse = []) {
 	switch (typeof arg) {
 		case "string":

@@ -36,6 +36,8 @@ export const flagDescriptions: Record<keyof ScramjetFlags, string> = {
 	debugTrampolines: "Show proxied api in stack traces (debug feature)",
 	debugSourceURL:
 		"Make debugger recognize javascript source urls consistently (debug feature)",
+	realmExecution:
+		"run page scripts in an embedder realm instead of rewriting them (needs a realmScript provider)",
 };
 
 const FlagEditor: Component<

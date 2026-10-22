@@ -166,7 +166,7 @@ function doUnrewrite(
 }
 
 export const enabled = (client: ScramjetClient) =>
-	client.flagEnabled("sourcemaps");
+	client.flagEnabled("sourcemaps") && !client.flagEnabled("realmExecution");
 
 export default function (client: ScramjetClient, self: Self) {
 	// every script will push a sourcemap

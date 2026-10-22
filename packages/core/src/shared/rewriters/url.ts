@@ -1,6 +1,7 @@
 import type { ScramjetContext } from "@/shared";
 import type { UrlCodec } from "@/plugins/types";
-import { providers } from "@/shared/providers";
+import { JAVASCRIPT_URL_LABEL } from "@rewriters/realm";
+import { scriptTextRewriter } from "@rewriters/script-text";
 import { QP } from "@/fetch/qp";
 import { ScramjetDestination } from "@/types";
 
@@ -114,14 +115,14 @@ export function rewriteUrl(
 ) {
 	url = String(url);
 
-	const rewriteJs = providers().rewriteJs;
 	if (String_startsWith(url, "javascript:")) {
+		const rewriteJs = scriptTextRewriter(context, meta);
 		if (!rewriteJs) return url;
 		return (
 			"javascript:" +
 			rewriteJs(
 				url.slice("javascript:".length),
-				"(javascript: url)",
+				JAVASCRIPT_URL_LABEL,
 				context,
 				meta
 			)

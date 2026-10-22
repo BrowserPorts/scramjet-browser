@@ -108,6 +108,8 @@ export default function (client: ScramjetClient, self: Self) {
 			};
 		},
 	});
+	// Only rewritten code calls this helper
+	if (client.flagEnabled("realmExecution")) return;
 	Object_defineProperty(self, client.config.globals.wrappostmessagefn, {
 		value: function (obj: any) {
 			if (!obj || typeof obj.postMessage !== "function") return obj;

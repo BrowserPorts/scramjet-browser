@@ -2,6 +2,10 @@ import { rewriteJs } from "@rewriters/js";
 import { ScramjetClient } from "@client/index";
 import { Object_defineProperty, String } from "@/shared/snapshot";
 
+// Direct eval is only rewritten into a call to this helper in rewritten code
+export const enabled = (client: ScramjetClient) =>
+	!client.flagEnabled("realmExecution");
+
 export default function (client: ScramjetClient, self: Self) {
 	// used for proxying *direct eval*
 	// eval("...") -> eval($scramjet$rewrite("..."))

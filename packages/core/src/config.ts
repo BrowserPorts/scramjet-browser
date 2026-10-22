@@ -36,6 +36,7 @@ export const defaultConfig: ScramjetConfig = {
 		allowFailedIntercepts: false,
 		encapsulateWorkers: true,
 		debugSourceURL: false,
+		realmExecution: false,
 	},
 	siteFlags: {},
 	maskedfiles: [],

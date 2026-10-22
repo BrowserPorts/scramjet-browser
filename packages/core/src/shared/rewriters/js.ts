@@ -2,6 +2,8 @@ import { flagEnabled, ScramjetContext } from "@/shared";
 import { URLMeta } from "@rewriters/url";
 
 import { getRewriter, JsRewriterOutput } from "@rewriters/wasm";
+import { realmScriptFor } from "@rewriters/realm";
+import { providers } from "@/shared/providers";
 import { Tap } from "@/Tap";
 import { QP } from "@/fetch/qp";
 import {
@@ -117,6 +119,21 @@ export function rewriteJs(
 	isModule = false,
 	functionBody = false
 ): string | Uint8Array {
+	// In realm mode the page's script is not rewritten at all. The wasm rewriter,
+	// the sourcemap push and the code hooks below are skipped, so nothing parses
+	// or alters the page's source.
+	if (flagEnabled("realmExecution", context, meta.base)) {
+		return realmScriptFor(
+			providers().realmScript,
+			js,
+			url,
+			context,
+			meta,
+			isModule,
+			functionBody
+		);
+	}
+
 	let rewritten = false;
 	try {
 		const res = rewriteJsInner(js, url, context, meta, isModule);

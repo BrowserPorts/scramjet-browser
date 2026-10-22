@@ -28,6 +28,13 @@ export type ScramjetFlags = {
 	debugTrampolines: boolean;
 	debugSourceURL: boolean;
 	encapsulateWorkers: boolean;
+	/**
+	 * Run page scripts in an embedder-provided realm instead of rewriting them.
+	 * Script text is handed to the `realmScript` provider, the page-facing
+	 * `$scramjet*` helpers are not installed, and a missing provider is an error
+	 * rather than a fallback to rewriting.
+	 */
+	realmExecution: boolean;
 };
 
 export interface ScramjetConfig {
