@@ -2,7 +2,7 @@
 // in realm mode, listens for the stub event the way the guest-page plugin does, and answers each
 // stub by looking up the "@@run:name" scenario the page's script text names, then drives the frame's
 // DOM from the host world. Those calls reach the same hooked prototypes a guest's calls would.
-const TARGET = "http://127.0.0.1:8795";
+const TARGET = window.__target;
 const eventType = "evt-" + crypto.randomUUID();
 
 const transport = {
@@ -119,6 +119,28 @@ const scenarios = {
   ju_1(c) { c.sink.ran.push("ju_1"); }, ju_dyn(c) { c.sink.ran.push("ju_dyn"); }, ju_mod(c) { c.sink.ran.push("ju_mod"); },
   ju_form(c) { c.sink.ran.push("ju_form"); }, ju_cancelled(c) { c.sink.ran.push("ju_cancelled"); },
 
+  // frames the page makes: one that loads a page, one that is written into, one with srcdoc
+  frames({ win, doc, sink }) {
+    const child = doc.createElement("iframe"); child.src = "/child"; doc.body.appendChild(child);
+    const blank = doc.createElement("iframe"); doc.body.appendChild(blank);
+    const blankDoc = blank.contentDocument;
+    blankDoc.open();
+    blankDoc.write('<!doctype html><html><body><script>@@run:blank_inline</script><button id="bb" onclick="@@run:blank_handler">b</button></body></html>');
+    blankDoc.close();
+    blankDoc.getElementById("bb").click();
+    const srcdoc = doc.createElement("iframe");
+    srcdoc.srcdoc = '<!doctype html><html><body><script>@@run:srcdoc_inline</script></body></html>';
+    doc.body.appendChild(srcdoc);
+    // the child document that script created while it was blank
+    const later = doc.createElement("iframe"); doc.body.appendChild(later);
+    const w = later.contentWindow;
+    const s = w.document.createElement("script"); s.text = "@@run:blank_dynamic"; w.document.head.appendChild(s);
+    sink.frames = (sink.frames || 0) + 1;
+  },
+  child_inline(c) { c.sink.ran.push("child_inline"); }, blank_inline(c) { c.sink.ran.push("blank_inline"); },
+  blank_handler(c) { c.sink.ran.push("blank_handler"); }, srcdoc_inline(c) { c.sink.ran.push("srcdoc_inline"); },
+  blank_dynamic(c) { c.sink.ran.push("blank_dynamic"); },
+
   // a message from a frame to itself carries the page's origin, not the proxy's
   messages({ win, client }) {
     win.__messages = [];
@@ -181,8 +203,8 @@ const scenarios = {
       const s = doc.createElement("script"); s.src = u; head.appendChild(s);
     });
     tryit("dataScript", () => { const s = doc.createElement("script"); s.src = "data:text/javascript,window.__pwn_dataScript=1"; head.appendChild(s); });
-    tryit("foreignSrc", () => { const s = doc.createElement("script"); s.setAttribute("src", "http://127.0.0.1:8795/raw.js"); head.appendChild(s); });
-    tryit("nonProxiedSrcProp", () => { const s = doc.createElement("script"); s.src = "http://127.0.0.1:8795/raw2.js"; head.appendChild(s); });
+    tryit("foreignSrc", () => { const s = doc.createElement("script"); s.setAttribute("src", TARGET + "/raw.js"); head.appendChild(s); });
+    tryit("nonProxiedSrcProp", () => { const s = doc.createElement("script"); s.src = TARGET + "/raw2.js"; head.appendChild(s); });
     tryit("writeRaw", () => { doc.write("<scr" + "ipt>window.__pwn_writeRaw=1</scr" + "ipt>"); });
     tryit("setNonce", () => { const s = doc.createElement("script"); s.nonce = "guess"; s.setAttribute("nonce", "guess2"); s.text = "window.__pwn_setNonce=1"; head.appendChild(s); });
     tryit("swapAfterInsert", () => {

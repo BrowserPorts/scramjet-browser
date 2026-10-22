@@ -21,7 +21,7 @@ import {
 	type TrackedHistoryState,
 } from "@mercuryworkshop/scramjet";
 import { wasmNamespace } from "@mercuryworkshop/scramjet";
-import type { Config, InjectionSources } from ".";
+import type { Config, Frame, InjectionSources } from ".";
 import { CONTROLLERFRAME } from "./symbols";
 
 // Keep host plumbing private: guest hooks remove the public native accessor.
@@ -38,6 +38,37 @@ const rootServiceWorker = SCRAMJETCLIENT in globalThis
 			);
 
 const EventTarget_addEventListener = EventTarget.prototype.addEventListener;
+
+/**
+ * The controller frame whose iframe holds the document at `win`, found by the iframes
+ * themselves. A frame that booted its own copy of the runtime cannot see the clients of
+ * its ancestors, which belong to other copies, but the controller frame is a property
+ * of the iframe element the application created, and that element can be read from any
+ * window in the same origin. Realm mode needs it for every frame, since a frame with
+ * no controller frame has no realm to send its scripts to.
+ */
+function controllerFrameAbove(win: Window): Frame | undefined {
+	// This window has not been hooked yet, so its own accessor is the browser's
+	const read = Object.getOwnPropertyDescriptor(win, "frameElement")?.get;
+	if (typeof read !== "function") return undefined;
+	let current: Window = win;
+	for (let depth = 0; depth < 64; depth++) {
+		let parent: Window;
+		let element: unknown;
+		try {
+			parent = current.parent;
+			if (parent === current) return undefined;
+			element = Reflect.apply(read, current, []);
+		} catch {
+			// A parent in another origin has nothing to read
+			return undefined;
+		}
+		const handle = (element as Record<symbol, Frame | undefined> | null)?.[CONTROLLERFRAME];
+		if (handle) return handle;
+		current = parent;
+	}
+	return undefined;
+}
 
 /**
  * A page's copy of the controller's cookie jar, kept in step over the page's transport port. A
@@ -269,6 +300,9 @@ class ExecutionContextWrapper {
 					break;
 				}
 				currentwin = currentwin.parent.window;
+			}
+			if (!controllerFrame && this.init.sjconfig.flags.realmExecution) {
+				controllerFrame = controllerFrameAbove(this.global.window);
 			}
 		}
 		const context: ScramjetContext = {

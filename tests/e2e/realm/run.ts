@@ -24,6 +24,7 @@ const HOST = Number(process.env.E2E_HOST_PORT ?? 8794);
 const TARGET = Number(process.env.E2E_TARGET_PORT ?? 8795);
 
 const HOST_PAGE = `<!doctype html><html><head><meta charset=utf-8><title>host</title>
+<script>window.__target = "http://127.0.0.1:${TARGET}";</script>
 <script src="/scramjet/scramjet.js"></script><script src="/controller/controller.api.js"></script></head>
 <body><script type="module" src="/host.js"></script></body></html>`;
 
@@ -40,6 +41,8 @@ const PAGES: Record<string, string> = {
   handlers: page("handlers", `<script>@@run:handlers</script>`),
   jsurls: page("jsurls", `<a id="l1" href="javascript:@@run:ju_1">x</a><form id="f1" action="javascript:@@run:ju_form"><input type="submit"></form><script>@@run:jsurls</script>`),
   messages: page("messages", `<script>@@run:messages</script>`),
+  frames: page("frames", `<script>@@run:frames</script>`),
+  child: page("child", `<script>@@run:child_inline</script>`),
   reopen: page("reopen", `<script>@@run:reopen</script>`),
   writer: page("writer", `<script>@@run:writer</script>`),
   attacks: page("attacks", `<script>@@run:attacks</script>`),
@@ -58,7 +61,7 @@ const PAGES: Record<string, string> = {
     `<svg><script>window.__pwn_svgInline=1</script></svg>` +
     `<img src="x:1" onerror="window.__pwn_imgHandler=1">` +
     `<script src="data:text/javascript,window.__pwn_dataSrc=1"></script>` +
-    `<script src="//127.0.0.1:8795/raw.js"></script>` +
+    `<script src="//127.0.0.1:${TARGET}/raw.js"></script>` +
     `<script>@@run:markupdone</script>`),
 };
 
@@ -141,6 +144,8 @@ try {
 	// a profile that is still in use is the temp directory's to clean up
 }
 
+if (process.env.E2E_DUMP) console.log(JSON.stringify(report, null, 1));
+
 // ---- assertions
 let failed = 0, passed = 0;
 const check = (name: string, ok: boolean, detail?: unknown) => { if (ok) passed++; else { failed++; console.log("FAIL", name, detail === undefined ? "" : JSON.stringify(detail)); } };
@@ -190,9 +195,13 @@ if (runs.jsurls) {
   check("jsurls: a cancelled click does not run it", count(r, "ju_cancelled") === 0);
   check("jsurls: href reads back as written", r.extra.__hrefRead === "javascript:@@run:ju_dyn" && r.extra.__hrefAttr === "javascript:@@run:ju_dyn", [r.extra.__hrefRead, r.extra.__hrefAttr]);
 }
+if (runs.frames) {
+  const r = runs.frames;
+  for (const n of ["child_inline", "blank_inline", "blank_handler", "srcdoc_inline", "blank_dynamic"]) check(`frames: ${n} reached the realm`, count(r, n) === 1, [n, count(r, n), r.ran]);
+}
 if (runs.messages) {
   const m = runs.messages.extra.__messages;
-  check("messages: the page's origin and data arrive unwrapped", Array.isArray(m) && m.length === 2 && m[0].origin === "http://127.0.0.1:8795" && m[0].data === "hello" && m[1].data.n === 1, m);
+  check("messages: the page's origin and data arrive unwrapped", Array.isArray(m) && m.length === 2 && m[0].origin === `http://127.0.0.1:${TARGET}` && m[0].data === "hello" && m[1].data.n === 1, m);
 }
 if (runs.reopen) check("reopen: scripts and handlers still reach the realm after document.open", count(runs.reopen, "ro_written") === 1 && count(runs.reopen, "ro_handler") === 1, runs.reopen.ran);
 if (runs.writer) check("writer: document.write scripts reach the realm", count(runs.writer, "w_one") === 1 && count(runs.writer, "w_two") === 1 && count(runs.writer, "w_ext") === 1, runs.writer.ran);
