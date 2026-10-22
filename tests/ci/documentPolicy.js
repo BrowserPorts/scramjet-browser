@@ -58,13 +58,19 @@ test("the nonce is derived from the random bytes it is given", (t) => {
 test("the header admits the nonce and wasm, and nothing else", (t) => {
 	const made = policy.createDocumentPolicy(() => new Uint8Array(18));
 	const header = policy.documentPolicyHeader(made);
-	t.true(header.startsWith(`script-src 'nonce-${made.nonce}' 'wasm-unsafe-eval';`));
+	t.true(header.startsWith("script-src 'wasm-unsafe-eval'; "));
+	// script-src is what a refused eval names in its error, which the page can read, so the nonce is only in script-src-elem
+	t.true(header.includes(`script-src-elem 'nonce-${made.nonce}' 'wasm-unsafe-eval';`));
+	t.false(header.split(";")[0].includes(made.nonce));
 	t.regex(header, /script-src-attr 'none'/);
 	t.regex(header, /object-src 'none'/);
 	t.regex(header, /worker-src 'none'/);
 	t.notRegex(header, /'unsafe-inline'|'unsafe-eval'|'strict-dynamic'|\*/);
 	// wasm-unsafe-eval is the only unsafe keyword allowed, and eval itself stays refused
-	t.deepEqual([...header.matchAll(/'[a-z-]*unsafe-[a-z-]+'/g)].map((match) => match[0]), ["'wasm-unsafe-eval'"]);
+	t.deepEqual(
+		[...new Set([...header.matchAll(/'[a-z-]*unsafe-[a-z-]+'/g)].map((match) => match[0]))],
+		["'wasm-unsafe-eval'"],
+	);
 });
 
 test("the header requires trusted script and allows the one policy the document's client takes", (t) => {
@@ -74,7 +80,8 @@ test("the header requires trusted script and allows the one policy the document'
 	t.regex(header, /(^|; )require-trusted-types-for 'script'(;|$)/);
 	const name = policy.trustedTypesPolicyName(first.nonce);
 	// A policy name has a narrower alphabet than a nonce, and the page, which never learns the nonce, cannot name it
-	t.regex(name, /^tt-[A-Za-z0-9]+$/);
+	t.regex(name, /^tt-[0-9a-f]{32}$/);
+	t.false(first.nonce.includes(name.slice(3)));
 	t.not(name, policy.trustedTypesPolicyName(second.nonce));
 	t.true(header.endsWith(`trusted-types default ${name}`));
 	t.false(header.includes("allow-duplicates"));

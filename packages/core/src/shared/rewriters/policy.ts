@@ -113,12 +113,16 @@ export function createDocumentPolicy(
 }
 
 /**
- * The name of the one Trusted Types policy a document of this nonce may create. It is made
- * from the nonce, so the page, which never learns the nonce, cannot name it, and it is taken
- * by the client before any page code runs.
+ * The name of the one Trusted Types policy a document of this nonce may create. It is a hash
+ * of the nonce, so it does not give the nonce away to a page that learns it, which a refused
+ * policy's error message names. The client takes it before any page code runs.
  */
 export function trustedTypesPolicyName(nonce: string): string {
-	return `tt-${nonce.replace(/[^A-Za-z0-9]/gu, "")}`;
+	let name = "tt-";
+	for (const byte of sha256(new TextEncoder().encode(`trusted-types:${nonce}`)).slice(0, 16)) {
+		name += byte.toString(16).padStart(2, "0");
+	}
+	return name;
 }
 
 /** The header for a document the rewriter handled */
@@ -132,7 +136,10 @@ export function documentPolicyHeader(policy: DocumentPolicy): string {
 	// changed any other way, which no list of DOM paths the client hooks could promise. Only
 	// the client makes a trusted script. The default policy lets every other sink take its
 	// string, since only script is required to be trusted
-	return `script-src 'nonce-${policy.nonce}' 'wasm-unsafe-eval'; script-src-attr ${attributes}; object-src 'none'; worker-src 'none'; require-trusted-types-for 'script'; trusted-types default ${trustedTypesPolicyName(policy.nonce)}`;
+	//
+	// The nonce is in script-src-elem and not in script-src. A refused eval or Function names
+	// script-src in the error it throws, and the page can read the message
+	return `script-src 'wasm-unsafe-eval'; script-src-elem 'nonce-${policy.nonce}' 'wasm-unsafe-eval'; script-src-attr ${attributes}; object-src 'none'; worker-src 'none'; require-trusted-types-for 'script'; trusted-types default ${trustedTypesPolicyName(policy.nonce)}`;
 }
 
 /** Destinations that can hold a document, and so script, of their own */
