@@ -24,6 +24,7 @@ import {
 	readRealmStubSource,
 	REALM_NO_LISTENER_MESSAGE,
 	decodeJavascriptUrlBody,
+	unstubText,
 } from "@rewriters/realm";
 import { isJavascriptUrl, parserReadableUrl } from "@rewriters/javascript-url";
 import { scriptBlockTypeForElement } from "@client/helpers";
@@ -63,6 +64,14 @@ export class RealmSupport {
 	/** The page's own source out of one of this frame's stubs, or null for any other text */
 	sourceOf(text: string): string | null {
 		return readRealmStubSource(text, this.eventType);
+	}
+
+	/**
+	 * A text read from the document with the page's own source in place of each stub it holds. A
+	 * stub names the event type, and the page must not learn it from any text it reads.
+	 */
+	unstub(text: string): string {
+		return unstubText(text, this.eventType);
 	}
 
 	/** The one text every event handler attribute carries */

@@ -208,3 +208,41 @@ test("the body of a javascript: url is decoded the way a browser decodes it", (t
 	t.is(realm.decodeJavascriptUrlBody("a\tb\nc"), "abc");
 	t.is(realm.decodeJavascriptUrlBody("%EF%BB%BFx"), "﻿x", "a BOM is kept");
 });
+
+test("text that only starts and ends like a stub is not one", (t) => {
+	const a = realm.createRealmStub({ eventType: EVENT, kind: "classic", source: "a()", url: null });
+	const b = realm.createRealmStub({ eventType: EVENT, kind: "classic", source: "b()", url: null });
+	// raw text between two real stubs, which a check of the two ends would let through
+	t.false(realm.isRealmStub(`${a}window.__pwn=1;${b}`, EVENT));
+	t.false(realm.isRealmStub(`${a}${b}`, EVENT));
+	t.false(realm.isRealmStub(`${a}window.__pwn=1;`, EVENT));
+	t.false(realm.isRealmStub(`window.__pwn=1;${a}`, EVENT));
+	t.is(realm.readRealmStubSource(`${a}window.__pwn=1;${b}`, EVENT), null);
+	const m = realm.createRealmStub({ eventType: EVENT, kind: "module", source: "export {}", url: null });
+	t.false(realm.isRealmStub(`${m}window.__pwn=1;${m}`, EVENT));
+	t.false(realm.isRealmStub(`${a}${m}`, EVENT));
+});
+
+test("a stub with a non-canonical string or a stray part is not one", (t) => {
+	const stub = realm.createRealmStub({ eventType: EVENT, kind: "classic", source: "A", url: null });
+	t.true(realm.isRealmStub(stub, EVENT));
+	// the same data spelled another way is page-made text, not what the rewriter wrote
+	t.false(realm.isRealmStub(stub.replace('"A"', '"\\u0041"'), EVENT));
+	t.false(realm.isRealmStub(stub.replace(",u:null,", ",u:null,x:1,"), EVENT));
+	t.false(realm.isRealmStub(stub.replace('s:"A"', 's:"A" '), EVENT));
+	t.false(realm.isRealmStub(stub.replace("{const d=", "{var d="), EVENT));
+	t.false(realm.isRealmStub(stub.replace(",u:null", ",u:undefined"), EVENT));
+	t.false(realm.isRealmStub(stub.replace(",u:null", ",u:1"), EVENT));
+	t.false(realm.isRealmStub(stub.replace(',s:"A"', ",s:1"), EVENT));
+});
+
+test("every adversarial source and address round trips through the strict reader", (t) => {
+	for (const source of ADVERSARIAL) {
+		for (const url of [null, "https://a.test/x.js", 'https://a.test/"quoted"?\u2028']) {
+			for (const kind of ["classic", "module"]) {
+				const stub = realm.createRealmStub({ eventType: EVENT, kind, source, url });
+				t.deepEqual(realm.parseRealmStub(stub, EVENT), { kind, source, url });
+			}
+		}
+	}
+});

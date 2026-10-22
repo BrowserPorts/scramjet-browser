@@ -207,6 +207,10 @@ if (runs.reopen) check("reopen: scripts and handlers still reach the realm after
 if (runs.writer) check("writer: document.write scripts reach the realm", count(runs.writer, "w_one") === 1 && count(runs.writer, "w_two") === 1 && count(runs.writer, "w_ext") === 1, runs.writer.ran);
 if (runs.attacks) {
   const r = runs.attacks;
+  check("attacks: raw text between two real stubs does not run natively or as one stub", count(r, "atk_between_a") === 0 && count(r, "atk_between_b") === 0, r.ran);
+  const leaks = r.extra.__leaks;
+  check("attacks: no text the page reads shows the event type", leaks && !JSON.stringify(leaks).includes(report.eventType) && !JSON.stringify(leaks).includes("CustomEvent"), leaks);
+  check("attacks: the page reads its own source back through every text api", leaks && leaks.own === "hello" && leaks.own2 === "hello" && leaks.substring === "hello" && leaks.cloneData === "hello" && leaks.divText === "inside" && leaks.rangeText === "hello", leaks);
   check("attacks: a stub that ran before its text was swapped ran as the stub", count(r, "atk_swap_stub") === 1 && count(r, "atk_reinsert_stub") === 1, r.ran);
   console.log("attack errors:", JSON.stringify(r.extra.__attackErr));
   console.log("attack violations:", r.violations.length);

@@ -1,6 +1,7 @@
 import { internalAttribute, internalAttributePrefix, injectedAttribute } from "@/runtime-identity";
 import { htmlRules } from "@/shared/htmlRules";
 import {
+	Number,
 	String,
 	TextEncoder_encode,
 	Object_keys,
@@ -600,12 +601,14 @@ export default function (client: ScramjetClient, self: typeof window) {
 				internalAttribute("script-source-src")
 			);
 			if (scriptSource) return atob(scriptSource);
-			return text;
+			return client.realm ? client.realm.unstub(text) : text;
 		}
 		if (client.box.instanceof(element, "HTMLStyleElement")) {
 			return unrewriteCss(text, client.context);
 		}
-		return text;
+		// Text read from anything that holds a script's text, or from a text node on its
+		// own, must not carry a stub, which names the event type
+		return client.realm ? client.realm.unstub(text) : text;
 	};
 	const rewritesInsertedText = (element: Node) =>
 		client.box.instanceof(element, "HTMLStyleElement") ||
@@ -677,7 +680,11 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (parent && rewritesInsertedText(parent)) {
 				return getTextForElement(parent, ctx.get());
 			}
-			return ctx.get();
+			// A text node that left its script, such as a clone, still holds the stub
+			const text = ctx.get();
+			return client.realm && typeof text === "string"
+				? client.realm.unstub(text)
+				: text;
 		},
 		set(ctx, value) {
 			const parent = client.box.instanceof(ctx.this, "Text")
@@ -885,6 +892,40 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (ctx.args[0]) ctx.args[0] = client.rewriteUrl(ctx.args[0]);
 		},
 	});
+	if (client.realm) {
+		const realm = client.realm;
+		// Slices of text are read from the same masked text the page reads whole
+		client.Proxy("CharacterData.prototype.substringData", {
+			apply(ctx) {
+				const data = client.descriptors.get(
+					"CharacterData.prototype.data",
+					ctx.this
+				) as string;
+				const masked = realm.unstub(data);
+				if (masked === data) return;
+				const offset = Number(ctx.args[0]) >>> 0;
+				const count = Number(ctx.args[1]) >>> 0;
+				if (offset > masked.length) {
+					throw client.natives.construct(
+						"DOMException",
+						"The offset is greater than the node's length",
+						"IndexSizeError"
+					);
+				}
+				ctx.return(masked.substring(offset, offset + count));
+			},
+		});
+		client.Proxy(
+			["Range.prototype.toString", "Selection.prototype.toString"],
+			{
+				apply(ctx) {
+					const text = ctx.call();
+					ctx.return(typeof text === "string" ? realm.unstub(text) : text);
+				},
+			}
+		);
+	}
+
 	client.Proxy("Text.prototype.appendData", {
 		apply(ctx) {
 			const text = String(ctx.args[0]);

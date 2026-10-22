@@ -207,6 +207,23 @@ const scenarios = {
     tryit("nonProxiedSrcProp", () => { const s = doc.createElement("script"); s.src = TARGET + "/raw2.js"; head.appendChild(s); });
     tryit("writeRaw", () => { doc.write("<scr" + "ipt>window.__pwn_writeRaw=1</scr" + "ipt>"); });
     tryit("setNonce", () => { const s = doc.createElement("script"); s.nonce = "guess"; s.setAttribute("nonce", "guess2"); s.text = "window.__pwn_setNonce=1"; head.appendChild(s); });
+    tryit("between", () => {
+      // two real stubs with raw text between them must not pass for one stub
+      const s = doc.createElement("script"); s.text = "@@run:atk_between_a";
+      s.appendChild(doc.createTextNode("@@run:atk_between_b"));
+      s.firstChild.after(doc.createTextNode("window.__pwn_between=1;"));
+      head.appendChild(s);
+    });
+    tryit("leaks", () => {
+      const s = doc.createElement("script"); s.text = "hello"; head.appendChild(s);
+      const t = s.firstChild;
+      const holder = doc.createElement("div"); holder.append(doc.createElement("script")); holder.firstChild.text = "inside";
+      const range = doc.createRange(); range.selectNodeContents(s);
+      win.__leaks = {
+        substring: t.substringData(0, 400), cloneData: t.cloneNode().data, cloneNodeValue: t.cloneNode().nodeValue,
+        divText: holder.textContent, rangeText: range.toString(), wholeText: t.wholeText, own: s.text, own2: s.textContent,
+      };
+    });
     tryit("swapAfterInsert", () => {
       const s = doc.createElement("script"); s.text = "@@run:atk_swap_stub"; const t = s.firstChild; head.appendChild(s);
       t.data = "window.__pwn_swapAfterInsert=1";
@@ -216,6 +233,7 @@ const scenarios = {
       s.firstChild.data = "window.__pwn_reinsertSwap=1"; head.appendChild(s);
     });
   },
+  atk_between_a(c) { c.sink.ran.push("atk_between_a"); }, atk_between_b(c) { c.sink.ran.push("atk_between_b"); },
   atk_swap_stub(c) { c.sink.ran.push("atk_swap_stub"); }, atk_reinsert_stub(c) { c.sink.ran.push("atk_reinsert_stub"); },
 };
 
@@ -288,7 +306,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }

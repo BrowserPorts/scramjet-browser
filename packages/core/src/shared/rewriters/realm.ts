@@ -101,39 +101,124 @@ export function createRealmStub(options: {
 	return `${CLASSIC_START}"classic",${data},e:document.currentScript};${dispatch(eventType, "document")}}`;
 }
 
-/**
- * Whether script text is one of this frame's stubs and holds no page code of
- * its own. A stub ends in its dispatch, which names the frame's event type, so
- * text written by the page cannot pass for one: it would have to know the type.
- * The data in the middle is always a pair of JSON strings that cannot break out
- * of themselves.
- */
-export function isRealmStub(text: string, eventType: string): boolean {
-	if (text === createRealmHandlerStub(eventType)) return true;
-	if (text.startsWith(CLASSIC_START)) {
-		return text.endsWith(`,e:document.currentScript};${dispatch(eventType, "document")}}`);
-	}
-	if (!text.startsWith(STUB_START)) return false;
-	return text.endsWith(`,e:null,p:void 0};${dispatch(eventType, "document")}await d.p;`);
+/** Where a JSON string that starts at `index` ends, one past its closing quote, or -1 */
+function stringEnd(text: string, index: number): number {
+	if (text[index] !== "\"") return -1;
+	let end = index + 1;
+	while (end < text.length && text[end] !== "\"") end += text[end] === "\\" ? 2 : 1;
+	return end < text.length ? end + 1 : -1;
 }
 
-/**
- * The page's own source out of one of this frame's stubs, or null for any other
- * text. A page that reads the text of its own script element expects its
- * source, and the stub, which names the frame's event type, is not for it.
- */
-export function readRealmStubSource(text: string, eventType: string): string | null {
-	if (!isRealmStub(text, eventType)) return null;
-	const marker = text.indexOf(",s:");
-	if (marker === -1 || text[marker + 3] !== "\"") return null;
-	let end = marker + 4;
-	while (end < text.length && text[end] !== "\"") end += text[end] === "\\" ? 2 : 1;
+function jsonString(token: string): string | null {
 	try {
-		const source: unknown = JSON.parse(text.slice(marker + 3, end + 1));
-		return typeof source === "string" ? source : null;
+		const value: unknown = JSON.parse(token);
+		return typeof value === "string" ? value : null;
 	} catch {
 		return null;
 	}
+}
+
+/** What a classic or module stub carries, read out of its text */
+export interface ParsedRealmStub {
+	kind: "classic" | "module";
+	source: string;
+	url: string | null;
+}
+
+/** Where one stub begins in a text, read as far as it goes */
+interface StubAt extends ParsedRealmStub {
+	/** One past the stub's last character */
+	end: number;
+}
+
+/**
+ * Reads a classic or module stub that begins at `start`, or answers null when what begins there
+ * is not exactly one. The two JSON strings are read, a stub is built again from them, and the text
+ * has to be that stub character for character. A prefix and a suffix are not enough: text a page
+ * puts between two stubs, or around one, would pass a check on the ends and run in this
+ * document's own realm.
+ */
+function stubAt(text: string, start: number, eventType: string): StubAt | null {
+	let kind: "classic" | "module";
+	let offset: number;
+	if (text.startsWith(CLASSIC_START, start)) {
+		kind = "classic";
+		offset = start + `${CLASSIC_START}"classic",s:`.length;
+	} else if (text.startsWith(`${STUB_START}"module"`, start)) {
+		kind = "module";
+		offset = start + `${STUB_START}"module",s:`.length;
+	} else {
+		return null;
+	}
+	const sourceEnd = stringEnd(text, offset);
+	if (sourceEnd === -1) return null;
+	const source = jsonString(text.slice(offset, sourceEnd));
+	if (source === null || !text.startsWith(",u:", sourceEnd)) return null;
+	const urlStart = sourceEnd + ",u:".length;
+	let url: string | null;
+	if (text.startsWith("null", urlStart)) {
+		url = null;
+	} else {
+		const urlEnd = stringEnd(text, urlStart);
+		if (urlEnd === -1) return null;
+		url = jsonString(text.slice(urlStart, urlEnd));
+		if (url === null) return null;
+	}
+	const rebuilt = createRealmStub({ eventType, kind, source, url });
+	return text.startsWith(rebuilt, start) ? { kind, source, url, end: start + rebuilt.length } : null;
+}
+
+/** The page's source and address out of a text that is exactly one classic or module stub of this frame, or null */
+export function parseRealmStub(text: string, eventType: string): ParsedRealmStub | null {
+	const found = stubAt(text, 0, eventType);
+	if (found === null || found.end !== text.length) return null;
+	return { kind: found.kind, source: found.source, url: found.url };
+}
+
+/**
+ * A text with the page's own source in place of each of this frame's stubs it holds. Reading
+ * what a script element's text nodes hold, through any API, is a way to learn the stub's event
+ * type, so a read of text the page did not write gives it back what it did.
+ */
+export function unstubText(text: string, eventType: string): string {
+	// Every stub names the event type, so text without it holds none
+	if (!text.includes(eventType)) return text;
+	let result = "";
+	let cursor = 0;
+	for (;;) {
+		const classic = text.indexOf(CLASSIC_START, cursor);
+		const module = text.indexOf(STUB_START, cursor);
+		const candidates = [classic, module].filter((position) => position !== -1);
+		if (candidates.length === 0) break;
+		const start = Math.min(...candidates);
+		const found = stubAt(text, start, eventType);
+		if (found === null) {
+			result += text.slice(cursor, start + 1);
+			cursor = start + 1;
+			continue;
+		}
+		result += text.slice(cursor, start) + found.source;
+		cursor = found.end;
+	}
+	return result + text.slice(cursor);
+}
+
+/**
+ * Whether script text is exactly one of this frame's stubs and holds no page code of
+ * its own. Text written by the page cannot pass for one without knowing the frame's
+ * event type, and text that merely starts and ends like one is not one.
+ */
+export function isRealmStub(text: string, eventType: string): boolean {
+	return text === createRealmHandlerStub(eventType) || parseRealmStub(text, eventType) !== null;
+}
+
+/**
+ * The page's own source out of one of this frame's stubs, or null for any other text. A page
+ * that reads the text of its own script element expects its source, and the stub, which names
+ * the frame's event type, is not for it.
+ */
+export function readRealmStubSource(text: string, eventType: string): string | null {
+	return parseRealmStub(text, eventType)?.source ?? null;
 }
 
 /**
