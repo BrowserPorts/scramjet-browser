@@ -306,6 +306,18 @@ export class RealmSupport {
 		];
 	}
 
+	/**
+	 * Posts a message made by `wrapWindowMessage` to a window. The browser takes the realm that
+	 * made the call as the sender, so the call is made from here, in this frame, and the
+	 * receiving page is told its source is this frame's window and not the embedder's.
+	 */
+	postWindowMessage(target: Window, wrapped: readonly unknown[]): undefined {
+		const post = this.client.natives.store["window.postMessage"];
+		if (typeof post !== "function") throw new Error("The frame has no native postMessage");
+		Reflect_apply(post, target, wrapped);
+		return undefined;
+	}
+
 	private newEvent(detail: RealmScriptDetail): Event {
 		return this.client.natives.construct("CustomEvent", this.eventType, {
 			cancelable: true,

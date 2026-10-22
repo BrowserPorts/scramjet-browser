@@ -245,6 +245,7 @@ if (runs.uriframes) {
 if (runs.messages) {
   const m = runs.messages.extra.__messages;
   check("messages: the page's origin and data arrive unwrapped", Array.isArray(m) && m.length === 2 && m[0].origin === `http://127.0.0.1:${TARGET}` && m[0].data === "hello" && m[1].data.n === 1, m);
+  check("messages: a message posted from the frame names the frame as its source", Array.isArray(m) && m[0]?.ownSource === true, m);
 }
 if (runs.reopen) check("reopen: scripts and handlers still reach the realm after document.open", count(runs.reopen, "ro_written") === 1 && count(runs.reopen, "ro_handler") === 1, runs.reopen.ran);
 if (runs.writer) check("writer: document.write scripts reach the realm", count(runs.writer, "w_one") === 1 && count(runs.writer, "w_two") === 1 && count(runs.writer, "w_ext") === 1, runs.writer.ran);

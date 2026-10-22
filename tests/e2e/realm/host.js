@@ -163,7 +163,8 @@ const scenarios = {
   messages({ win, client }) {
     win.__messages = [];
     win.addEventListener("message", (e) => { win.__messages.push({ origin: e.origin, data: e.data, ownSource: e.source === win }); });
-    win.postMessage(...client.realm.wrapWindowMessage(["hello", "https://elsewhere.test"]));
+    // The first is posted from the frame, so the frame's own window is its source
+    client.realm.postWindowMessage(win, client.realm.wrapWindowMessage(["hello", "https://elsewhere.test"]));
     win.postMessage(...client.realm.wrapWindowMessage([{ n: 1 }, { targetOrigin: "https://elsewhere.test" }]));
   },
 
