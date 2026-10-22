@@ -39,6 +39,7 @@ const PAGES: Record<string, string> = {
   dynscripts: page("dyn", `<script>@@run:dynscripts</script>`),
   handlers: page("handlers", `<script>@@run:handlers</script>`),
   jsurls: page("jsurls", `<a id="l1" href="javascript:@@run:ju_1">x</a><form id="f1" action="javascript:@@run:ju_form"><input type="submit"></form><script>@@run:jsurls</script>`),
+  messages: page("messages", `<script>@@run:messages</script>`),
   reopen: page("reopen", `<script>@@run:reopen</script>`),
   writer: page("writer", `<script>@@run:writer</script>`),
   attacks: page("attacks", `<script>@@run:attacks</script>`),
@@ -188,6 +189,10 @@ if (runs.jsurls) {
   check("jsurls: modified click does not run it", count(r, "ju_mod") === 0);
   check("jsurls: a cancelled click does not run it", count(r, "ju_cancelled") === 0);
   check("jsurls: href reads back as written", r.extra.__hrefRead === "javascript:@@run:ju_dyn" && r.extra.__hrefAttr === "javascript:@@run:ju_dyn", [r.extra.__hrefRead, r.extra.__hrefAttr]);
+}
+if (runs.messages) {
+  const m = runs.messages.extra.__messages;
+  check("messages: the page's origin and data arrive unwrapped", Array.isArray(m) && m.length === 2 && m[0].origin === "http://127.0.0.1:8795" && m[0].data === "hello" && m[1].data.n === 1, m);
 }
 if (runs.reopen) check("reopen: scripts and handlers still reach the realm after document.open", count(runs.reopen, "ro_written") === 1 && count(runs.reopen, "ro_handler") === 1, runs.reopen.ran);
 if (runs.writer) check("writer: document.write scripts reach the realm", count(runs.writer, "w_one") === 1 && count(runs.writer, "w_two") === 1 && count(runs.writer, "w_ext") === 1, runs.writer.ran);

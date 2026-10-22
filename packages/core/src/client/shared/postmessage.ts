@@ -5,7 +5,9 @@ import { Object_defineProperty } from "@/shared/snapshot";
 import { POLLUTANT } from "./realm";
 
 export default function (client: ScramjetClient, self: Self) {
-	if (iswindow)
+	// A realm knows which frame is calling, so it wraps the message itself, and the trick
+	// below that finds the caller through a function from its realm is not needed
+	if (iswindow && !client.flagEnabled("realmExecution"))
 		client.Proxy("window.postMessage", {
 			apply(ctx) {
 				// so we need to send the real origin here, since the recieving window can't possibly know.

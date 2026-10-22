@@ -2,6 +2,7 @@ import {
 	internalAttribute,
 	internalAttributePrefix,
 	logicalAttribute,
+	messageFields,
 } from "@/runtime-identity";
 import { isModuleScriptType, isScriptType } from "@/shared/mime";
 import {
@@ -258,6 +259,42 @@ export class RealmSupport {
 		} finally {
 			this.setNonce(script, "");
 		}
+	}
+
+	/** The origin a message from this frame carries: its own, or the parent's for a blank or srcdoc frame */
+	private messageOrigin(): string {
+		const href = this.client.url.href;
+		if (href === "about:srcdoc" || href === "about:blank") {
+			const parent = this.client.box.globals.get(
+				this.client.global.parent as Self
+			);
+			if (parent) return parent.url.origin;
+		}
+		return this.client.url.origin;
+	}
+
+	/**
+	 * The arguments of a `postMessage` from this frame, ready for the browser. The page
+	 * on the other end has no way to know the real origin of a proxied one, so the
+	 * message carries it, and the browser is told to deliver to any origin because the
+	 * target's own address is the proxy's.
+	 */
+	wrapWindowMessage(args: readonly unknown[]): unknown[] {
+		const rest = args.slice(1);
+		const [options] = rest;
+		if (typeof options === "string") {
+			rest[0] = "*";
+		} else if (typeof options === "object" && options !== null) {
+			rest[0] = { ...options, targetOrigin: "*" };
+		}
+		return [
+			{
+				[messageFields.type]: "window",
+				[messageFields.origin]: this.messageOrigin(),
+				[messageFields.data]: args[0],
+			},
+			...rest,
+		];
 	}
 
 	private newEvent(detail: RealmScriptDetail): Event {

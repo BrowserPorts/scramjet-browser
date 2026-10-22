@@ -119,6 +119,14 @@ const scenarios = {
   ju_1(c) { c.sink.ran.push("ju_1"); }, ju_dyn(c) { c.sink.ran.push("ju_dyn"); }, ju_mod(c) { c.sink.ran.push("ju_mod"); },
   ju_form(c) { c.sink.ran.push("ju_form"); }, ju_cancelled(c) { c.sink.ran.push("ju_cancelled"); },
 
+  // a message from a frame to itself carries the page's origin, not the proxy's
+  messages({ win, client }) {
+    win.__messages = [];
+    win.addEventListener("message", (e) => { win.__messages.push({ origin: e.origin, data: e.data, ownSource: e.source === win }); });
+    win.postMessage(...client.realm.wrapWindowMessage(["hello", "https://elsewhere.test"]));
+    win.postMessage(...client.realm.wrapWindowMessage([{ n: 1 }, { targetOrigin: "https://elsewhere.test" }]));
+  },
+
   // document.open erases listeners
   reopen({ win, doc }) {
     doc.open();
@@ -258,7 +266,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }
