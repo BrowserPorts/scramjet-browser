@@ -537,6 +537,11 @@ export class RealmSupport {
 	 * Runs the code of a `javascript:` URL as a navigation to it does, in a task of its own
 	 * rather than inside the call that asked for it.
 	 */
+	/** Sets the fragment of the page's address without leaving the document */
+	setHash(value: string): void {
+		this.client.setHash(value);
+	}
+
 	navigateToJavascriptUrl(url: string): void {
 		this.later(() => this.runJavascriptUrl(url));
 	}

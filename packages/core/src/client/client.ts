@@ -682,6 +682,29 @@ export class ScramjetClient {
 		});
 	}
 
+	/**
+	 * Sets the fragment of the address the page believes it has. A fragment navigation stays in the document and
+	 * fires `hashchange`, so only the fragment of the address the frame really has is changed, and the browser
+	 * does the rest, as it does for a page that is not proxied.
+	 */
+	setHash(value: string): void {
+		const next = new _URL(this.url.href);
+		next.hash = value;
+		const real = new _URL(
+			this.rewriteUrl(next.href, { navigateType: "location" })
+		);
+		this.global.location.hash = real.hash;
+		Tap.dispatch(
+			this.hooks.lifecycle.navigate,
+			{
+				type: "hashchange",
+			},
+			{
+				url: this.url.href,
+			}
+		);
+	}
+
 	// below are the utilities for proxying and trapping dom APIs
 	// you don't have to understand this it just makes the rest easier
 	// i'll document it eventually
