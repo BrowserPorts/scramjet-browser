@@ -12,7 +12,12 @@ import {
 } from ".";
 import { rewriteUrl, unrewriteBlob, unrewriteUrl } from "@rewriters/url";
 import { QP, parseRequest } from "./parse";
-import { ScramjetHeaders } from "@/shared";
+import { flagEnabled, ScramjetHeaders } from "@/shared";
+import {
+	createDocumentPolicy,
+	type DocumentPolicy,
+	policyHeaderFor,
+} from "@rewriters/policy";
 import { isDocument, isRedirect, normalizeContentType } from "./util";
 import { rewriteBody } from "./body";
 import { Tap } from "@/Tap";
@@ -23,6 +28,34 @@ import {
 	worstFetchSite,
 } from "./headers";
 import { Error, _URL } from "@/shared/snapshot";
+
+/**
+ * In realm mode each document response gets a content security policy of its
+ * own, and the nonce in it goes on the scripts the rewritten markup keeps. The
+ * browser then refuses any script the rewriter did not account for, whatever it
+ * misread.
+ */
+function realmDocumentPolicy(
+	handler: ScramjetFetchHandler,
+	parsed: ScramjetFetchParsed
+): DocumentPolicy | undefined {
+	if (!flagEnabled("realmExecution", handler.context, parsed.meta.base)) {
+		return undefined;
+	}
+	return isDocument(parsed) ? createDocumentPolicy() : undefined;
+}
+
+/** Sets the realm mode policy on a response that can hold script, replacing the page's own */
+function applyDocumentPolicy(
+	handler: ScramjetFetchHandler,
+	parsed: ScramjetFetchParsed,
+	headers: ScramjetHeaders,
+	policy: DocumentPolicy | undefined
+) {
+	if (!flagEnabled("realmExecution", handler.context, parsed.meta.base)) return;
+	const header = policyHeaderFor(parsed.destination, policy);
+	if (header !== null) headers.set("Content-Security-Policy", header);
+}
 
 export async function doHandleFetch(
 	handler: ScramjetFetchHandler,
@@ -179,14 +212,22 @@ async function handleParsedFetch(
 		responseHeaders.set("location", location.href);
 	}
 
+	const documentPolicy = realmDocumentPolicy(handler, parsed);
 	if (response.body && !isRedirect(response)) {
-		responseBody = await rewriteBody(handler, request, parsed, response);
+		responseBody = await rewriteBody(
+			handler,
+			request,
+			parsed,
+			response,
+			documentPolicy
+		);
 
 		// After rewriting HTML, the body is a JS string which will be encoded as
 		// UTF-8 by the Response constructor. Normalize the Content-Type charset so
 		// the browser doesn't try to decode UTF-8 bytes with the original encoding.
 		normalizeContentType(parsed, responseHeaders);
 	}
+	applyDocumentPolicy(handler, parsed, responseHeaders, documentPolicy);
 
 	const respcontext: typeof handler.hooks.fetch.response.context = {
 		request,
@@ -376,18 +417,21 @@ async function handleBlobOrDataUrlFetch(
 	}
 
 	let body: BodyType;
+	const documentPolicy = realmDocumentPolicy(handler, parsed);
 	if (response.body) {
 		body = await rewriteBody(
 			handler,
 			request,
 			parsed,
-			response as BareResponse
+			response as BareResponse,
+			documentPolicy
 		);
 	}
 	const headers = ScramjetHeaders.fromRawHeaders(response.rawHeaders);
 
 	// blob urls actually *can* set charsets, so we need to normalize them if it goes down the html path
 	normalizeContentType(parsed, headers);
+	applyDocumentPolicy(handler, parsed, headers, documentPolicy);
 
 	if (handler.crossOriginIsolated) {
 		headers.set("Cross-Origin-Opener-Policy", "same-origin");

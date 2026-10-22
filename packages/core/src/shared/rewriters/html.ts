@@ -6,6 +6,7 @@ import {
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
 import { rewriteInjectedJs } from "@rewriters/injected";
+import { type DocumentPolicy, handlerHash } from "@rewriters/policy";
 import { scriptTextRewriter } from "@rewriters/script-text";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
@@ -32,6 +33,7 @@ import {
 	Object_entries,
 	Object_setPrototypeOf,
 	Performance_now,
+	String,
 	String_fromCodePoint,
 	TextEncoder_encode,
 } from "@/shared/snapshot";
@@ -92,6 +94,13 @@ export type HtmlContext = {
 	parentFrameName?: string;
 	foreignContext?: ForeignContext;
 	history?: TrackedHistoryState[];
+	/**
+	 * The content security policy this response gets in realm mode. The scripts
+	 * the rewriter stubs or injects carry its nonce, and it lists the hashes of
+	 * the event handler stubs, so the browser refuses any script the rewriter
+	 * did not account for.
+	 */
+	policy?: DocumentPolicy;
 };
 
 const renderOptions = {
@@ -123,6 +132,7 @@ export class IncrementalHtmlRewriter {
 		private readonly meta: URLMeta,
 		private readonly htmlcontext: HtmlContext
 	) {
+		if (htmlcontext.policy) htmlcontext.policy.rewritten = true;
 		this.handler = new DomHandler(undefined, undefined, (element) => {
 			this.completedElements.add(element);
 		});
@@ -208,6 +218,7 @@ function rewriteHtmlInner(
 	if (typeof html !== "string") {
 		html = serializeHtmlNode(html);
 	}
+	if (htmlcontext.policy) htmlcontext.policy.rewritten = true;
 
 	const handler = new DomHandler((err, dom) => dom);
 	/*
@@ -338,7 +349,11 @@ function rewriteHtmlInner(
 
 	if (htmlcontext.loadScripts) {
 		const script = (src: string) =>
-			new Element("script", { src, [injectedAttribute]: "true" });
+			new Element("script", {
+				src,
+				[injectedAttribute]: "true",
+				...(htmlcontext.policy ? { nonce: htmlcontext.policy.nonce } : {}),
+			});
 		const injectScripts = context.interface.getInjectScripts(
 			meta,
 			handler,
@@ -563,7 +578,7 @@ function traverseParsedHtml(
 			if (rewriteJs && (providers().isEventHandlerAttribute?.(attr) ?? eventAttributes.includes(attr))) {
 				if (htmlcontext.originalAttributes !== false)
 					node.attribs[internalAttribute(attr)] = value;
-				node.attribs[attr] = rewriteJs(
+				const stub = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
@@ -571,6 +586,9 @@ function traverseParsedHtml(
 					false,
 					true
 				);
+				node.attribs[attr] = stub as string;
+				// The browser admits an event handler attribute only by the hash of its text
+				htmlcontext.policy?.handlerHashes.add(handlerHash(String(stub)));
 			}
 		}
 	}
@@ -597,6 +615,8 @@ function traverseParsedHtml(
 			}
 
 			node.children[0].data = JSON_stringify(map);
+			// An import map is script as far as the browser's policy goes
+			if (htmlcontext.policy) node.attribs.nonce = htmlcontext.policy.nonce;
 		} catch (e) {
 			dbg.error("Failed to parse importmap JSON:", e);
 		}
@@ -633,7 +653,28 @@ function traverseParsedHtml(
 				meta,
 				module
 			);
+			// Only a script this function accounted for carries the nonce, so one it
+			// misread is refused by the browser
+			if (htmlcontext.policy) node.attribs.nonce = htmlcontext.policy.nonce;
 		}
+	}
+
+	if (
+		htmlcontext.policy &&
+		node.name === "script" &&
+		node.attribs &&
+		node.attribs.src !== undefined &&
+		isScriptType(
+			getScriptBlockTypeString(
+				"type" in node.attribs ? node.attribs.type : undefined,
+				"language" in node.attribs ? node.attribs.language : undefined,
+				"type" in node.attribs,
+				"language" in node.attribs
+			)
+		)
+	) {
+		// The response for this src is a stub, so the script may run
+		node.attribs.nonce = htmlcontext.policy.nonce;
 	}
 
 	if (node.name === "meta" && node.attribs["http-equiv"] !== undefined) {

@@ -8,6 +8,7 @@ import {
 	rewriteWorkers,
 } from "@/shared";
 import { providers } from "@/shared/providers";
+import type { DocumentPolicy } from "@rewriters/policy";
 import {
 	_TextDecoder,
 	_Uint8Array,
@@ -33,7 +34,8 @@ export async function rewriteBody(
 	handler: ScramjetFetchHandler,
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed,
-	response: BareResponse
+	response: BareResponse,
+	policy?: DocumentPolicy
 ): Promise<BodyType> {
 	switch (parsed.destination) {
 		case "iframe":
@@ -72,6 +74,7 @@ export async function rewriteBody(
 					headers: response.rawHeaders,
 					// reasonably confident that a document fetch is impossible without a client
 					history: parsed.trackedClient!.history,
+					...(policy ? { policy } : {}),
 				});
 			} else {
 				return response.body;
