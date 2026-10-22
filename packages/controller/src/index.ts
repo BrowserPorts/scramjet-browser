@@ -1169,6 +1169,9 @@ function yieldGetInjectScripts(
 				"data:text/javascript;charset=utf-8;base64," +
 					base64Encode(
 						transform(`
+					// In realm mode the document's policy admits scripts by nonce, and the client
+					// stamps the same nonce on the scripts it stubs later. This script carries it
+					const nonce = (document.currentScript && document.currentScript.nonce) || undefined;
 					document.querySelectorAll(${JSON.stringify("script[" + sjconfig.identity.injectedAttribute + "]")}).forEach(script => script.remove());
 					// Capture load into a local and drop the bundle globals BEFORE
 					// running it. The controller already closed over core's exports
@@ -1196,6 +1199,7 @@ function yieldGetInjectScripts(
 						codecDecode: ${sources.codecDecode},
 						initHeaders: ${JSON.stringify(htmlcontext.headers ?? [])},
 						history: ${JSON.stringify(htmlcontext.history ?? [])},
+						nonce,
 					});
 				`),
 					),

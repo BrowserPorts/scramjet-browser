@@ -23,6 +23,11 @@ function rewriteFunction<T extends string, U extends "construct" | "apply">(
 	ctx.return(ctx.fn(content)());
 }
 
+// The page's functions and string timers belong to its realm, and compiling text in this one
+// would need the 'unsafe-eval' that realm mode's policy withholds
+export const enabled = (client: ScramjetClient) =>
+	!client.flagEnabled("realmExecution");
+
 export default function (client: ScramjetClient, _self: Self) {
 	const handler: Proxy = {
 		apply(ctx: ProxyCtx) {

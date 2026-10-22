@@ -7,6 +7,7 @@ import { SCRAMJETCLIENT, SCRAMJETMARKER } from "@/symbols";
 import { getClient, setClient } from "./clients";
 import { getOwnPropertyDescriptorHandler } from "@client/helpers";
 import { createLocationProxy } from "@client/location";
+import { RealmSupport } from "@client/realm-mode";
 import { createWrapFn } from "@client/shared/wrap";
 import { LifecycleHooks } from "@client/events";
 import {
@@ -228,6 +229,9 @@ export class ScramjetClient {
 	> = new _Map();
 
 	meta: URLMeta;
+
+	/** Set while the `realmExecution` flag is on: the part of the client that serves an embedder's realm */
+	realm: RealmSupport | null = null;
 
 	box: SingletonBox;
 
@@ -583,6 +587,16 @@ export class ScramjetClient {
 		// any internal state.
 		setClient(global, this);
 		global[SCRAMJETCLIENT] = SCRAMJETMARKER;
+
+		if (this.flagEnabled("realmExecution")) {
+			const eventType = init.context.config.realm?.eventType;
+			if (typeof eventType !== "string" || eventType === "") {
+				throw new Error(
+					"realmExecution is on but the config names no realm event type"
+				);
+			}
+			this.realm = new RealmSupport(this, eventType);
+		}
 	}
 
 	/** Apply document injection init when a client was already installed (e.g. early contentWindow). */
@@ -590,15 +604,21 @@ export class ScramjetClient {
 		initHeaders: RawHeaders;
 		history: TrackedHistoryState[];
 		cookies?: string;
+		nonce?: string;
 	}) {
 		this.initHeaders = ScramjetHeaders.fromRawHeaders(init.initHeaders);
 		this.history = init.history;
+		// A new document brings its own policy and nonce
+		this.context.nonce = init.nonce;
 		if (init.cookies !== undefined) {
 			this.context.cookieJar.load(init.cookies);
 		}
 	}
 
 	hook() {
+		// Takes hold of the natives it depends on before any module below replaces them
+		this.realm?.install();
+
 		const context = import.meta.webpackContext(".", {
 			recursive: true,
 		});

@@ -110,6 +110,8 @@ type Init = {
 	codecDecode: (input: string) => string;
 	initHeaders: RawHeaders;
 	history: TrackedHistoryState[];
+	/** The nonce of the document's content security policy, in realm mode */
+	nonce?: string;
 };
 
 export function load(init: Init) {
@@ -123,6 +125,7 @@ export function load(init: Init) {
 		getClient(globalThis)?.syncDocumentInit({
 			initHeaders: init.initHeaders,
 			history: init.history,
+			...(init.nonce === undefined ? {} : { nonce: init.nonce }),
 		});
 		return;
 	}
@@ -271,6 +274,7 @@ class ExecutionContextWrapper {
 		const context: ScramjetContext = {
 			config: this.init.sjconfig,
 			prefix: this.init.prefix,
+			...(this.init.nonce === undefined ? {} : { nonce: this.init.nonce }),
 			cookieJar: this.cookieJar,
 			storage: this.storage,
 			storagePartitionKey: this.init.storagePartitionKey,
@@ -326,6 +330,7 @@ class ExecutionContextWrapper {
 			window: this.global.window,
 			client: this.client,
 			isTopLevel,
+			nonce: this.init.nonce,
 		};
 		if (controllerFrame)
 			Tap.dispatchSync(controllerFrame.hooks.init.pre, frameInitContext, {});

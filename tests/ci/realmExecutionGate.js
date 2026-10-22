@@ -2,8 +2,8 @@
  * @fileoverview
  * Contract tests for the `realmExecution` flag.
  *
- * With the flag on, page script text goes to the `realmScript` provider instead
- * of the wasm rewriter, and none of the page-facing `$scramjet*` helpers are
+ * With the flag on, page script text becomes a stub that hands the text to the
+ * embedder's realm, and none of the page-facing `$scramjet*` helpers are
  * installed. These tests cover the pure gate logic by loading
  * `shared/rewriters/realm.ts` on its own (it holds only type imports), and they
  * guard the helper side with a source scan: any client module that defines a
@@ -23,6 +23,8 @@ const gate = await import(
 	pathToFileURL(path.join(core, "shared/rewriters/realm.ts")).href
 );
 
+const config = { realm: { eventType: "evt-1" } };
+
 test("script kinds follow the module and function body arguments", (t) => {
 	t.is(gate.realmScriptKind(false, false), "classic");
 	t.is(gate.realmScriptKind(true, false), "module");
@@ -31,42 +33,49 @@ test("script kinds follow the module and function body arguments", (t) => {
 	t.is(gate.realmScriptKind(true, true), "handler");
 });
 
-test("javascript: urls keep a label the provider can recognise", (t) => {
+test("javascript: urls keep a label the rewriter can recognise", (t) => {
 	t.is(gate.JAVASCRIPT_URL_LABEL, "(javascript: url)");
 });
 
-test("a missing provider is an error and never a fallback", (t) => {
-	const error = t.throws(() =>
-		gate.realmScriptFor(undefined, "x", null, {}, {}, false, false)
-	);
-	t.regex(error.message, /no realmScript provider is registered/);
+test("a config with no realm event type is an error and never a fallback", (t) => {
+	for (const bad of [{}, { realm: {} }, { realm: { eventType: "" } }]) {
+		const error = t.throws(() => gate.realmScriptFor(bad, "x", null, false, false));
+		t.regex(error.message, /names no realm event type/);
+	}
 });
 
-test("the provider receives the source, label, context and kind unchanged", (t) => {
-	const calls = [];
-	const context = { id: "context" };
-	const meta = { id: "meta" };
-	const provider = (...args) => {
-		calls.push(args);
-		return "stub";
-	};
+test("classic and module text become stubs for the configured event", (t) => {
+	const classic = gate.realmScriptFor(config, "run()", "https://a.test/x.js", false, false);
+	t.true(gate.isRealmStub(classic, "evt-1"));
+	t.false(gate.isRealmStub(classic, "evt-2"));
+	t.is(gate.readRealmStubSource(classic, "evt-1"), "run()");
+	t.regex(classic, /"classic"/);
+	t.regex(classic, /"https:\/\/a\.test\/x\.js"/);
 
-	t.is(
-		gate.realmScriptFor(provider, "run()", "https://a.test/x.js", context, meta, true, false),
-		"stub"
-	);
-	t.is(calls.length, 1);
-	t.deepEqual(calls[0], ["run()", "https://a.test/x.js", context, meta, "module"]);
+	const module = gate.realmScriptFor(config, "export {}", null, true, false);
+	t.regex(module, /"module"/);
+	t.regex(module, /await d\.p;$/);
+	t.is(gate.readRealmStubSource(module, "evt-1"), "export {}");
 });
 
-test("byte input and byte output pass through untouched", (t) => {
-	const input = new Uint8Array([1, 2, 3]);
-	const output = new Uint8Array([9]);
-	const provider = (js) => {
-		t.is(js, input);
-		return output;
-	};
-	t.is(gate.realmScriptFor(provider, input, null, {}, {}, false, false), output);
+test("placeholder labels are not urls a page could see", (t) => {
+	const stub = gate.realmScriptFor(config, "x", "(inline script element)", false, false);
+	t.regex(stub, /,u:null,/);
+});
+
+test("every event handler gets the same text, whatever its source", (t) => {
+	const one = gate.realmScriptFor(config, "a()", "(inline onclick on element)", false, true);
+	const two = gate.realmScriptFor(config, "b(); c()", "(inline onerror on element)", false, true);
+	t.is(one, two);
+	t.is(one, gate.createRealmHandlerStub("evt-1"));
+	t.true(gate.isRealmStub(one, "evt-1"));
+	t.is(gate.readRealmStubSource(one, "evt-1"), null, "it holds no source");
+});
+
+test("byte input is read as utf-8", (t) => {
+	const bytes = new TextEncoder().encode("café()");
+	const stub = gate.realmScriptFor(config, bytes, null, false, false);
+	t.is(gate.readRealmStubSource(stub, "evt-1"), "café()");
 });
 
 function sources(dir) {
@@ -116,4 +125,12 @@ test("an inline script keeps its comment markers in realm mode", (t) => {
 	const strip = source.indexOf("js = js.replace(htmlcomment");
 	const guard = source.lastIndexOf('flagEnabled("realmExecution"', strip);
 	t.true(strip !== -1 && guard !== -1, "the comment strip sits behind a realm check");
+});
+
+test("a javascript: url is inert in realm mode before it reaches any rewriter", (t) => {
+	const source = readFileSync(path.join(core, "shared/rewriters/url.ts"), "utf8");
+	const inert = source.indexOf("REALM_INERT_JAVASCRIPT_URL;");
+	const rewriter = source.indexOf("scriptTextRewriter(context, meta)");
+	t.true(inert !== -1 && rewriter !== -1);
+	t.true(inert < rewriter);
 });

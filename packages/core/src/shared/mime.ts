@@ -14,6 +14,15 @@ function trimHttpWhitespace(s: string): string {
 	return s.replace(HTTP_WHITESPACE, "");
 }
 
+// A browser strips the type of a script of every ASCII space, and Chrome's set includes the
+// vertical tab that the specification's does not. A script whose type this misses would run
+// as the page wrote it
+const SCRIPT_TYPE_WHITESPACE = /^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g;
+
+function trimScriptTypeWhitespace(s: string): string {
+	return s.replace(SCRIPT_TYPE_WHITESPACE, "");
+}
+
 function asciiLower(s: string): string {
 	return s.toLowerCase();
 }
@@ -188,7 +197,7 @@ export function getScriptBlockTypeString(
 	}
 
 	if (hasTypeAttribute) {
-		return trimHttpWhitespace(type ?? "");
+		return trimScriptTypeWhitespace(type ?? "");
 	}
 
 	return `text/${language ?? ""}`;
@@ -201,16 +210,16 @@ export function getScriptBlockTypeString(
  */
 export function isScriptType(type: string | null | undefined): boolean {
 	if (type == null) return true;
-	const t = trimHttpWhitespace(type);
+	const t = trimScriptTypeWhitespace(type);
 	if (!t) return true;
 	if (asciiLower(t) === "module") return true;
-	return isJavascriptMimeTypeEssenceMatch(t);
+	return JAVASCRIPT_ESSENCES.has(asciiLower(t));
 }
 
 /** Whether `type` denotes a JavaScript module script. */
 export function isModuleScriptType(type: string | null | undefined): boolean {
 	if (type == null) return false;
-	const t = trimHttpWhitespace(type);
+	const t = trimScriptTypeWhitespace(type);
 	return t !== "" && asciiLower(t) === "module";
 }
 

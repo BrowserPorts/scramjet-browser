@@ -11,15 +11,13 @@ import { bytesToBase64 } from "@/shared/util";
 import { rewriteCss, unrewriteCss } from "@rewriters/css";
 import { rewriteHtml, unrewriteHtml } from "@rewriters/html";
 import { rewriteJs } from "@rewriters/js";
+import { REALM_INERT_JAVASCRIPT_URL } from "@rewriters/realm";
 import { unrewriteUrl } from "@rewriters/url";
 import { SCRAMJETCLIENT } from "@/symbols";
 import { ScramjetClient } from "@client/index";
+import { scriptBlockTypeForElement } from "@client/helpers";
 import { providers } from "@/shared/providers";
-import {
-	getScriptBlockTypeString,
-	isModuleScriptType,
-	isScriptType,
-} from "@/shared/mime";
+import { isModuleScriptType, isScriptType } from "@/shared/mime";
 import { ForeignContext } from "@/shared/rewriters/html";
 
 export function foreignContextForElement(
@@ -50,37 +48,6 @@ export function insideForeignContext(
 	return "html";
 }
 
-function scriptBlockTypeForElement(
-	client: ScramjetClient,
-	element: Element
-): string {
-	const hasType = client.natives.call(
-		"Element.prototype.hasAttribute",
-		element,
-		"type"
-	) as boolean;
-	const hasLanguage = client.natives.call(
-		"Element.prototype.hasAttribute",
-		element,
-		"language"
-	) as boolean;
-	const type = hasType
-		? (client.natives.call(
-				"Element.prototype.getAttribute",
-				element,
-				"type"
-			) as string | null)
-		: null;
-	const language = hasLanguage
-		? (client.natives.call(
-				"Element.prototype.getAttribute",
-				element,
-				"language"
-			) as string | null)
-		: null;
-	return getScriptBlockTypeString(type, language, hasType, hasLanguage);
-}
-
 // TODO: this is pretty bad. really this whole file sucks
 function collectAttributeMap(
 	client: ScramjetClient,
@@ -108,8 +75,21 @@ function collectAttributeMap(
 }
 
 export default function (client: ScramjetClient, self: typeof window) {
+	const isScriptElement = (node: unknown): node is Element =>
+		client.box.instanceof(node, "HTMLScriptElement") ||
+		client.box.instanceof(node, "SVGScriptElement");
+	// A connected script runs the moment its text is set, so in realm mode the text
+	// it is given, which is always a stub, is set while the script holds the nonce
+	const setScriptText = (element: Element, set: () => void) => {
+		if (client.realm && isScriptElement(element)) {
+			client.realm.withTextNonce(element, set);
+		} else {
+			set();
+		}
+	};
+
 	const attrObject = {
-		nonce: [self.HTMLElement],
+		nonce: [self.HTMLElement, self.SVGElement],
 		integrity: [self.HTMLScriptElement, self.HTMLLinkElement],
 		csp: [self.HTMLIFrameElement],
 		credentialless: [self.HTMLIFrameElement],
@@ -163,7 +143,29 @@ export default function (client: ScramjetClient, self: typeof window) {
 			Object_defineProperty(element.prototype, attr, {
 				get() {
 					if (["src", "data", "href", "action", "formaction"].includes(attr)) {
-						return unrewriteUrl(descriptor.get.call(this), client.context);
+						const value = descriptor.get.call(this);
+						// A link or form whose javascript: URL moved into the realm reports the
+						// URL the page gave it, not the inert one it carries
+						if (client.realm && value === REALM_INERT_JAVASCRIPT_URL) {
+							const original = client.natives.call(
+								"Element.prototype.getAttribute",
+								this,
+								internalAttribute(attr)
+							);
+							if (typeof original === "string") return original;
+						}
+						return unrewriteUrl(value, client.context);
+					}
+					if (attr === "nonce" && client.realm) {
+						// The nonce an element holds is the document's own while the client has it
+						// on the element, and the page must never read it. It reads back the value
+						// the page gave the element, which the rules kept
+						const original = client.natives.call(
+							"Element.prototype.getAttribute",
+							this,
+							internalAttribute("nonce")
+						);
+						return typeof original === "string" ? original : "";
 					}
 
 					return descriptor.get.call(this);
@@ -240,6 +242,13 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 	});
 
+	// A handler attribute's name is kept lowercase wherever its original is stored, because the
+	// browser lowercases the names of HTML attributes and the stored name has to match
+	const attributeKey = (name: unknown) =>
+		client.realm?.isHandlerAttribute(String(name))
+			? String(name).toLowerCase()
+			: name;
+
 	client.Proxy("Element.prototype.getAttribute", {
 		apply(ctx) {
 			const [name] = ctx.args;
@@ -252,10 +261,13 @@ export default function (client: ScramjetClient, self: typeof window) {
 				client.natives.call(
 					"Element.prototype.hasAttribute",
 					ctx.this,
-					internalAttribute(name)
+					internalAttribute(attributeKey(name) as string)
 				)
 			) {
-				const attrib = ctx.fn.call(ctx.this, internalAttribute(name));
+				const attrib = ctx.fn.call(
+					ctx.this,
+					internalAttribute(attributeKey(name) as string)
+				);
 				if (attrib === null) return ctx.return("");
 
 				return ctx.return(attrib);
@@ -350,6 +362,16 @@ export default function (client: ScramjetClient, self: typeof window) {
 
 			if (value != null) value = String(value);
 			ctx.args[1] = value;
+
+			if (client.realm?.isHandlerAttribute(name)) {
+				// The attribute carries the one stub every handler has, and the realm reads
+				// the page's source back from the copy kept beside it
+				const handlerName = String(name).toLowerCase();
+				ctx.fn.call(ctx.this, internalAttribute(handlerName), value);
+				ctx.args[0] = handlerName;
+				ctx.args[1] = client.realm.handlerStub();
+				return;
+			}
 
 			const ruleList = htmlRules.find((rule) => {
 				const r = rule[name.toLowerCase()];
@@ -450,7 +472,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (
 				client.natives.call("Element.prototype.hasAttribute", ctx.this, name)
 			) {
-				ctx.fn.call(ctx.this, internalAttribute(ctx.args[0]));
+				ctx.fn.call(
+					ctx.this,
+					internalAttribute(attributeKey(ctx.args[0]) as string)
+				);
 			}
 		},
 	});
@@ -462,7 +487,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (
 				client.natives.call("Element.prototype.hasAttribute", ctx.this, name)
 			) {
-				ctx.fn.call(ctx.this, internalAttribute(ctx.args[0]));
+				ctx.fn.call(
+					ctx.this,
+					internalAttribute(attributeKey(ctx.args[0]) as string)
+				);
 			}
 		},
 	});
@@ -473,16 +501,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 			if (value === null) return;
 			const html = String(value);
 			let newval;
-			const scriptBlockType = client.box.instanceof(
-				ctx.this,
-				"HTMLScriptElement"
-			)
+			const scriptBlockType = isScriptElement(ctx.this)
 				? scriptBlockTypeForElement(client, ctx.this)
 				: null;
-			if (
-				client.box.instanceof(ctx.this, "HTMLScriptElement") &&
-				isScriptType(scriptBlockType)
-			) {
+			if (isScriptElement(ctx.this) && isScriptType(scriptBlockType)) {
 				newval = rewriteJs(
 					html,
 					"(anonymous script element)",
@@ -516,10 +538,10 @@ export default function (client: ScramjetClient, self: typeof window) {
 				}
 			}
 
-			ctx.set(newval);
+			setScriptText(ctx.this, () => ctx.set(newval));
 		},
 		get(ctx) {
-			if (client.box.instanceof(ctx.this, "HTMLScriptElement")) {
+			if (isScriptElement(ctx.this)) {
 				const scriptSource = client.natives.call(
 					"Element.prototype.getAttribute",
 					ctx.this,
@@ -544,14 +566,11 @@ export default function (client: ScramjetClient, self: typeof window) {
 	});
 
 	const rewriteTextForElement = (element: Element, value: string) => {
-		const scriptBlockType = client.box.instanceof(element, "HTMLScriptElement")
+		const scriptBlockType = isScriptElement(element)
 			? scriptBlockTypeForElement(client, element)
 			: null;
 
-		if (
-			client.box.instanceof(element, "HTMLScriptElement") &&
-			isScriptType(scriptBlockType)
-		) {
+		if (isScriptElement(element) && isScriptType(scriptBlockType)) {
 			const newval: string = rewriteJs(
 				value,
 				"(anonymous script element)",
@@ -574,7 +593,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		}
 	};
 	const getTextForElement = (element: Element, text: string) => {
-		if (client.box.instanceof(element, "HTMLScriptElement")) {
+		if (isScriptElement(element)) {
 			const scriptSource = client.natives.call(
 				"Element.prototype.getAttribute",
 				element,
@@ -590,7 +609,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 	};
 	const rewritesInsertedText = (element: Node) =>
 		client.box.instanceof(element, "HTMLStyleElement") ||
-		client.box.instanceof(element, "HTMLScriptElement");
+		isScriptElement(element);
 	const rewriteInsertedTextNode = (parent: Node, node: Node) => {
 		if (!rewritesInsertedText(parent)) return;
 		if (client.box.instanceof(node, "Text")) {
@@ -612,8 +631,8 @@ export default function (client: ScramjetClient, self: typeof window) {
 		["Node.prototype.textContent", "HTMLScriptElement.prototype.textContent"],
 		{
 			set(ctx, value) {
-				const text = String(value);
-				return ctx.set(rewriteTextForElement(ctx.this, text));
+				const text = rewriteTextForElement(ctx.this, String(value));
+				setScriptText(ctx.this, () => ctx.set(text));
 			},
 			get(ctx) {
 				return getTextForElement(ctx.this, ctx.get());
@@ -627,14 +646,49 @@ export default function (client: ScramjetClient, self: typeof window) {
 		],
 		{
 			set(ctx, value: string) {
-				const text = String(value);
-				return ctx.set(rewriteTextForElement(ctx.this, text));
+				const text = rewriteTextForElement(ctx.this, String(value));
+				setScriptText(ctx.this, () => ctx.set(text));
 			},
 			get(ctx) {
 				return getTextForElement(ctx.this, ctx.get());
 			},
 		}
 	);
+
+	// A script's text is the most common way to run code the page builds, and was not hooked
+	client.Trap("HTMLScriptElement.prototype.text", {
+		set(ctx, value) {
+			const text = rewriteTextForElement(ctx.this, String(value));
+			setScriptText(ctx.this, () => ctx.set(text));
+		},
+		get(ctx) {
+			return getTextForElement(ctx.this, ctx.get());
+		},
+	});
+
+	// Text inside a script or style is rewritten as it is set, wherever it is set from
+	const textNodeParent = (node: any): Element | null =>
+		client.descriptors.get("Node.prototype.parentElement", node);
+	client.Trap(["CharacterData.prototype.data", "Node.prototype.nodeValue"], {
+		get(ctx) {
+			const parent = client.box.instanceof(ctx.this, "Text")
+				? textNodeParent(ctx.this)
+				: null;
+			if (parent && rewritesInsertedText(parent)) {
+				return getTextForElement(parent, ctx.get());
+			}
+			return ctx.get();
+		},
+		set(ctx, value) {
+			const parent = client.box.instanceof(ctx.this, "Text")
+				? textNodeParent(ctx.this)
+				: null;
+			if (parent && rewritesInsertedText(parent)) {
+				return ctx.set(rewriteTextForElement(parent, String(value)));
+			}
+			return ctx.set(value);
+		},
+	});
 
 	client.Trap("Element.prototype.outerHTML", {
 		set(ctx, value: string) {
@@ -834,7 +888,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Text.prototype.appendData", {
 		apply(ctx) {
 			const text = String(ctx.args[0]);
-			const parent = client.natives.call(
+			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
 			);
@@ -845,7 +899,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Text.prototype.insertData", {
 		apply(ctx) {
 			const text = String(ctx.args[1]);
-			const parent = client.natives.call(
+			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
 			);
@@ -856,7 +910,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Text.prototype.replaceData", {
 		apply(ctx) {
 			const text = String(ctx.args[2]);
-			const parent = client.natives.call(
+			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
 			);
@@ -866,7 +920,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 
 	client.Trap("Text.prototype.wholeText", {
 		get(ctx) {
-			const parent = client.natives.call(
+			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
 			);
@@ -874,7 +928,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 		set(ctx, v) {
 			const text = String(v);
-			const parent = client.natives.call(
+			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
 			);

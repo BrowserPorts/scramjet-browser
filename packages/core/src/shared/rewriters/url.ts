@@ -1,6 +1,12 @@
 import type { ScramjetContext } from "@/shared";
 import type { UrlCodec } from "@/plugins/types";
-import { JAVASCRIPT_URL_LABEL } from "@rewriters/realm";
+import {
+	JAVASCRIPT_URL_LABEL,
+	REALM_INERT_JAVASCRIPT_URL,
+} from "@rewriters/realm";
+import { flagEnabled } from "@/shared/flags";
+import { isJavascriptUrl, parserReadableUrl } from "@rewriters/javascript-url";
+
 import { scriptTextRewriter } from "@rewriters/script-text";
 import { QP } from "@/fetch/qp";
 import { ScramjetDestination } from "@/types";
@@ -12,6 +18,8 @@ import {
 	String_startsWith,
 	URL_createObjectURL,
 } from "../snapshot";
+
+export { isJavascriptUrl, parserReadableUrl };
 
 // user: manually triggered navigation
 // link: link clicked by the user. still user initiated, but doesn't wipe
@@ -115,13 +123,19 @@ export function rewriteUrl(
 ) {
 	url = String(url);
 
-	if (String_startsWith(url, "javascript:")) {
+	if (isJavascriptUrl(url)) {
+		// The browser refuses a javascript: URL its policy has no 'unsafe-inline' for, and the
+		// code in it must not run in this document's own realm. The client runs it in the
+		// realm when the link or form is used, from the copy kept in the original attribute
+		if (flagEnabled("realmExecution", context, meta.base)) {
+			return REALM_INERT_JAVASCRIPT_URL;
+		}
 		const rewriteJs = scriptTextRewriter(context, meta);
 		if (!rewriteJs) return url;
 		return (
 			"javascript:" +
 			rewriteJs(
-				url.slice("javascript:".length),
+				parserReadableUrl(url).slice("javascript:".length),
 				JAVASCRIPT_URL_LABEL,
 				context,
 				meta
@@ -320,7 +334,7 @@ export function rewriteUrl(
 export function unrewriteUrl(url: string | URL, context: ScramjetContext) {
 	url = String(url);
 	if (context.codec) return context.codec.decode(url) ?? url;
-	if (String_startsWith(url, "javascript:")) {
+	if (isJavascriptUrl(url)) {
 		//TODO
 		return url;
 	} else if (String_startsWith(url, "blob:")) {

@@ -82,6 +82,8 @@ export type FrameInitHooks = {
 			window: Window;
 			client: ScramjetClient;
 			isTopLevel: boolean;
+			/** The nonce of the document's content security policy, in realm mode */
+			nonce: string | undefined;
 		};
 		props: {};
 	};
@@ -90,6 +92,8 @@ export type FrameInitHooks = {
 			window: Window;
 			client: ScramjetClient;
 			isTopLevel: boolean;
+			/** The nonce of the document's content security policy, in realm mode */
+			nonce: string | undefined;
 		};
 		props: {};
 	};

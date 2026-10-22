@@ -7,8 +7,8 @@ import type { URLMeta } from "@rewriters/url";
 /**
  * What rewrites script text met in markup and URLs: inline scripts, event
  * handler attributes and `javascript:` URLs. Builds without the wasm rewriter
- * register none, and then that text stays as it is. In realm mode the realm
- * provider answers whether or not a rewriter is registered, because script text
+ * register none, and then that text stays as it is. In realm mode the built-in
+ * stubs answer whether or not a rewriter is registered, because script text
  * left as it is would run in this document's own realm.
  */
 export function scriptTextRewriter(
@@ -18,14 +18,6 @@ export function scriptTextRewriter(
 	if (!flagEnabled("realmExecution", context, meta.base)) {
 		return providers().rewriteJs;
 	}
-	return (js, url, scriptContext, scriptMeta, isModule = false, functionBody = false) =>
-		realmScriptFor(
-			providers().realmScript,
-			js,
-			url,
-			scriptContext,
-			scriptMeta,
-			isModule,
-			functionBody
-		);
+	return (js, url, scriptContext, _scriptMeta, isModule = false, functionBody = false) =>
+		realmScriptFor(scriptContext.config, js, url, isModule, functionBody);
 }

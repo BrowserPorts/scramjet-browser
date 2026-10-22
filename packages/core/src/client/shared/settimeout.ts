@@ -2,6 +2,11 @@ import { rewriteJs } from "@rewriters/js";
 import { ScramjetClient } from "@client/index";
 import { String } from "@/shared/snapshot";
 
+// The page's functions and string timers belong to its realm, and compiling text in this one
+// would need the 'unsafe-eval' that realm mode's policy withholds
+export const enabled = (client: ScramjetClient) =>
+	!client.flagEnabled("realmExecution");
+
 export default function (client: ScramjetClient, self: Self) {
 	client.Proxy(["setTimeout", "setInterval"], {
 		apply(ctx) {

@@ -25,6 +25,13 @@ export default function (client: ScramjetClient, _self: Self) {
 	client.Proxy("Document.prototype.open", {
 		apply(ctx) {
 			resetDocumentWriter(ctx.this);
+			if (client.realm && ctx.this === client.global.document) {
+				// Opening a document erases the listeners that reach the realm, so they are
+				// put back as soon as the browser has erased them
+				const document = ctx.call();
+				client.realm.reinstall();
+				return ctx.return(document);
+			}
 		},
 	});
 

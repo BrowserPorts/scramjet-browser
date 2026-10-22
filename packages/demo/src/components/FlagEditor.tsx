@@ -37,7 +37,7 @@ export const flagDescriptions: Record<keyof ScramjetFlags, string> = {
 	debugSourceURL:
 		"Make debugger recognize javascript source urls consistently (debug feature)",
 	realmExecution:
-		"run page scripts in an embedder realm instead of rewriting them (needs a realmScript provider)",
+		"run page scripts in an embedder realm instead of rewriting them (needs a realm event type in the config)",
 };
 
 const FlagEditor: Component<

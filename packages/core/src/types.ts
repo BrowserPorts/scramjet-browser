@@ -30,12 +30,23 @@ export type ScramjetFlags = {
 	encapsulateWorkers: boolean;
 	/**
 	 * Run page scripts in an embedder-provided realm instead of rewriting them.
-	 * Script text is handed to the `realmScript` provider, the page-facing
-	 * `$scramjet*` helpers are not installed, and a missing provider is an error
-	 * rather than a fallback to rewriting.
+	 * Script text is replaced by stubs that pass it to the realm as the detail of
+	 * a DOM event named by `ScramjetConfig.realm`, the page-facing `$scramjet*`
+	 * helpers are not installed, and a config without a realm is an error rather
+	 * than a fallback to rewriting.
 	 */
 	realmExecution: boolean;
 };
+
+/**
+ * How a document reaches the embedder's realm while `realmExecution` is on.
+ * The embedder listens for `eventType` on each document in the capture phase,
+ * cancels the event it takes, and runs the script the event's detail carries.
+ */
+export interface ScramjetRealmConfig {
+	/** The event type stubs dispatch. Keep it unguessable and never show it to the page */
+	eventType: string;
+}
 
 export interface ScramjetConfig {
 	/** Build identities accompany generated document and worker bootstraps */
@@ -67,6 +78,8 @@ export interface ScramjetConfig {
 	flags: ScramjetFlags;
 	siteFlags: Record<string, Partial<ScramjetFlags>>;
 	maskedfiles: string[];
+	/** Required while the `realmExecution` flag is on */
+	realm?: ScramjetRealmConfig;
 }
 
 /**

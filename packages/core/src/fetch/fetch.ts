@@ -16,8 +16,10 @@ import { flagEnabled, ScramjetHeaders } from "@/shared";
 import {
 	createDocumentPolicy,
 	type DocumentPolicy,
+	handlerHash,
 	policyHeaderFor,
 } from "@rewriters/policy";
+import { createRealmHandlerStub } from "@rewriters/realm";
 import { isDocument, isRedirect, normalizeContentType } from "./util";
 import { rewriteBody } from "./body";
 import { Tap } from "@/Tap";
@@ -42,7 +44,16 @@ function realmDocumentPolicy(
 	if (!flagEnabled("realmExecution", handler.context, parsed.meta.base)) {
 		return undefined;
 	}
-	return isDocument(parsed) ? createDocumentPolicy() : undefined;
+	if (!isDocument(parsed)) return undefined;
+	const eventType = handler.context.config.realm?.eventType;
+	if (typeof eventType !== "string" || eventType === "") {
+		throw new Error("realmExecution is on but the config names no realm event type");
+	}
+	const policy = createDocumentPolicy();
+	// Every event handler stub is this one text, so one hash admits the page's handlers,
+	// including the ones it creates after this response was sent
+	policy.handlerHashes.add(handlerHash(createRealmHandlerStub(eventType)));
+	return policy;
 }
 
 /** Sets the realm mode policy on a response that can hold script, replacing the page's own */
@@ -54,7 +65,11 @@ function applyDocumentPolicy(
 ) {
 	if (!flagEnabled("realmExecution", handler.context, parsed.meta.base)) return;
 	const header = policyHeaderFor(parsed.destination, policy);
-	if (header !== null) headers.set("Content-Security-Policy", header);
+	if (header === null) return;
+	headers.set("Content-Security-Policy", header);
+	// The nonce in the header is this response's own, so no cache may hand it to another visitor,
+	// and a document that holds a realm cannot be restored from the back-forward cache
+	headers.set("Cache-Control", "private, no-store");
 }
 
 export async function doHandleFetch(

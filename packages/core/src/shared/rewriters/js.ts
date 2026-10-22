@@ -3,7 +3,6 @@ import { URLMeta } from "@rewriters/url";
 
 import { getRewriter, JsRewriterOutput } from "@rewriters/wasm";
 import { realmScriptFor } from "@rewriters/realm";
-import { providers } from "@/shared/providers";
 import { Tap } from "@/Tap";
 import { QP } from "@/fetch/qp";
 import {
@@ -123,15 +122,7 @@ export function rewriteJs(
 	// the sourcemap push and the code hooks below are skipped, so nothing parses
 	// or alters the page's source.
 	if (flagEnabled("realmExecution", context, meta.base)) {
-		return realmScriptFor(
-			providers().realmScript,
-			js,
-			url,
-			context,
-			meta,
-			isModule,
-			functionBody
-		);
+		return realmScriptFor(context.config, js, url, isModule, functionBody);
 	}
 
 	let rewritten = false;

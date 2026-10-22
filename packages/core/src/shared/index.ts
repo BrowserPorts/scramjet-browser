@@ -47,6 +47,12 @@ export type ScramjetContext = {
   interface: ScramjetInterface;
   cookieJar: CookieStore;
   storage?: ScramjetStorageManager;
+  /**
+   * The nonce of the content security policy the document was sent with in
+   * realm mode. The client stamps it on the scripts it stubs after the
+   * document loads, and the rewriter on the ones in markup it rewrites there.
+   */
+  nonce?: string;
   // identity of the StoragePartition this realm executes in; CacheStorage
   // and IndexedDB names are scoped by it so two partitions on one browser
   // origin never share a cache or database

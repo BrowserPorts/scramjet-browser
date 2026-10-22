@@ -6,7 +6,7 @@ import {
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import { rewriteCss } from "@rewriters/css";
 import { rewriteInjectedJs } from "@rewriters/injected";
-import { type DocumentPolicy, handlerHash } from "@rewriters/policy";
+import type { DocumentPolicy } from "@rewriters/policy";
 import { scriptTextRewriter } from "@rewriters/script-text";
 import { rewriteUrl, type URLMeta } from "@rewriters/url";
 import render from "dom-serializer";
@@ -109,6 +109,31 @@ const renderOptions = {
 };
 function serializeHtmlNode(node: ChildNode) {
 	return render(node, renderOptions);
+}
+
+/**
+ * The nonce the scripts this markup keeps must carry for the browser to run
+ * them, or undefined when none should. A response gets its own policy and
+ * nonce. Markup the client rewrites after load uses the document's, but only
+ * where the browser can run its scripts: fragments and documents parsed apart
+ * from the page never run theirs, and stamping them would put the nonce in
+ * markup the page can read back.
+ */
+function markupNonce(
+	context: ScramjetContext,
+	htmlcontext: HtmlContext
+): string | undefined {
+	if (htmlcontext.policy) return htmlcontext.policy.nonce;
+	if (htmlcontext.fragment === true || htmlcontext.newDocument === true) {
+		return undefined;
+	}
+	return context.nonce;
+}
+
+/** Whether a rewritten script src points back at the proxy, whose answer for a script is a stub */
+function isProxiedSrc(src: string, context: ScramjetContext): boolean {
+	if (context.codec) return context.codec.decode(src) !== null;
+	return src.startsWith(context.prefix.href);
 }
 
 function isElementNode(node: ChildNode): node is Element {
@@ -348,11 +373,12 @@ function rewriteHtmlInner(
 	const isQuirky = detectQuirks();
 
 	if (htmlcontext.loadScripts) {
+		const injectedNonce = markupNonce(context, htmlcontext);
 		const script = (src: string) =>
 			new Element("script", {
 				src,
 				[injectedAttribute]: "true",
-				...(htmlcontext.policy ? { nonce: htmlcontext.policy.nonce } : {}),
+				...(injectedNonce === undefined ? {} : { nonce: injectedNonce }),
 			});
 		const injectScripts = context.interface.getInjectScripts(
 			meta,
@@ -429,6 +455,9 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 
 	function traverse(node: ChildNode) {
 		if ("attribs" in node) {
+			// A nonce on an element the page never gave one is the document's own,
+			// which the page must not read back
+			if (!(internalAttribute("nonce") in node.attribs)) delete node.attribs.nonce;
 			for (const key in node.attribs) {
 				if (key === internalAttribute("script-source-src")) {
 					if (node.children[0] && "data" in node.children[0])
@@ -553,6 +582,13 @@ function traverseParsedHtml(
 	}
 
 	if (node.attribs) {
+		// A document inside this one (srcdoc) is under the same policy, so its
+		// scripts take the same nonce
+		const policyNonce = htmlcontext.policy?.nonce;
+		const ruleContext =
+			policyNonce !== undefined && policyNonce !== context.nonce
+				? { ...context, nonce: policyNonce }
+				: context;
 		for (const rule of htmlRules) {
 			for (const attr in rule) {
 				const sel = rule[attr.toLowerCase()];
@@ -561,7 +597,7 @@ function traverseParsedHtml(
 				if (sel === "*" || sel.includes(node.name)) {
 					if (node.attribs[attr] !== undefined) {
 						const value = node.attribs[attr];
-						const v = rule.fn(value, context, meta, node.attribs);
+						const v = rule.fn(value, ruleContext, meta, node.attribs);
 
 						if (v === null) delete node.attribs[attr];
 						else {
@@ -574,21 +610,20 @@ function traverseParsedHtml(
 			}
 		}
 		const rewriteJs = scriptTextRewriter(context, meta);
+		const realm = flagEnabled("realmExecution", context, meta.base);
 		for (const [attr, value] of Object_entries(node.attribs)) {
-			if (rewriteJs && (providers().isEventHandlerAttribute?.(attr) ?? eventAttributes.includes(attr))) {
-				if (htmlcontext.originalAttributes !== false)
+			if (rewriteJs && isEventHandlerAttribute(attr)) {
+				// A handler stub holds no source, so the realm reads it back from here
+				if (htmlcontext.originalAttributes !== false || realm)
 					node.attribs[internalAttribute(attr)] = value;
-				const stub = rewriteJs(
+				node.attribs[attr] = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
 					meta,
 					false,
 					true
-				);
-				node.attribs[attr] = stub as string;
-				// The browser admits an event handler attribute only by the hash of its text
-				htmlcontext.policy?.handlerHashes.add(handlerHash(String(stub)));
+				) as string;
 			}
 		}
 	}
@@ -616,7 +651,8 @@ function traverseParsedHtml(
 
 			node.children[0].data = JSON_stringify(map);
 			// An import map is script as far as the browser's policy goes
-			if (htmlcontext.policy) node.attribs.nonce = htmlcontext.policy.nonce;
+			const mapNonce = markupNonce(context, htmlcontext);
+			if (mapNonce !== undefined) node.attribs.nonce = mapNonce;
 		} catch (e) {
 			dbg.error("Failed to parse importmap JSON:", e);
 		}
@@ -655,12 +691,14 @@ function traverseParsedHtml(
 			);
 			// Only a script this function accounted for carries the nonce, so one it
 			// misread is refused by the browser
-			if (htmlcontext.policy) node.attribs.nonce = htmlcontext.policy.nonce;
+			const inlineNonce = markupNonce(context, htmlcontext);
+			if (inlineNonce !== undefined) node.attribs.nonce = inlineNonce;
 		}
 	}
 
+	const externalNonce = markupNonce(context, htmlcontext);
 	if (
-		htmlcontext.policy &&
+		externalNonce !== undefined &&
 		node.name === "script" &&
 		node.attribs &&
 		node.attribs.src !== undefined &&
@@ -671,10 +709,12 @@ function traverseParsedHtml(
 				"type" in node.attribs,
 				"language" in node.attribs
 			)
-		)
+		) &&
+		isProxiedSrc(node.attribs.src, context)
 	) {
-		// The response for this src is a stub, so the script may run
-		node.attribs.nonce = htmlcontext.policy.nonce;
+		// The response for this src is a stub, so the script may run. A src that did
+		// not go through the proxy would load the page's own script as it is
+		node.attribs.nonce = externalNonce;
 	}
 
 	if (node.name === "meta" && node.attribs["http-equiv"] !== undefined) {
@@ -728,6 +768,11 @@ export function rewriteSrcset(
 
 // 	return Uint8Array.from(binString, (m) => m.codePointAt(0));
 // }
+
+/** Whether a lowercase attribute name is an event handler content attribute */
+export function isEventHandlerAttribute(name: string): boolean {
+	return providers().isEventHandlerAttribute?.(name) ?? eventAttributes.includes(name);
+}
 
 const eventAttributes = [
 	"onbeforexrselect",

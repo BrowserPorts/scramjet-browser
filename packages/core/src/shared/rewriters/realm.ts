@@ -1,50 +1,202 @@
-import type { ScramjetContext } from "@/shared";
-import type { RealmScriptKind, ScramjetProviders } from "@/shared/providers";
-import type { URLMeta } from "@rewriters/url";
+/* eslint-disable scramjet-core/no-globals -- loaded on its own by the gate tests, and only
+   reached with realmExecution on, where page code does not run in this realm to tamper
+   with the globals it uses */
 
-// This file holds only type imports so it can be loaded on its own, which the
-// gate tests rely on.
+/**
+ * Stand-ins for page script text in realm mode.
+ *
+ * Scramjet never rewrites the page's script in this mode. It hands the text to
+ * a realm the embedder owns, and what the document carries in its place is a
+ * stub: a few statements that pass the original source to that realm as the
+ * detail of a DOM event. The page's code is only ever data in a string here,
+ * and the stub defines no global to find the realm through.
+ *
+ * Event handler attributes are different. Their stub is the same fixed text for
+ * every handler, with the source kept in an internal attribute that the client
+ * reads when the event fires. The browser admits an attribute handler only by
+ * the hash of its text, and one fixed text means one hash covers every handler,
+ * including the ones the page creates after the document's policy was sent.
+ */
+
+export type RealmScriptKind = "classic" | "module" | "handler";
+
+/** What a stub passes to the realm's listener, as the detail of its event */
+export interface RealmScriptDetail {
+	/** What the source is */
+	k: RealmScriptKind;
+	/** The page's own source text. A handler's is filled in by the client before the embedder sees it */
+	s: string | null;
+	/** Where the page says the source came from, or null for inline code */
+	u: string | null;
+	/** The script element running the stub, for classic scripts */
+	e?: object | null;
+	/** The element or window an event handler runs for */
+	t?: unknown;
+	/** The event an event handler runs for */
+	ev?: unknown;
+	/** The arguments an event handler was called with */
+	a?: ArrayLike<unknown>;
+	/** Filled in by the listener with an event handler's return value */
+	r?: unknown;
+	/** Filled in by the listener with a module's evaluation, which a module stub awaits */
+	p?: unknown;
+}
+
+/** The error a stub throws when nothing in the frame took its event */
+export const REALM_NO_LISTENER_MESSAGE = "The hardened frame has no active realm";
+
+/** What an anchor or form with a `javascript:` URL carries once its code has moved to an internal attribute */
+export const REALM_INERT_JAVASCRIPT_URL = "javascript:void 0";
+
+const STUB_START = "var d={k:";
+// A classic script's top-level `var` becomes a property of the window, so its
+// stub keeps its data in a block where `const` leaves nothing behind
+const CLASSIC_START = "{const d={k:";
+
+const HANDLER_PROLOGUE =
+	"var d={k:\"handler\",s:null,u:null,t:this,ev:event,a:arguments,r:void 0};";
+const HANDLER_TARGET = "(this.ownerDocument||this.document)";
+const HANDLER_EPILOGUE = "return d.r";
+
+/**
+ * JSON that is safe inside an HTML script element and anywhere JavaScript is
+ * parsed. `<` would let source text close the element or open a comment, and
+ * the line separators were not legal in older string literals.
+ */
+export function embedText(value: string): string {
+	return JSON.stringify(value).replace(
+		/[<\u2028\u2029]/gu,
+		(character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`
+	);
+}
+
+function dispatch(eventType: string, target: string): string {
+	// The event is cancelable and the listener cancels it, so a stub that nothing
+	// took is an error and never a silently skipped script
+	return `if(${target}.dispatchEvent(new CustomEvent(${embedText(eventType)},{cancelable:true,detail:d})))throw new Error(${embedText(REALM_NO_LISTENER_MESSAGE)});`;
+}
+
+/**
+ * The stub for an event handler attribute. It is the same text for every
+ * handler of a frame, so its hash can be listed in the document's policy up
+ * front. `this` is the element (or the window, for a handler the body forwards)
+ * and `event` is the event, as in a compiled attribute.
+ */
+export function createRealmHandlerStub(eventType: string): string {
+	return `${HANDLER_PROLOGUE}${dispatch(eventType, HANDLER_TARGET)}${HANDLER_EPILOGUE}`;
+}
+
+/** The stub for a classic script or a module */
+export function createRealmStub(options: {
+	eventType: string;
+	kind: "classic" | "module";
+	source: string;
+	url: string | null;
+}): string {
+	const { eventType, kind, source, url } = options;
+	const data = `s:${embedText(source)},u:${url === null ? "null" : embedText(url)}`;
+	if (kind === "module") {
+		return `${STUB_START}"module",${data},e:null,p:void 0};${dispatch(eventType, "document")}await d.p;`;
+	}
+	return `${CLASSIC_START}"classic",${data},e:document.currentScript};${dispatch(eventType, "document")}}`;
+}
+
+/**
+ * Whether script text is one of this frame's stubs and holds no page code of
+ * its own. A stub ends in its dispatch, which names the frame's event type, so
+ * text written by the page cannot pass for one: it would have to know the type.
+ * The data in the middle is always a pair of JSON strings that cannot break out
+ * of themselves.
+ */
+export function isRealmStub(text: string, eventType: string): boolean {
+	if (text === createRealmHandlerStub(eventType)) return true;
+	if (text.startsWith(CLASSIC_START)) {
+		return text.endsWith(`,e:document.currentScript};${dispatch(eventType, "document")}}`);
+	}
+	if (!text.startsWith(STUB_START)) return false;
+	return text.endsWith(`,e:null,p:void 0};${dispatch(eventType, "document")}await d.p;`);
+}
+
+/**
+ * The page's own source out of one of this frame's stubs, or null for any other
+ * text. A page that reads the text of its own script element expects its
+ * source, and the stub, which names the frame's event type, is not for it.
+ */
+export function readRealmStubSource(text: string, eventType: string): string | null {
+	if (!isRealmStub(text, eventType)) return null;
+	const marker = text.indexOf(",s:");
+	if (marker === -1 || text[marker + 3] !== "\"") return null;
+	let end = marker + 4;
+	while (end < text.length && text[end] !== "\"") end += text[end] === "\\" ? 2 : 1;
+	try {
+		const source: unknown = JSON.parse(text.slice(marker + 3, end + 1));
+		return typeof source === "string" ? source : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The source a browser runs for a `javascript:` URL. The URL parser drops tabs
+ * and newlines first, then the body is percent-decoded as bytes and read as
+ * UTF-8, and a `%` that does not start two hex digits stays as it is.
+ */
+export function decodeJavascriptUrlBody(body: string): string {
+	const text = body.replace(/[\t\n\r]/gu, "");
+	const encoder = new TextEncoder();
+	const bytes: number[] = [];
+	let index = 0;
+	while (index < text.length) {
+		const hex = text.slice(index + 1, index + 3);
+		if (text[index] === "%" && /^[0-9a-fA-F]{2}$/u.test(hex)) {
+			bytes.push(Number.parseInt(hex, 16));
+			index += 3;
+			continue;
+		}
+		const character = String.fromCodePoint(text.codePointAt(index) ?? 0);
+		for (const byte of encoder.encode(character)) bytes.push(byte);
+		index += character.length;
+	}
+	return new TextDecoder("utf-8", { ignoreBOM: true }).decode(Uint8Array.from(bytes));
+}
 
 /** The label the URL rewriter gives script text taken from a `javascript:` URL */
 export const JAVASCRIPT_URL_LABEL = "(javascript: url)";
 
-export function realmScriptKind(
-	isModule: boolean,
-	functionBody: boolean
-): RealmScriptKind {
+export function realmScriptKind(isModule: boolean, functionBody: boolean): RealmScriptKind {
 	if (functionBody) return "handler";
 	return isModule ? "module" : "classic";
 }
 
 /**
- * Hands script text to the realm provider. A missing provider is an error: the
- * flag exists so page code never runs in this document's own realm, and
- * quietly rewriting it instead would put it there.
+ * A script label that says nothing about the page. Inline code has no URL, and
+ * Scramjet's placeholder labels for it are not URLs a page could see.
+ */
+function stubUrl(label: string | null): string | null {
+	if (label === null) return null;
+	return label.startsWith("(") ? null : label;
+}
+
+/**
+ * The text a document carries in place of script text. A config without a realm
+ * event type is an error: the flag exists so page code never runs in this
+ * document's own realm, and leaving the text as it is would put it there.
+ *
+ * @param config The context's config, which names the event the embedder's realm listens for
  */
 export function realmScriptFor(
-	provider: ScramjetProviders["realmScript"],
+	config: { realm?: { eventType: string } },
 	js: string | Uint8Array,
 	url: string | null,
-	context: ScramjetContext,
-	meta: URLMeta,
 	isModule: boolean,
 	functionBody: boolean
-): string | Uint8Array {
-	if (!provider) {
-		// This file imports nothing at runtime so tests can load it without the
-		// build's path aliases, which rules out the snapshotted Error. It is only
-		// reached with realmExecution on, where page code does not run in this
-		// realm to tamper with Error
-		// eslint-disable-next-line scramjet-core/no-globals
-		throw new Error(
-			"realmExecution is on but no realmScript provider is registered"
-		);
+): string {
+	const eventType = config.realm?.eventType;
+	if (typeof eventType !== "string" || eventType === "") {
+		throw new Error("realmExecution is on but the config names no realm event type");
 	}
-	return provider(
-		js,
-		url,
-		context,
-		meta,
-		realmScriptKind(isModule, functionBody)
-	);
+	const kind = realmScriptKind(isModule, functionBody);
+	if (kind === "handler") return createRealmHandlerStub(eventType);
+	const source = typeof js === "string" ? js : new TextDecoder().decode(js);
+	return createRealmStub({ eventType, kind, source, url: stubUrl(url) });
 }
