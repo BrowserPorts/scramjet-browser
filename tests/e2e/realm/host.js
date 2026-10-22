@@ -44,6 +44,8 @@ const scenarios = {
       names: na.getAttributeNames(),
       attrs: Array.from(na.attributes, (a) => a.name),
       outer: na.outerHTML,
+      getHTML: na.getHTML(),
+      parentGetHTML: doc.getElementById("holder").getHTML(),
       holderHtml: doc.getElementById("holder").innerHTML,
       svgHtml: doc.getElementById("svgholder").innerHTML,
       nonceGetter: (() => {

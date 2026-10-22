@@ -877,9 +877,16 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 	});
 
+	// What a script holds is a stub that names the event type, so markup read back is read as the
+	// page wrote it, whether the script is in it or is the element it is read from
+	const readBack = (html: string): string => {
+		const unrewritten = unrewriteHtml(html);
+		return client.realm ? client.realm.unstub(unrewritten) : unrewritten;
+	};
+
 	client.Proxy("Element.prototype.getHTML", {
 		apply(ctx) {
-			ctx.return(unrewriteHtml(ctx.call()));
+			ctx.return(readBack(ctx.call() as string));
 		},
 	});
 
@@ -912,7 +919,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				client.realm?.hookFramesUnder(ctx.this);
 			},
 			get(ctx) {
-				return unrewriteHtml(ctx.get());
+				return readBack(ctx.get() as string);
 			},
 		});
 		client.Proxy("ShadowRoot.prototype.setHTMLUnsafe", {
@@ -929,7 +936,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		});
 		client.Proxy("ShadowRoot.prototype.getHTML", {
 			apply(ctx) {
-				ctx.return(unrewriteHtml(ctx.call()));
+				ctx.return(readBack(ctx.call() as string));
 			},
 		});
 	}
