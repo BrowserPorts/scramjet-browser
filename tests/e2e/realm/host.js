@@ -99,11 +99,14 @@ const scenarios = {
     // a handler called without an event
     win.__direct = typeof b.onclick;
     try { b.onclick(); } catch (e) { win.__directErr = e.name; }
+    // a handler made as an attribute node
+    const img = doc.createElement("img"); const node = doc.createAttribute("onerror"); node.value = "@@run:hd_attrnode";
+    img.setAttributeNode(node); win.__attrNodeRead = img.getAttribute("onerror"); img.src = "x:9"; doc.body.appendChild(img);
     // removing the attribute removes the handler
     b.removeAttribute("onclick"); b.click();
   },
   hd_set(c) { c.sink.ran.push("hd_set"); }, hd_img(c) { c.sink.ran.push("hd_img"); },
-  hd_inner(c) { c.sink.ran.push("hd_inner"); }, hd_adjacent(c) { c.sink.ran.push("hd_adjacent"); },
+  hd_inner(c) { c.sink.ran.push("hd_inner"); }, hd_attrnode(c) { c.sink.ran.push("hd_attrnode"); }, hd_adjacent(c) { c.sink.ran.push("hd_adjacent"); },
 
   // javascript: urls
   jsurls({ win, doc, client }) {
@@ -321,7 +324,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }

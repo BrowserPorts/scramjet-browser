@@ -514,6 +514,8 @@ export class RealmSupport {
 			"HTMLElement.prototype.nonce",
 			"SVGElement.prototype.nonce",
 			"Element.prototype.localName",
+			"Attr.prototype.ownerElement",
+			"Attr.prototype.name",
 		]) {
 			touch(store, name);
 		}

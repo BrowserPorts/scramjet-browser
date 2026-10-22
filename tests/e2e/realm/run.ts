@@ -213,6 +213,7 @@ if (runs.handlers) {
   check("handlers: innerHTML img onerror", count(r, "hd_img") === 1, count(r, "hd_img"));
   check("handlers: innerHTML button", count(r, "hd_inner") === 1, count(r, "hd_inner"));
   check("handlers: insertAdjacentHTML button", count(r, "hd_adjacent") === 1, count(r, "hd_adjacent"));
+  check("handlers: an attribute node's handler runs in the realm and reads back as written", count(r, "hd_attrnode") === 1 && r.extra.__attrNodeRead === "@@run:hd_attrnode", [count(r, "hd_attrnode"), r.extra.__attrNodeRead]);
   check("handlers: getAttribute returns what was set", r.extra.__getAttr === "@@run:hd_set", r.extra.__getAttr);
 }
 if (runs.jsurls) {

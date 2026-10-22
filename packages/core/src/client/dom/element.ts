@@ -409,7 +409,31 @@ export default function (client: ScramjetClient, self: typeof window) {
 
 	// i actually need to do something with this
 	client.Proxy("Element.prototype.setAttributeNode", {
-		apply(_ctx) {},
+		apply(ctx) {
+			const realm = client.realm;
+			const attr = ctx.args[0] as Attr;
+			if (!realm || !client.box.instanceof(attr, "Attr")) return;
+			if (client.descriptors.get("Attr.prototype.ownerElement", attr)) return;
+			const name = String(client.descriptors.get("Attr.prototype.name", attr));
+			if (!realm.isHandlerAttribute(name)) return;
+			// A handler made as an attribute node carries the one stub every handler has, and
+			// the page's source goes beside it for the realm to read back
+			const original = client.descriptors.get("Attr.prototype.value", attr);
+			client.descriptors.set("Attr.prototype.value", attr, realm.handlerStub());
+			try {
+				const replaced = ctx.call();
+				client.natives.call(
+					"Element.prototype.setAttribute",
+					ctx.this,
+					internalAttribute(name.toLowerCase()),
+					original
+				);
+				ctx.return(replaced);
+			} catch (error) {
+				client.descriptors.set("Attr.prototype.value", attr, original);
+				throw error;
+			}
+		},
 	});
 
 	client.Proxy("Element.prototype.setAttributeNS", {
