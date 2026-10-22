@@ -141,6 +141,18 @@ const scenarios = {
   blank_handler(c) { c.sink.ran.push("blank_handler"); }, srcdoc_inline(c) { c.sink.ran.push("srcdoc_inline"); },
   blank_dynamic(c) { c.sink.ran.push("blank_dynamic"); },
 
+  // frames whose document is a blob or a data url
+  uriframes({ win, doc }) {
+    const html = '<!doctype html><html><body><script>@@run:blob_inline</script><button id="ub" onclick="@@run:blob_handler">b</button></body></html>';
+    const url = win.URL.createObjectURL(new win.Blob([html], { type: "text/html" }));
+    const f = doc.createElement("iframe"); f.src = url; doc.body.appendChild(f);
+    const d = doc.createElement("iframe");
+    d.src = "data:text/html," + encodeURIComponent('<!doctype html><script>@@run:data_inline</script>');
+    doc.body.appendChild(d);
+  },
+  blob_inline(c) { c.sink.ran.push("blob_inline"); }, blob_handler(c) { c.sink.ran.push("blob_handler"); },
+  data_inline(c) { c.sink.ran.push("data_inline"); },
+
   // a message from a frame to itself carries the page's origin, not the proxy's
   messages({ win, client }) {
     win.__messages = [];

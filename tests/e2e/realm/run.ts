@@ -42,6 +42,7 @@ const PAGES: Record<string, string> = {
   jsurls: page("jsurls", `<a id="l1" href="javascript:@@run:ju_1">x</a><form id="f1" action="javascript:@@run:ju_form"><input type="submit"></form><script>@@run:jsurls</script>`),
   messages: page("messages", `<script>@@run:messages</script>`),
   frames: page("frames", `<script>@@run:frames</script>`),
+  uriframes: page("uriframes", `<script>@@run:uriframes</script>`),
   child: page("child", `<script>@@run:child_inline</script>`),
   reopen: page("reopen", `<script>@@run:reopen</script>`),
   writer: page("writer", `<script>@@run:writer</script>`),
@@ -198,6 +199,10 @@ if (runs.jsurls) {
 if (runs.frames) {
   const r = runs.frames;
   for (const n of ["child_inline", "blank_inline", "blank_handler", "srcdoc_inline", "blank_dynamic"]) check(`frames: ${n} reached the realm`, count(r, n) === 1, [n, count(r, n), r.ran]);
+}
+if (runs.uriframes) {
+  const r = runs.uriframes;
+  for (const n of ["blob_inline", "data_inline"]) check(`uriframes: ${n} reached the realm`, count(r, n) === 1, [n, count(r, n), r.ran]);
 }
 if (runs.messages) {
   const m = runs.messages.extra.__messages;
