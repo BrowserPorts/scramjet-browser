@@ -40,7 +40,7 @@ export interface ViolationReport {
 }
 
 const FRAME_SELECTOR = "iframe,frame,object,embed";
-const FRAME_AND_SCRIPT_SELECTOR = `script,${FRAME_SELECTOR}`;
+const FRAME_AND_SCRIPT_SELECTOR = `script,link,${FRAME_SELECTOR}`;
 
 /**
  * What a document that runs its scripts in an embedder's realm needs from its
@@ -224,6 +224,26 @@ export class RealmSupport {
 		return text;
 	}
 
+	/**
+	 * Whether the element is a link that preloads a script from the proxy. The browser holds that request to
+	 * the script policy, and the proxy answers it with a stub, so the preload runs nothing
+	 */
+	isScriptPreload(node: unknown): node is Element {
+		if (!this.client.box.instanceof(node, "HTMLLinkElement")) return false;
+		const href = this.attribute(node as Element, "href");
+		if (href === null || !href.startsWith(this.client.context.prefix.href)) {
+			return false;
+		}
+		const rel = (this.attribute(node as Element, "rel") ?? "")
+			.toLowerCase()
+			.split(/[\t\n\f\r ]+/);
+		if (rel.includes("modulepreload")) return true;
+		return (
+			rel.includes("preload") &&
+			(this.attribute(node as Element, "as") ?? "").toLowerCase() === "script"
+		);
+	}
+
 	/** Whether the script's src goes through the proxy, which answers a script with a stub */
 	hasProxiedSrc(script: Element): boolean {
 		const src = this.attribute(script, "src");
@@ -313,13 +333,19 @@ export class RealmSupport {
 		return this.insertedIn(values).frames;
 	}
 
-	/** The script and frame elements in or under the nodes an insertion call is given, found in one pass */
-	insertedIn(values: readonly unknown[]): { scripts: Element[]; frames: Element[] } {
+	/** The script, frame and script preload elements in or under the nodes an insertion call is given, found in one pass */
+	insertedIn(values: readonly unknown[]): {
+		scripts: Element[];
+		frames: Element[];
+		preloads: Element[];
+	} {
 		const scripts: Element[] = [];
 		const frames: Element[] = [];
+		const preloads: Element[] = [];
 		const sort = (element: Element) => {
 			if (this.isScriptElement(element)) scripts.push(element);
 			else if (this.isFrameElement(element)) frames.push(element);
+			else if (this.isScriptPreload(element)) preloads.push(element);
 		};
 		for (const value of values) {
 			if (value === null || typeof value !== "object") continue;
@@ -346,7 +372,7 @@ export class RealmSupport {
 				}
 			}
 		}
-		return { scripts, frames };
+		return { scripts, frames, preloads };
 	}
 
 	isFrameElement(node: unknown): node is Element {
@@ -407,13 +433,22 @@ export class RealmSupport {
 
 	/**
 	 * Runs one operation that may run these scripts, with the nonce on each of
-	 * the ones that are safe to run. The nonce is gone again when it returns,
-	 * and a script without a nonce is one the browser refuses.
+	 * the ones that are safe to run, and on the links that preload a script from
+	 * the proxy. The nonce is gone again when it returns, and a script without a
+	 * nonce is one the browser refuses.
 	 */
-	withNonce<T>(scripts: readonly Element[], run: () => T): T {
+	withNonce<T>(
+		scripts: readonly Element[],
+		run: () => T,
+		preloads: readonly Element[] = []
+	): T {
 		const nonce = this.nonce;
 		if (nonce === undefined) return run();
 		const stamped: Element[] = [];
+		for (const link of preloads) {
+			this.setNonce(link, nonce);
+			stamped.push(link);
+		}
 		for (const script of scripts) {
 			const connected = this.client.descriptors.get(
 				"Node.prototype.isConnected",

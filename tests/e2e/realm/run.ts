@@ -38,6 +38,10 @@ const PAGES: Record<string, string> = {
     `<button id="b" onclick="@@run:h1">b</button><script>@@run:clickb</script>`,
     `<script>@@run:inline</script><script src="/ext1.js"></script><script type="module">@@run:mod1</script><script type="importmap">{"imports":{"x":"/x.js"}}</script>`),
   dynscripts: page("dyn", `<script>@@run:dynscripts</script>`),
+  preload: page("preload",
+    `<link id="m1" rel="preload" as="script" href="/pre_ext.js" onload="@@run:pre_m1_load" onerror="@@run:pre_m1_error">` +
+    `<link id="m2" rel="modulepreload" href="/pre_mod.js" onload="@@run:pre_m2_load" onerror="@@run:pre_m2_error">` +
+    `<script>@@run:preloadlinks</script>`),
   handlers: page("handlers", `<script>@@run:handlers</script>`),
   jsurls: page("jsurls", `<a id="l1" href="javascript:@@run:ju_1">x</a><form id="f1" action="javascript:@@run:ju_form"><input type="submit"></form><script>@@run:jsurls</script>`),
   messages: page("messages", `<script>@@run:messages</script>`),
@@ -110,6 +114,8 @@ setTimeout(function () { window.__done = 1; }, 800);
 const RAW: Record<string, string> = {
   "/ord1.js": "window.__t.dynSrc = 1",
   "/ext1.js": "@@run:ext1",
+  "/pre_ext.js": "@@run:pre_never_ext",
+  "/pre_mod.js": "@@run:pre_never_mod",
   "/d_ext.js": "@@run:d_ext",
   "/d_ext2.js": "@@run:d_ext2",
   "/w_ext.js": "@@run:w_ext",
@@ -296,6 +302,14 @@ if (runs.markup) {
   check("markup: getHTML gives the page's script text and nothing of the stub", m && m.getHTML.includes("@@run:nonascii") && m.parentGetHTML.includes("@@run:nonascii") && !/scramjet|var d=|CustomEvent/i.test(m.getHTML + m.parentGetHTML), m && [m.getHTML, m.parentGetHTML]);
   check("markup: markup read back keeps the page's script text", m && m.holderHtml.includes("@@run:nonascii") && m.svgHtml.includes("window.__pwn_svgSplitB=1") && m.svgHtml.includes("<!--c-->"), m && [m.holderHtml, m.svgHtml]);
 }
+if (runs.preload) {
+  const r = runs.preload;
+  for (const n of ["pre_m1_load", "pre_m2_load", "pre_a_load", "pre_b_load"]) check(`preload: ${n}`, count(r, n) === 1, [n, count(r, n)]);
+  for (const n of ["pre_m1_error", "pre_m2_error", "pre_a_error", "pre_b_error", "pre_never_ext", "pre_never_mod"]) check(`preload: ${n} did not happen`, count(r, n) === 0, [n, count(r, n)]);
+  check("preload: the browser refused no preload", r.violations.length === 0, r.violations);
+  check("preload: no native execution", r.pwn.length === 0, r.pwn);
+}
+
 if (runs.dynscripts) {
   const r = runs.dynscripts;
   for (const n of ["d_text","d_textContent","d_innerText","d_textnode","d_ext","d_ext2","d_module","d_adjacent","d_append","d_replaceChildren","d_after","d_replaceWith","d_fragment1","d_fragment2","d_late","d_range","d_readback"]) check(`dynscripts: ${n} ran in the realm`, count(r, n) === 1, count(r, n));

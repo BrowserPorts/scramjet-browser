@@ -591,6 +591,13 @@ function withBase(meta: URLMeta, state: BaseState): URLMeta {
 	return overlay;
 }
 
+/** Whether a link element preloads a script, as a module or as a classic one */
+function isScriptPreloadLink(attribs: Record<string, string>): boolean {
+	const rel = (attribs.rel ?? "").toLowerCase().split(/[\t\n\f\r ]+/);
+	if (rel.includes("modulepreload")) return true;
+	return rel.includes("preload") && (attribs.as ?? "").toLowerCase() === "script";
+}
+
 function traverseParsedHtml(
 	node: any,
 	context: ScramjetContext,
@@ -789,6 +796,19 @@ function traverseParsedHtml(
 	) {
 		// The response for this src is a stub, so the script may run. A src that did
 		// not go through the proxy would load the page's own script as it is
+		node.attribs.nonce = externalNonce;
+	}
+
+	// A link that preloads a script is held to the script policy too. The response for it is a stub, which
+	// runs nothing, so the link carries the nonce when its href went through the proxy
+	if (
+		externalNonce !== undefined &&
+		node.name === "link" &&
+		node.attribs &&
+		node.attribs.href !== undefined &&
+		isScriptPreloadLink(node.attribs) &&
+		isProxiedSrc(node.attribs.href, context)
+	) {
 		node.attribs.nonce = externalNonce;
 	}
 

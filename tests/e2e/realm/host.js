@@ -189,6 +189,26 @@ const scenarios = {
     setTimeout(() => { win.__reports = { seen, reports }; }, 400);
   },
 
+  // links that preload a script, in the markup and added by the page. The response is a stub, so nothing runs
+  preloadlinks({ doc }) {
+    const link = (rel, as, href, tag) => {
+      const l = doc.createElement("link");
+      l.rel = rel;
+      if (as) l.as = as;
+      l.href = href;
+      l.setAttribute("onload", "@@run:pre_" + tag + "_load");
+      l.setAttribute("onerror", "@@run:pre_" + tag + "_error");
+      doc.head.appendChild(l);
+    };
+    link("preload", "script", "/pre_ext.js?a=1", "a");
+    link("modulepreload", "", "/pre_mod.js?b=1", "b");
+  },
+  pre_m1_load(c) { c.sink.ran.push("pre_m1_load"); }, pre_m1_error(c) { c.sink.ran.push("pre_m1_error"); },
+  pre_m2_load(c) { c.sink.ran.push("pre_m2_load"); }, pre_m2_error(c) { c.sink.ran.push("pre_m2_error"); },
+  pre_a_load(c) { c.sink.ran.push("pre_a_load"); }, pre_a_error(c) { c.sink.ran.push("pre_a_error"); },
+  pre_b_load(c) { c.sink.ran.push("pre_b_load"); }, pre_b_error(c) { c.sink.ran.push("pre_b_error"); },
+  pre_never_ext(c) { c.sink.ran.push("pre_never_ext"); }, pre_never_mod(c) { c.sink.ran.push("pre_never_mod"); },
+
   // dynamic scripts
   dynscripts({ win, doc }) {
     const head = doc.head;

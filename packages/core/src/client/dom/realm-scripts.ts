@@ -73,11 +73,19 @@ export default function (client: ScramjetClient) {
 
 	client.Proxy(INSERTION_METHODS, {
 		apply(ctx) {
-			const { scripts, frames } = realm.insertedIn(ctx.args);
+			const { scripts, frames, preloads } = realm.insertedIn(ctx.args);
 			// Text added to a script in the document runs it, so that script is checked too
 			const target = realm.isScriptElement(ctx.this) ? ctx.this : null;
-			if (scripts.length === 0 && frames.length === 0 && target === null) return;
-			const insert = () => realm.withNonce(scripts, () => ctx.call());
+			if (
+				scripts.length === 0 &&
+				frames.length === 0 &&
+				preloads.length === 0 &&
+				target === null
+			) {
+				return;
+			}
+			const insert = () =>
+				realm.withNonce(scripts, () => ctx.call(), preloads);
 			const result =
 				target === null ? insert() : realm.withTextNonce(target, insert);
 			// A frame that is in the document has a window the page can reach at once
