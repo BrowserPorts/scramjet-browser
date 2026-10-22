@@ -47,6 +47,11 @@ const PAGES: Record<string, string> = {
   reopen: page("reopen", `<script>@@run:reopen</script>`),
   writer: page("writer", `<script>@@run:writer</script>`),
   attacks: page("attacks", `<script>@@run:attacks</script>`),
+  modflip: page("modflip", `<script>@@run:modflip</script>`),
+  batch: page("batch", `<script>@@run:batch</script>`),
+  shadow: page("shadow", `<script>@@run:shadow</script>`),
+  tpl: page("tpl", `<template id="t"><script>@@run:tplinner</script></template><script>@@run:tpl</script>`),
+  reports: page("reports", `<script>@@run:reports</script>`),
   markup: page("markup",
     `<noscript><p title="</noscript><img src=x:1 onerror=window.__pwn_noscript=1>"></noscript>` +
     `<noscript><a title="</noscript><script>window.__pwn_noscript2=1</script>">x</a></noscript>` +
@@ -157,6 +162,7 @@ const targetServer = serve(TARGET, (u, method) => {
 	if (ORDINARY[name]) return { headers: { ...CORS, "content-type": "text/html; charset=utf-8" }, body: ORDINARY[name] };
 	if (u.pathname === "/_pages") return { headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(Object.keys(PAGES)) };
 	if (PAGES[name]) return { headers: { ...CORS, "content-type": "text/html; charset=utf-8", "content-security-policy": "script-src 'self'" }, body: PAGES[name] };
+	if (u.pathname === "/evil.js") return { headers: { ...CORS, "content-type": "text/plain" }, body: "window.__pwn_modflip=1" };
 	if (RAW[u.pathname]) return { headers: { ...CORS, "content-type": "text/javascript" }, body: RAW[u.pathname] };
 	return { status: 404, headers: CORS, body: "not found" };
 });
@@ -203,6 +209,40 @@ if (runs.static) {
   check("static: module", has(r, "@@run:mod1", "module"));
   check("static: handler resolved from the attribute", has(r, "@@run:h1", "handler"));
   check("static: no violations", r.violations.length === 0, r.violations);
+}
+if (runs.modflip) {
+  const r = runs.modflip;
+  // The body the browser loaded is a stub whatever the element became. It is a module stub, which a
+  // classic load refuses to compile, so the page's text does not run in either realm
+  check("modflip: the page's text did not run natively", !r.pwn.includes("__pwn_modflip"), r.pwn);
+}
+if (runs.batch) {
+  const r = runs.batch;
+  check("batch: nothing the first script changed in its sibling ran natively", r.pwn.length === 0, r.pwn);
+  check("batch: an untouched batch runs both scripts in the realm", count(r, "b_plain_a") === 1 && count(r, "b_plain_b") === 1, r.ran);
+  for (const n of ["textContent", "data", "nodeValue", "replaceWith", "appendData", "insertAdjacentText", "insertAdjacentHTML", "setHTMLUnsafe", "range", "append"]) check(`batch: the first script of the ${n} batch ran in the realm`, count(r, "b_first_" + n) === 1, [n, count(r, "b_first_" + n), r.extra.__batchErr]);
+}
+if (runs.tpl) {
+  const r = runs.tpl;
+  const raw = r.extra.__tplRaw;
+  check("tpl: a script in a template holds no nonce the page could read", raw && raw.nonce === null && raw.has === false, raw);
+  check("tpl: nothing the page did with the template's script ran natively", r.pwn.length === 0, r.pwn);
+  check("tpl: a script imported from the template, untouched, runs in the realm", count(r, "tplinner") >= 1, count(r, "tplinner"));
+}
+if (runs.shadow) {
+  const r = runs.shadow;
+  check("shadow: a handler in markup set on a shadow root reaches the realm", count(r, "sh_inner") === 1 && count(r, "sh_unsafe") === 1, [count(r, "sh_inner"), count(r, "sh_unsafe"), r.violations]);
+  const m = r.extra.__shadowRead;
+  check("shadow: shadow markup reads back as the page wrote it", m && m.inner.includes('onerror="@@run:sh_inner"') && m.html.includes('onerror="@@run:sh_unsafe"') && !/scramjet|var d=/i.test(m.inner + m.html), m);
+}
+if (runs.reports) {
+  const r = runs.reports;
+  const rep = r.extra.__reports;
+  check("reports: the page was told of no violation and no policy", rep && rep.seen.length === 0 && rep.reports.length === 0, rep);
+  check("reports: the embedder was told of the violations", r.violations.length > 0, r.violations);
+  const f = r.extra.__forged;
+  check("reports: a nonce made through an attribute node is not an attribute the browser reads", f && f.rawScript === null && f.rawDiv === null && f.rawNs === null, f);
+  check("reports: the page reads no nonce it did not give", f && f.pageScript === "FORGED" && f.pageDiv === "FORGED2" && f.pageNs === "FORGED3" && f.prop === "FORGED", f);
 }
 if (runs.markup) {
   const r = runs.markup;

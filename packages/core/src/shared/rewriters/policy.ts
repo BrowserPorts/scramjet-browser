@@ -112,13 +112,27 @@ export function createDocumentPolicy(
 	return { nonce: base64(randomBytes(18)), handlerHashes: new Set(), rewritten: false };
 }
 
+/**
+ * The name of the one Trusted Types policy a document of this nonce may create. It is made
+ * from the nonce, so the page, which never learns the nonce, cannot name it, and it is taken
+ * by the client before any page code runs.
+ */
+export function trustedTypesPolicyName(nonce: string): string {
+	return `tt-${nonce.replace(/[^A-Za-z0-9]/gu, "")}`;
+}
+
 /** The header for a document the rewriter handled */
 export function documentPolicyHeader(policy: DocumentPolicy): string {
 	// A hash admits an event handler attribute only with unsafe-hashes. Hashes do
 	// not admit javascript: URLs in Chrome, so those never run in this mode.
 	const attributes =
 		policy.handlerHashes.size > 0 ? `'unsafe-hashes' ${[...policy.handlerHashes].join(" ")}` : "'none'";
-	return `script-src 'nonce-${policy.nonce}' 'wasm-unsafe-eval'; script-src-attr ${attributes}; object-src 'none'; worker-src 'none'`;
+	// Script text must come from a trusted source. The browser compares the text of a script
+	// with what was last given through a trusted sink, and refuses a script whose text was
+	// changed any other way, which no list of DOM paths the client hooks could promise. Only
+	// the client makes a trusted script. The default policy lets every other sink take its
+	// string, since only script is required to be trusted
+	return `script-src 'nonce-${policy.nonce}' 'wasm-unsafe-eval'; script-src-attr ${attributes}; object-src 'none'; worker-src 'none'; require-trusted-types-for 'script'; trusted-types default ${trustedTypesPolicyName(policy.nonce)}`;
 }
 
 /** Destinations that can hold a document, and so script, of their own */

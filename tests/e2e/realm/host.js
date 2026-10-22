@@ -57,6 +57,101 @@ const scenarios = {
     };
   },
 
+  // an external script whose element is made a classic script after its src was set as a module
+  modflip({ doc }) {
+    const s = doc.createElement("script");
+    s.type = "module"; s.src = "/evil.js"; s.type = "text/javascript";
+    doc.head.appendChild(s);
+  },
+
+  // a batch of scripts inserted by one call, the first of which changes the second through a
+  // path the client has no hook on. The browser refuses a script whose text is not what was
+  // last set through a trusted sink, so none of them runs natively
+  batch({ win, doc }) {
+    const techniques = {
+      textContent: (t) => { t.textContent = "window.__pwn_b_textContent=1"; },
+      data: (t) => { t.data = "window.__pwn_b_data=1"; },
+      nodeValue: (t) => { t.nodeValue = "window.__pwn_b_nodeValue=1"; },
+      replaceWith: (t) => { t.replaceWith("window.__pwn_b_replaceWith=1"); },
+      appendData: (t) => { t.appendData(";window.__pwn_b_appendData=1"); },
+      insertAdjacentText: (t, s) => { s.insertAdjacentText("beforeend", ";window.__pwn_b_insertAdjacentText=1"); },
+      insertAdjacentHTML: (t, s) => { s.insertAdjacentHTML("beforeend", ";window.__pwn_b_insertAdjacentHTML=1"); },
+      setHTMLUnsafe: (t, s) => { s.setHTMLUnsafe("window.__pwn_b_setHTMLUnsafe=1"); },
+      range: (t, s) => { const r = doc.createRange(); r.selectNodeContents(s); r.insertNode(doc.createTextNode(";window.__pwn_b_range=1")); },
+      append: (t, s) => { s.append(";window.__pwn_b_append=1"); },
+    };
+    for (const [name, mutate] of Object.entries(techniques)) {
+      const first = doc.createElement("script"); first.text = "@@run:b_first_" + name;
+      const second = doc.createElement("script"); second.text = "@@run:b_second";
+      const text = second.firstChild;
+      scenarios["b_first_" + name] = (c) => { c.sink.ran.push("b_first_" + name); try { mutate(text, second); } catch (e) { c.sink.errors.push(name + ": " + e.name); } };
+      const frag = doc.createDocumentFragment(); frag.append(first, second);
+      try { doc.body.appendChild(frag); } catch (e) { win.__batchErr = (win.__batchErr || "") + name + ":" + e.name + " "; }
+    }
+    // the same batch with nothing changed runs both
+    const a = doc.createElement("script"); a.text = "@@run:b_plain_a";
+    const b = doc.createElement("script"); b.text = "@@run:b_plain_b";
+    const f = doc.createDocumentFragment(); f.append(a, b); doc.body.appendChild(f);
+  },
+  b_second(c) { c.sink.ran.push("b_second"); },
+  b_plain_a(c) { c.sink.ran.push("b_plain_a"); }, b_plain_b(c) { c.sink.ran.push("b_plain_b"); },
+
+  // a script out of a template is stubbed without the document's nonce, so the page cannot read
+  // the nonce from it, and cannot move it into the document with its text changed
+  tpl({ win, doc }) {
+    const rawGet = Element.prototype.getAttribute;
+    const t = doc.getElementById("t");
+    const s = t.content.querySelector("script");
+    win.__tplRaw = { nonce: rawGet.call(s, "nonce"), has: Element.prototype.hasAttribute.call(s, "nonce") };
+    // an untouched import runs in the realm
+    doc.body.appendChild(doc.importNode(t.content, true));
+    // a copy with its text changed, then inserted
+    const copy = doc.importNode(t.content, true).querySelector("script");
+    copy.firstChild.data = "window.__pwn_tplClone=1";
+    try { doc.body.appendChild(copy); } catch (e) { win.__tplCloneErr = e.name; }
+    // the template's own script given another text through a range, and moved into the document
+    const holder = doc.createElement("div"); doc.body.appendChild(holder);
+    holder.appendChild(doc.createTextNode("window.__pwn_tplRange_surround=1"));
+    const r = doc.createRange(); r.selectNodeContents(holder);
+    try { r.surroundContents(s); } catch (e) { win.__tplErr = e.name; }
+  },
+  tplinner(c) { c.sink.ran.push("tplinner"); },
+
+  // markup set on a shadow root carries handlers that reach the realm, and reads back as written
+  shadow({ win, doc }) {
+    const host = doc.createElement("div"); doc.body.appendChild(host);
+    const sr = host.attachShadow({ mode: "open" });
+    sr.innerHTML = '<img src="x:1" onerror="@@run:sh_inner">';
+    const other = doc.createElement("div"); doc.body.appendChild(other);
+    const sr2 = other.attachShadow({ mode: "open" });
+    sr2.setHTMLUnsafe('<img src="x:1" onerror="@@run:sh_unsafe">');
+    win.__shadowRead = { inner: sr.innerHTML, html: sr2.getHTML() };
+  },
+  sh_inner(c) { c.sink.ran.push("sh_inner"); }, sh_unsafe(c) { c.sink.ran.push("sh_unsafe"); },
+
+  // what the browser tells a page about a violation, and a nonce forged through an attribute node
+  reports({ win, doc }) {
+    const seen = [];
+    doc.addEventListener("securitypolicyviolation", (e) => seen.push("doc:" + e.originalPolicy), true);
+    doc.addEventListener("securitypolicyviolation", (e) => seen.push("docb:" + e.originalPolicy));
+    win.addEventListener("securitypolicyviolation", (e) => seen.push("win:" + e.originalPolicy), true);
+    win.onsecuritypolicyviolation = (e) => seen.push("on:" + e.originalPolicy);
+    const reports = [];
+    try { new win.ReportingObserver((list) => { for (const r of list) reports.push(r.type + ":" + JSON.stringify(r.body && r.body.originalPolicy)); }, { buffered: true }).observe(); } catch (e) { reports.push("noobserver:" + e.name); }
+    // a script made to run with its own text, which the document's policy refuses
+    const s = doc.createElement("script");
+    const a = doc.createAttribute("nonce"); a.value = "FORGED"; s.setAttributeNode(a);
+    const ns = doc.createElement("img"); ns.setAttributeNodeNS(Object.assign(doc.createAttribute("nonce"), { value: "FORGED3" }));
+    const m = doc.createElement("div"); m.attributes.setNamedItem(Object.assign(doc.createAttribute("nonce"), { value: "FORGED2" }));
+    const rawGet = Element.prototype.getAttribute;
+    win.__forged = { rawScript: rawGet.call(s, "nonce"), rawDiv: rawGet.call(m, "nonce"), rawNs: rawGet.call(ns, "nonce"), pageNs: ns.getAttribute("nonce"), pageScript: s.getAttribute("nonce"), pageDiv: m.getAttribute("nonce"), prop: s.nonce };
+    try { win.eval("1"); } catch (e) { /* refused */ }
+    try { new win.Function("return 1"); } catch (e) { /* refused */ }
+    try { win.setTimeout("1", 0); } catch (e) { /* refused */ }
+    win.__reports = { seen, reports };
+    setTimeout(() => { win.__reports = { seen, reports }; }, 400);
+  },
+
   // dynamic scripts
   dynscripts({ win, doc }) {
     const head = doc.head;
@@ -298,8 +393,9 @@ function makeEmbedder(sink) {
             try { scenarios[m[1]]({ win, doc, d, sink, client }); } catch (err) { sink.errors.push(m[1] + ": " + err.name + ": " + err.message); }
           }
         };
-        const violation = (e) => sink.violations.push((e.violatedDirective || "") + "|" + (e.blockedURI || "inline") + "|" + String(e.sample || "").slice(0, 60));
-        const install = () => { doc.addEventListener(eventType, listener, true); doc.addEventListener("securitypolicyviolation", violation, true); };
+        // The page is shown no policy violation, so the embedder asks the client for them
+        client.realm.onViolation((r) => sink.violations.push((r.directive || "") + "|" + (r.blockedUri || "inline") + "|" + String(r.sample || "").slice(0, 60)));
+        const install = () => { doc.addEventListener(eventType, listener, true); };
         install();
         client.realm.onReset(install);
         sink.docs++;
@@ -347,7 +443,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
     }

@@ -5,6 +5,7 @@ import {
 	messageFields,
 } from "@/runtime-identity";
 import { isModuleScriptType, isScriptType } from "@/shared/mime";
+import { trustedTypesPolicyName } from "@rewriters/policy";
 import {
 	_Set,
 	Array_from,
@@ -30,6 +31,13 @@ import { isJavascriptUrl, parserReadableUrl } from "@rewriters/javascript-url";
 import { scriptBlockTypeForElement } from "@client/helpers";
 import type { ScramjetClient } from "@client/index";
 
+/** What the embedder is told of a policy violation. The page is told nothing */
+export interface ViolationReport {
+	directive: string;
+	blockedUri: string;
+	sample: string;
+}
+
 /**
  * What a document that runs its scripts in an embedder's realm needs from its
  * client. The browser runs a script only if the page's policy admits it, and the
@@ -43,6 +51,9 @@ import type { ScramjetClient } from "@client/index";
  */
 export class RealmSupport {
 	private readonly resetListeners = new _Set<() => void>();
+	private readonly violationListeners = new _Set<(report: ViolationReport) => void>();
+	/** The document's one Trusted Types policy for script, or null when the document has none */
+	private scriptPolicy: { createScript(text: string): unknown } | null = null;
 	private installed = false;
 
 	constructor(
@@ -79,9 +90,76 @@ export class RealmSupport {
 		return createRealmHandlerStub(this.eventType);
 	}
 
+	/**
+	 * Takes the Trusted Types policies of this document before any page code can. The
+	 * document's policy requires script text to be trusted: a script runs only if its text is
+	 * what was last given through a trusted sink, so text changed through any other path, one
+	 * the client hooks or one it never thought of, is refused by the browser. This policy is
+	 * the only way to make a trusted script, and the document's policy allows no other
+	 * name. The default policy lets every other sink take a string as it always did.
+	 */
+	private takePolicies(): void {
+		const nonce = this.nonce;
+		if (nonce === undefined) return;
+		const factory = Reflect_get(this.client.global, "trustedTypes") as
+			| { createPolicy(name: string, rules: object): unknown }
+			| undefined;
+		if (typeof factory !== "object" || factory === null) return;
+		const same = (text: string) => text;
+		// The default policy is asked for a TrustedScript wherever a string reaches a script
+		// sink without one, and every answer other than a refusal lets that text run. It
+		// refuses all but the one fixed text every handler attribute carries, which an
+		// attribute node can only be given as a string and which holds no page code
+		const handlerStub = this.handlerStub();
+		const onlyHandlerStub = (text: string) =>
+			text === handlerStub ? text : null;
+		try {
+			Reflect_apply(factory.createPolicy, factory, [
+				"default",
+				{ createHTML: same, createScriptURL: same, createScript: onlyHandlerStub },
+			]);
+			this.scriptPolicy = Reflect_apply(factory.createPolicy, factory, [
+				trustedTypesPolicyName(nonce),
+				{ createScript: same },
+			]) as { createScript(text: string): unknown };
+		} catch {
+			// The document's policy named another policy, so none of its script can be set
+			// by the client, and the browser refuses what the page makes. That fails closed
+			this.scriptPolicy = null;
+		}
+	}
+
+	/**
+	 * Script text as the browser takes it where it requires trusted text. The value is a
+	 * TrustedScript, which a text sink reads as its string, and any other place that takes
+	 * a string takes it as one.
+	 */
+	trusted(text: string): string {
+		return this.scriptPolicy === null
+			? text
+			: (this.scriptPolicy.createScript(text) as unknown as string);
+	}
+
+	/** The handler stub, trusted, for an attribute the browser reads as script */
+	trustedHandlerStub(): string {
+		return this.trusted(this.handlerStub());
+	}
+
 	/** Whether a name is an event handler content attribute, whatever its case */
 	isHandlerAttribute(name: string): boolean {
 		return isEventHandlerAttribute(String(name).toLowerCase());
+	}
+
+	/**
+	 * Calls `listener` for each policy violation in this frame. The page never sees one: the
+	 * report names the policy, which holds the document's nonce, and the addresses the proxy
+	 * blocked.
+	 */
+	onViolation(listener: (report: ViolationReport) => void): () => void {
+		this.violationListeners.add(listener);
+		return () => {
+			this.violationListeners.delete(listener);
+		};
 	}
 
 	/** Runs `listener` after the realm is rebuilt following `document.open()` erased this frame's listeners */
@@ -154,7 +232,13 @@ export class RealmSupport {
 		}
 		const text = this.scriptSource(script);
 		if (text === "") return false;
-		if (this.isStub(text)) return true;
+		if (this.isStub(text)) {
+			// The browser runs a script whose text is what was last set through a trusted sink.
+			// The text of this one may have arrived another way, as a clone's or a text node's
+			// does, so it is set again, here, where nothing can run it
+			if (convert) this.writeScriptText(script, text);
+			return true;
+		}
 		// A script already in the document has run, and its text is left as it is
 		if (!convert) return false;
 		const stub = realmScriptFor(
@@ -170,8 +254,23 @@ export class RealmSupport {
 			internalAttribute("script-source-src"),
 			bytesToBase64(TextEncoder_encode(text))
 		);
-		this.client.descriptors.set("Node.prototype.textContent", script, stub);
+		this.writeScriptText(script, stub);
 		return true;
+	}
+
+	/**
+	 * Sets the text of a script through the sink the browser holds trusted text to. Only an HTML
+	 * script has that sink, and the Node one does not record what it was given, so a script
+	 * whose text was set through it is refused when it runs.
+	 */
+	writeScriptText(script: Element, text: string): void {
+		this.client.descriptors.set(
+			this.client.box.instanceof(script, "HTMLScriptElement")
+				? "HTMLScriptElement.prototype.text"
+				: "Node.prototype.textContent",
+			script,
+			this.trusted(text)
+		);
 	}
 
 	private setNonce(script: Element, value: string): void {
@@ -426,6 +525,24 @@ export class RealmSupport {
 		if (source !== null) detail.s = source;
 	};
 
+	private readonly onViolationEvent = (event: Event): void => {
+		// The browser reports a violation to the page's listeners, and the report holds the
+		// policy it enforced. This listener is first, and nothing after it gets the event
+		this.client.natives.call("Event.prototype.stopImmediatePropagation", event);
+		const report: ViolationReport = {
+			directive: String(Reflect_get(event, "violatedDirective")),
+			blockedUri: String(Reflect_get(event, "blockedURI")),
+			sample: String(Reflect_get(event, "sample")),
+		};
+		for (const listener of Array_from(this.violationListeners)) {
+			try {
+				listener(report);
+			} catch {
+				// An embedder's listener that throws does not stop the others
+			}
+		}
+	};
+
 	/** The `a` or `area` element whose activation behavior this click would run */
 	private activationLink(event: Event): Element | null {
 		const path = this.client.natives.call(
@@ -503,6 +620,11 @@ export class RealmSupport {
 		// Every listener is one function object, so adding it again after the browser
 		// erased it is a no-op for the ones still there
 		add(this.client.global.document, this.eventType, this.onStubEvent);
+		add(
+			this.client.global as unknown as EventTarget,
+			"securitypolicyviolation",
+			this.onViolationEvent
+		);
 		add(this.client.global as unknown as EventTarget, "click", this.onClick);
 		add(this.client.global as unknown as EventTarget, "submit", this.onSubmit);
 	}
@@ -514,6 +636,7 @@ export class RealmSupport {
 	install(): void {
 		if (this.installed) return;
 		this.installed = true;
+		this.takePolicies();
 		const store = this.client.descriptors.store;
 		const touch = (from: object, name: string) => Reflect_get(from, name);
 		for (const name of [
@@ -522,12 +645,15 @@ export class RealmSupport {
 			"Node.prototype.isConnected",
 			"Node.prototype.parentElement",
 			"Node.prototype.textContent",
+			"HTMLScriptElement.prototype.text",
 			"CharacterData.prototype.data",
 			"HTMLElement.prototype.nonce",
 			"SVGElement.prototype.nonce",
 			"Element.prototype.localName",
 			"Attr.prototype.ownerElement",
 			"Attr.prototype.name",
+			"Attr.prototype.namespaceURI",
+			"Attr.prototype.value",
 		]) {
 			touch(store, name);
 		}
@@ -538,6 +664,7 @@ export class RealmSupport {
 			"EventTarget.prototype.addEventListener",
 			"EventTarget.prototype.dispatchEvent",
 			"Event.prototype.composedPath",
+			"Event.prototype.stopImmediatePropagation",
 			"Element.prototype.getAttribute",
 			"Element.prototype.getAttributeNames",
 			"Element.prototype.hasAttribute",

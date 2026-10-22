@@ -1,3 +1,4 @@
+import { Reflect_get } from "@/shared/snapshot";
 import type { ScramjetClient } from "@client/index";
 
 /**
@@ -41,6 +42,34 @@ export const enabled = (client: ScramjetClient) =>
 export default function (client: ScramjetClient) {
 	const realm = client.realm;
 	if (!realm) return;
+
+	// The browser reports each policy violation to a ReportingObserver as well, with the policy
+	// it enforced, which holds the document's nonce. The page is shown none of them
+	if (typeof Reflect_get(client.global, "ReportingObserver") === "function") {
+		type Report = { type?: unknown };
+		const withoutViolations = (reports: readonly Report[]) =>
+			reports.filter((report) => report.type !== "csp-violation");
+		client.Proxy("ReportingObserver", {
+			construct(ctx) {
+				const callback = ctx.args[0];
+				if (typeof callback !== "function") return;
+				ctx.args[0] = function (
+					this: unknown,
+					reports: Report[],
+					observer: unknown
+				) {
+					const kept = withoutViolations(reports);
+					if (kept.length === 0) return;
+					return callback.call(this, kept, observer);
+				};
+			},
+		});
+		client.Proxy("ReportingObserver.prototype.takeRecords", {
+			apply(ctx) {
+				ctx.return(withoutViolations(ctx.call() as Report[]));
+			},
+		});
+	}
 
 	client.Proxy(INSERTION_METHODS, {
 		apply(ctx) {

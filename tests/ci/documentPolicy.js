@@ -67,6 +67,20 @@ test("the header admits the nonce and wasm, and nothing else", (t) => {
 	t.deepEqual([...header.matchAll(/'[a-z-]*unsafe-[a-z-]+'/g)].map((match) => match[0]), ["'wasm-unsafe-eval'"]);
 });
 
+test("the header requires trusted script and allows the one policy the document's client takes", (t) => {
+	const first = policy.createDocumentPolicy(() => new Uint8Array(18).fill(1));
+	const second = policy.createDocumentPolicy(() => new Uint8Array(18).fill(2));
+	const header = policy.documentPolicyHeader(first);
+	t.regex(header, /(^|; )require-trusted-types-for 'script'(;|$)/);
+	const name = policy.trustedTypesPolicyName(first.nonce);
+	// A policy name has a narrower alphabet than a nonce, and the page, which never learns the nonce, cannot name it
+	t.regex(name, /^tt-[A-Za-z0-9]+$/);
+	t.not(name, policy.trustedTypesPolicyName(second.nonce));
+	t.true(header.endsWith(`trusted-types default ${name}`));
+	t.false(header.includes("allow-duplicates"));
+	t.notRegex(header, /trusted-types[^;]*\*/);
+});
+
 test("listed handler hashes are admitted for attributes only", (t) => {
 	const made = policy.createDocumentPolicy();
 	made.handlerHashes.add(policy.handlerHash("one()"));

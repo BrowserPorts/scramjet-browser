@@ -6,6 +6,8 @@ import {
 	TextEncoder_encode,
 	Object_keys,
 	Object_defineProperty,
+	Reflect_apply,
+	Reflect_get,
 } from "@/shared/snapshot";
 import { base64ToText, bytesToBase64 } from "@/shared/util";
 import { rewriteCss, unrewriteCss } from "@rewriters/css";
@@ -416,7 +418,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				const handlerName = String(name).toLowerCase();
 				ctx.fn.call(ctx.this, internalAttribute(handlerName), value);
 				ctx.args[0] = handlerName;
-				ctx.args[1] = client.realm.handlerStub();
+				ctx.args[1] = client.realm.trustedHandlerStub();
 				return;
 			}
 
@@ -453,19 +455,53 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 	});
 
+	// A nonce the page gives an element is kept beside it, as setAttribute keeps it, and never
+	// becomes the attribute the browser reads. The browser takes a nonce attribute as the
+	// element's own, so one made through an attribute node would admit the element's text to
+	// run as the page wrote it
+	const keepPageNonce = (element: Element, attr: Attr): boolean => {
+		if (!client.box.instanceof(attr, "Attr")) return false;
+		if (client.descriptors.get("Attr.prototype.ownerElement", attr)) return false;
+		if (client.descriptors.get("Attr.prototype.namespaceURI", attr) !== null)
+			return false;
+		const name = String(client.descriptors.get("Attr.prototype.name", attr));
+		if (name.toLowerCase() !== "nonce") return false;
+		client.natives.call("Element.prototype.removeAttribute", element, "nonce");
+		client.natives.call(
+			"Element.prototype.setAttribute",
+			element,
+			internalAttribute("nonce"),
+			String(client.descriptors.get("Attr.prototype.value", attr))
+		);
+		return true;
+	};
+
+	client.Proxy("Element.prototype.setAttributeNodeNS", {
+		apply(ctx) {
+			if (client.realm && keepPageNonce(ctx.this, ctx.args[0] as Attr)) {
+				ctx.return(null);
+			}
+		},
+	});
+
 	// i actually need to do something with this
 	client.Proxy("Element.prototype.setAttributeNode", {
 		apply(ctx) {
 			const realm = client.realm;
 			const attr = ctx.args[0] as Attr;
 			if (!realm || !client.box.instanceof(attr, "Attr")) return;
+			if (keepPageNonce(ctx.this, attr)) return ctx.return(null);
 			if (client.descriptors.get("Attr.prototype.ownerElement", attr)) return;
 			const name = String(client.descriptors.get("Attr.prototype.name", attr));
 			if (!realm.isHandlerAttribute(name)) return;
 			// A handler made as an attribute node carries the one stub every handler has, and
 			// the page's source goes beside it for the realm to read back
 			const original = client.descriptors.get("Attr.prototype.value", attr);
-			client.descriptors.set("Attr.prototype.value", attr, realm.handlerStub());
+			client.descriptors.set(
+				"Attr.prototype.value",
+				attr,
+				realm.trustedHandlerStub()
+			);
 			try {
 				const replaced = ctx.call();
 				client.natives.call(
@@ -487,6 +523,18 @@ export default function (client: ScramjetClient, self: typeof window) {
 			// TODO: this could leak by like calling stringify twice or some dumb shit lol
 			const name = String(ctx.args[1]);
 			const value = String(ctx.args[2]);
+
+			// A handler set without a namespace is the same attribute setAttribute sets
+			if (
+				client.realm?.isHandlerAttribute(name) &&
+				(ctx.args[0] === null || ctx.args[0] === undefined)
+			) {
+				Reflect_apply(Reflect_get(Element.prototype, "setAttribute"), ctx.this, [
+					name,
+					value,
+				]);
+				return ctx.return(undefined);
+			}
 
 			const ruleList = htmlRules.find((rule) => {
 				const r = rule[String(name).toLowerCase()];
@@ -609,7 +657,12 @@ export default function (client: ScramjetClient, self: typeof window) {
 				}
 			}
 
-			setScriptText(ctx.this, () => ctx.set(newval));
+			setScriptText(ctx.this, () =>
+				// An HTML script's text is held to trusted text, and innerHTML does not record it
+				client.realm && client.box.instanceof(ctx.this, "HTMLScriptElement")
+					? client.realm.writeScriptText(ctx.this, String(newval))
+					: ctx.set(newval)
+			);
 		},
 		get(ctx) {
 			if (isScriptElement(ctx.this)) {
@@ -635,6 +688,13 @@ export default function (client: ScramjetClient, self: typeof window) {
 			);
 		},
 	});
+
+	// A script's text sinks take trusted text when the document requires it, and a data
+	// block's text is held to the same rule
+	const sinkText = (element: Element, text: string): string =>
+		client.realm && client.box.instanceof(element, "HTMLScriptElement")
+			? client.realm.trusted(text)
+			: text;
 
 	const rewriteTextForElement = (element: Element, value: string) => {
 		const scriptBlockType = isScriptElement(element)
@@ -705,7 +765,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		{
 			set(ctx, value) {
 				const text = rewriteTextForElement(ctx.this, String(value));
-				setScriptText(ctx.this, () => ctx.set(text));
+				setScriptText(ctx.this, () => ctx.set(sinkText(ctx.this, text)));
 			},
 			get(ctx) {
 				return getTextForElement(ctx.this, ctx.get());
@@ -720,7 +780,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 		{
 			set(ctx, value: string) {
 				const text = rewriteTextForElement(ctx.this, String(value));
-				setScriptText(ctx.this, () => ctx.set(text));
+				setScriptText(ctx.this, () => ctx.set(sinkText(ctx.this, text)));
 			},
 			get(ctx) {
 				return getTextForElement(ctx.this, ctx.get());
@@ -732,7 +792,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Trap("HTMLScriptElement.prototype.text", {
 		set(ctx, value) {
 			const text = rewriteTextForElement(ctx.this, String(value));
-			setScriptText(ctx.this, () => ctx.set(text));
+			setScriptText(ctx.this, () => ctx.set(sinkText(ctx.this, text)));
 		},
 		get(ctx) {
 			return getTextForElement(ctx.this, ctx.get());
@@ -811,6 +871,52 @@ export default function (client: ScramjetClient, self: typeof window) {
 			ctx.return(unrewriteHtml(ctx.call()));
 		},
 	});
+
+	// A shadow root takes markup the way an element does, and was unhooked, so its scripts and
+	// handlers reached the browser as the page wrote them
+	if (typeof Reflect_get(self, "ShadowRoot") === "function") {
+		const rewriteForShadow = (html: string, apisource: string) =>
+			rewriteHtml(html, client.context, client.meta, {
+				loadScripts: false,
+				inline: true,
+				source: client.url.href,
+				fragment: true,
+				apisource,
+				foreignContext: "html",
+			});
+		client.Trap("ShadowRoot.prototype.innerHTML", {
+			set(ctx, value: string) {
+				// null specifically becomes "" and not "null". undefined does not
+				if (value === null) return;
+				let newval: string;
+				try {
+					newval = rewriteForShadow(
+						String(value),
+						"set ShadowRoot.prototype.innerHTML"
+					);
+				} catch {
+					newval = String(value);
+				}
+				ctx.set(newval);
+			},
+			get(ctx) {
+				return unrewriteHtml(ctx.get());
+			},
+		});
+		client.Proxy("ShadowRoot.prototype.setHTMLUnsafe", {
+			apply(ctx) {
+				ctx.args[0] = rewriteForShadow(
+					String(ctx.args[0]),
+					"set ShadowRoot.prototype.setHTMLUnsafe"
+				);
+			},
+		});
+		client.Proxy("ShadowRoot.prototype.getHTML", {
+			apply(ctx) {
+				ctx.return(unrewriteHtml(ctx.call()));
+			},
+		});
+	}
 
 	// XMLSerializer was unhooked, so `new XMLSerializer().serializeToString(el)`
 	// emitted the raw `scramjet-attr-*` attributes and rewritten URLs. Run the

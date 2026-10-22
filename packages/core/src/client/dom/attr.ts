@@ -71,6 +71,19 @@ export default function (client: ScramjetClient) {
 						return Object_keys(proxy).length;
 					}
 
+					// An attribute added through the map takes the same path as one added by the
+					// element, so its nonce and its handler source are kept the same way
+					if (prop === "setNamedItem" || prop === "setNamedItemNS") {
+						const method =
+							prop === "setNamedItem" ? "setAttributeNode" : "setAttributeNodeNS";
+						return (attr: Attr) =>
+							Reflect_apply(
+								Reflect_get(Element.prototype, method),
+								element,
+								[attr]
+							);
+					}
+
 					if (prop === "getNamedItem") {
 						return (name: string) => proxy[name];
 					}
@@ -150,6 +163,13 @@ export default function (client: ScramjetClient) {
 			if (ctx.this?.ownerElement) {
 				// eslint-disable-next-line scramjet-core/no-poisoned-ctx-value
 				return ctx.this.ownerElement.setAttribute(ctx.this.name, value);
+			}
+
+			// An attribute node that is not on an element yet can still be named for a handler,
+			// and a document that requires trusted script takes only trusted text for one
+			// eslint-disable-next-line scramjet-core/no-poisoned-ctx-value
+			if (client.realm?.isHandlerAttribute(String(ctx.this?.name))) {
+				return ctx.set(client.realm.trusted(String(value)));
 			}
 
 			return ctx.set(value);
