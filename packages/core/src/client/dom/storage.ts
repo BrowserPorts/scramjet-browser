@@ -3,6 +3,7 @@ import {
 	Number,
 	Object_keys,
 	Reflect_defineProperty,
+	Reflect_deleteProperty,
 	Reflect_get,
 	Reflect_getOwnPropertyDescriptor,
 	Reflect_set,
@@ -119,6 +120,13 @@ export default function (client: ScramjetClient, self: Self) {
 					configurable: true,
 					writable: true,
 				};
+			},
+			deleteProperty(target, property) {
+				if (typeof property === "symbol") return Reflect_deleteProperty(target, property);
+				const context = storageContext(storageType);
+				if (backend) backend.removeItem(context, String(property));
+				else target.removeItem(prefixedKey(String(property)));
+				return true;
 			},
 			defineProperty(target, property, attributes) {
 				if (typeof property === "symbol") {
