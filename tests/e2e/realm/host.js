@@ -328,6 +328,13 @@ const scenarios = {
   blank_handler(c) { c.sink.ran.push("blank_handler"); }, srcdoc_inline(c) { c.sink.ran.push("srcdoc_inline"); },
   blank_dynamic(c) { c.sink.ran.push("blank_dynamic"); },
 
+  // a window the page opens: its scripts run in the realm of the page that opened it, from the blank window it is
+  // given until the document it loads, and none run natively
+  popup({ win, sink }) {
+    win.open("/popuppage", "e2epopup");
+  },
+  popup_inline(c) { c.sink.ran.push("popup_inline"); c.win.document.getElementById("pb").click(); }, popup_handler(c) { c.sink.ran.push("popup_handler"); },
+
   // a frame that has a window before its document arrives gets the document's scripts too. Its window is kept
   // when the first navigation of a frame is to the same origin, and the client that hooked it earlier is a
   // copy of the runtime the new document cannot reach

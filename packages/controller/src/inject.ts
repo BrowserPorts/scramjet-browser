@@ -48,6 +48,10 @@ const EventTarget_dispatchEvent = EventTarget.prototype.dispatchEvent;
  * of the iframe element the application created, and that element can be read from any
  * window in the same origin. Realm mode needs it for every frame, since a frame with
  * no controller frame has no realm to send its scripts to.
+ *
+ * A window that another opened has no iframe above it, and takes the controller frame
+ * of the window that opened it, so the page an OAuth popup loads runs its scripts in a
+ * realm as the page that opened it does.
  */
 function controllerFrameAbove(win: Window): Frame | undefined {
 	// This window has not been hooked yet, so its own accessor is the browser's
@@ -59,7 +63,6 @@ function controllerFrameAbove(win: Window): Frame | undefined {
 		let element: unknown;
 		try {
 			parent = current.parent;
-			if (parent === current) return undefined;
 			element = Reflect.apply(read, current, []);
 		} catch {
 			// A parent in another origin has nothing to read
@@ -67,6 +70,18 @@ function controllerFrameAbove(win: Window): Frame | undefined {
 		}
 		const handle = (element as Record<symbol, Frame | undefined> | null)?.[CONTROLLERFRAME];
 		if (handle) return handle;
+		if (parent === current) {
+			// The top of a tree that no controller frame holds: a window another opened goes on from its opener
+			let opener: Window | null;
+			try {
+				opener = current.opener as Window | null;
+			} catch {
+				return undefined;
+			}
+			if (!opener || opener === current) return undefined;
+			current = opener;
+			continue;
+		}
 		current = parent;
 	}
 	return undefined;

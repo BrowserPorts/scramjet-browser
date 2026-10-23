@@ -48,6 +48,8 @@ const PAGES: Record<string, string> = {
   frames: page("frames", `<script>@@run:frames</script>`),
   uriframes: page("uriframes", `<script>@@run:uriframes</script>`),
   child: page("child", `<script>@@run:child_inline</script>`),
+  popup: page("popup", `<script>@@run:popup</script>`),
+  popuppage: page("popuppage", `<button id="pb" onclick="@@run:popup_handler">b</button><script>@@run:popup_inline</script>`),
   reopen: page("reopen", `<script>@@run:reopen</script>`),
   writer: page("writer", `<script>@@run:writer</script>`),
   attacks: page("attacks", `<script>@@run:attacks</script>`),
@@ -186,7 +188,7 @@ async function runBatch(only: string | undefined): Promise<any> {
 	const profile = fs.mkdtempSync(path.join(os.tmpdir(), "sj-e2e-"));
 	const chrome = spawn(
 		CHROME,
-		["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--disable-features=Translate", `http://127.0.0.1:${HOST}/${only ? `?only=${only}` : ""}`],
+		["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-popup-blocking", `--user-data-dir=${profile}`, "--disable-features=Translate", `http://127.0.0.1:${HOST}/${only ? `?only=${only}` : ""}`],
 		{ stdio: "ignore" },
 	);
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -349,6 +351,10 @@ if (report.ordinary) {
 if (runs.frames) {
   const r = runs.frames;
   for (const n of ["child_inline", "blank_inline", "blank_handler", "srcdoc_inline", "blank_dynamic"]) check(`frames: ${n} reached the realm`, count(r, n) === 1, [n, count(r, n), r.ran]);
+}
+if (runs.popup) {
+  const r = runs.popup;
+  check("popup: the opener's realm ran the popup's inline script and its handler, once each", count(r, "popup_inline") === 1 && count(r, "popup_handler") === 1, [count(r, "popup_inline"), count(r, "popup_handler"), r.ran]);
 }
 if (runs.uriframes) {
   const r = runs.uriframes;
