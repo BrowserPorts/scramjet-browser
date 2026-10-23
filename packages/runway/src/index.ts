@@ -668,12 +668,18 @@ async function main() {
 	const fastMode = process.env.RUNWAY_FAST === "1";
 	const omitWpt = process.env.OMIT_WPT === "1";
 	const updateFailingTests = process.env.RUNWAY_UPDATE_FAILING === "1";
-	const failingTestsPath = path.join(__dirname, "..", "failing_tests.json");
 	const runBareTests = !fastMode;
 	// RUNWAY_TIMEOUT_SCALE multiplies every test's timeout, for realm mode,
 	// whose guest is a jitless interpreter
 	const timeoutScale = Math.max(1, Number(process.env.RUNWAY_TIMEOUT_SCALE ?? 1));
 	const realmMode = process.env.RUNWAY_REALM === "1";
+	// Realm mode has a list of its own, since the page scripts it runs are not rewritten and
+	// a different set of tests fail
+	const failingTestsPath = path.join(
+		__dirname,
+		"..",
+		realmMode ? "failing_tests_realm.json" : "failing_tests.json"
+	);
 
 	if (testFilter) {
 		console.log(`� Filter: "${testFilter}"`);
