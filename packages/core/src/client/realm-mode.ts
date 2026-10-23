@@ -281,9 +281,11 @@ export class RealmSupport {
 		}
 		// A script already in the document has run, and its text is left as it is
 		if (!convert) return false;
+		// Text nodes that were each made into a stub on the way in are the page's source again, joined
+		const source = this.unstub(text);
 		const stub = realmScriptFor(
 			this.client.context.config,
-			text,
+			source,
 			"(anonymous script element)",
 			isModuleScriptType(type),
 			false
@@ -292,7 +294,7 @@ export class RealmSupport {
 			"Element.prototype.setAttribute",
 			script,
 			internalAttribute("script-source-src"),
-			bytesToBase64(TextEncoder_encode(text))
+			bytesToBase64(TextEncoder_encode(source))
 		);
 		this.writeScriptText(script, stub);
 		return true;

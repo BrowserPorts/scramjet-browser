@@ -218,6 +218,11 @@ const scenarios = {
     { const s = doc.createElement("script"); s.textContent = "@@run:d_textContent"; head.append(s); }
     { const s = doc.createElement("script"); s.innerText = "@@run:d_innerText"; head.prepend(s); }
     { const s = doc.createElement("script"); s.appendChild(doc.createTextNode("@@run:d_textnode")); head.insertBefore(s, null); }
+    // text nodes under a script that is not in the document yet, changed with the character data methods and joined
+    { const s = doc.createElement("script"); const t = doc.createTextNode("@@run:d_appendData"); s.appendChild(t); t.appendData(";window.__d_quiet = 1;"); head.appendChild(s); }
+    { const s = doc.createElement("script"); const t = doc.createTextNode("d_insertData"); s.appendChild(t); t.insertData(0, "@@run:"); head.appendChild(s); }
+    { const s = doc.createElement("script"); const t = doc.createTextNode("ZZ@@run:d_replaceData"); s.appendChild(t); t.replaceData(0, 2, ""); head.appendChild(s); }
+    { const s = doc.createElement("script"); s.appendChild(doc.createTextNode("@@run:d_twoNodes;")); s.appendChild(doc.createTextNode("window.__d_quiet2 = 1;")); head.appendChild(s); }
     // external, relative src
     { const s = doc.createElement("script"); s.src = "/d_ext.js"; head.appendChild(s); }
     { const s = doc.createElement("script"); s.setAttribute("src", "/d_ext2.js"); head.appendChild(s); }
@@ -250,6 +255,8 @@ const scenarios = {
   },
   d_text(c) { c.sink.ran.push("d_text"); }, d_textContent(c) { c.sink.ran.push("d_textContent"); },
   d_innerText(c) { c.sink.ran.push("d_innerText"); }, d_textnode(c) { c.sink.ran.push("d_textnode"); },
+  d_appendData(c) { c.sink.ran.push("d_appendData"); }, d_insertData(c) { c.sink.ran.push("d_insertData"); },
+  d_replaceData(c) { c.sink.ran.push("d_replaceData"); }, d_twoNodes(c) { c.sink.ran.push("d_twoNodes"); },
   d_ext(c) { c.sink.ran.push("d_ext"); }, d_ext2(c) { c.sink.ran.push("d_ext2"); },
   d_module(c) { c.sink.ran.push("d_module"); },
   d_adjacent(c) { c.sink.ran.push("d_adjacent"); }, d_append(c) { c.sink.ran.push("d_append"); },
@@ -414,7 +421,7 @@ const scenarios = {
       // two real stubs with raw text between them must not pass for one stub
       const s = doc.createElement("script"); s.text = "@@run:atk_between_a";
       s.appendChild(doc.createTextNode("@@run:atk_between_b"));
-      s.firstChild.after(doc.createTextNode("window.__pwn_between=1;"));
+      s.firstChild.after(doc.createTextNode("\nwindow.__pwn_between=1;\n"));
       head.appendChild(s);
     });
     tryit("leaks", () => {

@@ -1132,9 +1132,38 @@ export default function (client: ScramjetClient, self: typeof window) {
 		);
 	}
 
+	// An edit of the text under a script is made on the text the page reads, which is not the stub that is stored, and
+	// the whole result is stubbed again. An offset the page gives counts in its own text
+	const editScriptText = (
+		ctx: { this: unknown; return(value: unknown): unknown },
+		change: (current: string) => string
+	): boolean => {
+		if (!client.realm) return false;
+		const parent = textNodeParent(ctx.this);
+		if (!parent || !isScriptElement(parent)) return false;
+		const data = client.descriptors.get(
+			"CharacterData.prototype.data",
+			ctx.this
+		) as string;
+		client.descriptors.set(
+			"CharacterData.prototype.data",
+			ctx.this,
+			rewriteTextForElement(parent, change(client.realm.unstub(data)))
+		);
+		ctx.return(undefined);
+		return true;
+	};
+	const outOfRange = () =>
+		client.natives.construct(
+			"DOMException",
+			"The offset is greater than the node's length",
+			"IndexSizeError"
+		);
+
 	client.Proxy("Text.prototype.appendData", {
 		apply(ctx) {
 			const text = String(ctx.args[0]);
+			if (editScriptText(ctx, (current) => current + text)) return;
 			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
@@ -1146,6 +1175,15 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Text.prototype.insertData", {
 		apply(ctx) {
 			const text = String(ctx.args[1]);
+			const offset = Number(ctx.args[0]) >>> 0;
+			if (
+				editScriptText(ctx, (current) => {
+					if (offset > current.length) throw outOfRange();
+					return current.slice(0, offset) + text + current.slice(offset);
+				})
+			) {
+				return;
+			}
 			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this
@@ -1157,6 +1195,20 @@ export default function (client: ScramjetClient, self: typeof window) {
 	client.Proxy("Text.prototype.replaceData", {
 		apply(ctx) {
 			const text = String(ctx.args[2]);
+			const offset = Number(ctx.args[0]) >>> 0;
+			const count = Number(ctx.args[1]) >>> 0;
+			if (
+				editScriptText(ctx, (current) => {
+					if (offset > current.length) throw outOfRange();
+					return (
+						current.slice(0, offset) +
+						text +
+						current.slice(Math.min(offset + count, current.length))
+					);
+				})
+			) {
+				return;
+			}
 			const parent = client.descriptors.get(
 				"Node.prototype.parentElement",
 				ctx.this

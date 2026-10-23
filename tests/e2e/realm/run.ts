@@ -312,7 +312,7 @@ if (runs.preload) {
 
 if (runs.dynscripts) {
   const r = runs.dynscripts;
-  for (const n of ["d_text","d_textContent","d_innerText","d_textnode","d_ext","d_ext2","d_module","d_adjacent","d_append","d_replaceChildren","d_after","d_replaceWith","d_fragment1","d_fragment2","d_late","d_range","d_readback"]) check(`dynscripts: ${n} ran in the realm`, count(r, n) === 1, count(r, n));
+  for (const n of ["d_text","d_textContent","d_innerText","d_textnode","d_ext","d_ext2","d_module","d_adjacent","d_append","d_replaceChildren","d_after","d_replaceWith","d_fragment1","d_fragment2","d_late","d_range","d_readback","d_appendData","d_insertData","d_replaceData","d_twoNodes"]) check(`dynscripts: ${n} ran in the realm`, count(r, n) === 1, count(r, n));
   check("dynscripts: a clone and a move do not run a script again", count(r, "d_once") === 1, count(r, "d_once"));
   check("dynscripts: innerHTML scripts never run", count(r, "d_innerHTML_never") === 0);
   check("dynscripts: a data block keeps its text", r.extra.__dataBlockText === '{"data":1}', r.extra.__dataBlockText);
@@ -363,7 +363,9 @@ if (runs.reopen) check("reopen: scripts and handlers still reach the realm after
 if (runs.writer) check("writer: document.write scripts reach the realm", count(runs.writer, "w_one") === 1 && count(runs.writer, "w_two") === 1 && count(runs.writer, "w_ext") === 1, runs.writer.ran);
 if (runs.attacks) {
   const r = runs.attacks;
-  check("attacks: raw text between two real stubs does not run natively or as one stub", count(r, "atk_between_a") === 0 && count(r, "atk_between_b") === 0, r.ran);
+  // The three text nodes are one script whose source is the page's own text joined, and it runs in the realm once,
+  // as the one script the browser would make of them, and never natively
+  check("attacks: raw text between two real stubs is the page's own joined text, run once in the realm and never natively", count(r, "atk_between_a") === 1 && count(r, "atk_between_b") === 0 && !r.pwn.includes("__pwn_between"), [r.ran, r.pwn]);
   const leaks = r.extra.__leaks;
   check("attacks: no text the page reads shows the event type", leaks && !JSON.stringify(leaks).includes(report.eventType) && !JSON.stringify(leaks).includes("CustomEvent"), leaks);
   check("attacks: the page reads its own source back through every text api", leaks && leaks.own === "hello" && leaks.own2 === "hello" && leaks.substring === "hello" && leaks.cloneData === "hello" && leaks.divText === "inside" && leaks.rangeText === "hello", leaks);
