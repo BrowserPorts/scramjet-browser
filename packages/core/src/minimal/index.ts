@@ -66,7 +66,41 @@ export type {
 } from "@/shared/storage";
 export { ScramjetStorageJar } from "@/shared/storage";
 export { createStorageObject } from "@/shared/storage-object";
-export { rewriteHtml, rewriteSrcset, type HtmlContext } from "@rewriters/html";
+export {
+	rewriteHtml,
+	rewriteSrcset,
+	unrewriteHtml,
+	isEventHandlerAttribute,
+	type HtmlContext,
+} from "@rewriters/html";
+// Realm mode, for an embedder whose pages run their scripts in a realm of its own: the stubs
+// that stand in for page script, the policy a document that holds them is sent with, and the
+// javascript: URL handling that keeps their code out of the document's realm
+export {
+	createRealmHandlerStub,
+	createRealmStub,
+	decodeJavascriptUrlBody,
+	embedText,
+	isRealmStub,
+	parseRealmStub,
+	readRealmStubSource,
+	realmDocumentEventType,
+	REALM_INERT_JAVASCRIPT_URL,
+	REALM_NO_LISTENER_MESSAGE,
+	unstubText,
+	type ParsedRealmStub,
+	type RealmScriptDetail,
+	type RealmScriptKind,
+} from "@rewriters/realm";
+export {
+	createDocumentPolicy,
+	documentPolicyHeader,
+	handlerHash,
+	sha256,
+	trustedTypesPolicyName,
+	type DocumentPolicy,
+} from "@rewriters/policy";
+export { isJavascriptUrl, parserReadableUrl } from "@rewriters/javascript-url";
 export { rewriteCss } from "@rewriters/css";
 export {
 	getScriptBlockTypeString,
@@ -91,5 +125,11 @@ export { CookieJar, type Cookie } from "@/shared/cookie";
 export type * from "./types";
 export type * from "@/plugins/types";
 
-export { identityName, runtimeIdentity } from "@/runtime-identity";
+export {
+	identityName,
+	internalAttribute,
+	internalAttributePrefix,
+	logicalAttribute,
+	runtimeIdentity,
+} from "@/runtime-identity";
 export type { CodeRewriterHooks } from "@/shared";

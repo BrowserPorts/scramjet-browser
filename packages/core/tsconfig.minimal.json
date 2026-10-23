@@ -9,5 +9,5 @@
 		"declarationDir": "./dist/minimal"
 	},
 	"include": [],
-	"files": ["./src/minimal/index.ts", "./src/dbg.d.ts"]
+	"files": ["./src/minimal/index.ts", "./src/dbg.d.ts", "./src/global.d.ts"]
 }
