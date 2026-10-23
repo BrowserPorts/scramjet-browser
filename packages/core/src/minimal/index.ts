@@ -67,6 +67,7 @@ export type {
 export { ScramjetStorageJar } from "@/shared/storage";
 export { createStorageObject } from "@/shared/storage-object";
 export {
+	IncrementalHtmlRewriter,
 	rewriteHtml,
 	rewriteSrcset,
 	unrewriteHtml,
