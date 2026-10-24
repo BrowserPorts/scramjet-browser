@@ -1,3 +1,4 @@
+import { unrewriteUrl } from "@rewriters/url";
 import { IncrementalHtmlRewriter, rewriteHtml } from "@rewriters/html";
 import { ScramjetClient } from "@client/index";
 import { String, _RegExp } from "@/shared/snapshot";
@@ -95,9 +96,23 @@ export default function (client: ScramjetClient, _self: Self) {
 		},
 	});
 
+	// The address a document has, which is another frame's when a page reads the document of a frame it holds. That
+	// frame's own client knows it, and a frame this client holds nothing of has the proxy's address natively
+	const addressOf = (ctx: { this: unknown; get(): unknown }): URL => {
+		const doc = ctx.this as Document;
+		if (doc === client.global.document) return client.url;
+		const owner = client.box.documents.get(doc);
+		if (owner) return owner.url;
+		try {
+			return new URL(unrewriteUrl(String(ctx.get()), client.context));
+		} catch {
+			return client.url;
+		}
+	};
+
 	client.Trap("Document.prototype.domain", {
-		get() {
-			return client.url.hostname;
+		get(ctx) {
+			return addressOf(ctx).hostname;
 		},
 		set() {
 			return false;
@@ -105,8 +120,8 @@ export default function (client: ScramjetClient, _self: Self) {
 	});
 
 	client.Trap("Document.prototype.documentURI", {
-		get() {
-			return client.url.href;
+		get(ctx) {
+			return addressOf(ctx).href;
 		},
 		set() {
 			return false;
@@ -114,8 +129,8 @@ export default function (client: ScramjetClient, _self: Self) {
 	});
 
 	client.Trap("Document.prototype.URL", {
-		get() {
-			return client.url.href;
+		get(ctx) {
+			return addressOf(ctx).href;
 		},
 		set() {
 			return false;

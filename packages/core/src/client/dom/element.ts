@@ -241,14 +241,21 @@ export default function (client: ScramjetClient, self: typeof window) {
 			const doc = client.box.instanceof(node, "Document")
 				? (node as Document)
 				: node.ownerDocument;
+			// A node of another frame's document, which a page reaches through the frame's window, is read
+			// against that frame's address, which its own client holds. A frame this client holds nothing of
+			// has the address of the proxy for it natively, and that is read back
+			const owner = (doc && client.box.documents.get(doc)) || client;
+			if (doc && owner === client && doc !== client.global.document) {
+				return unrewriteUrl(ctx.get() as string, client.context);
+			}
 			const base = doc?.querySelector("base[href]") as HTMLBaseElement | null;
 
 			if (base) {
 				const href = base.getAttribute("href") || base.href;
-				if (href) return new URL(href, client.url.href).href;
+				if (href) return new URL(href, owner.url.href).href;
 			}
 
-			return client.url.href;
+			return owner.url.href;
 		},
 		set() {
 			return false;
