@@ -542,9 +542,33 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 
 	traverse(handler.root);
 
-	return render(handler.root, {
+	// Chrome writes < and > in an attribute value as entities, and the serializer
+	// leaves them as they are. Each is carried through the render as a token that
+	// the markup does not contain and replaced after it
+	let token = "\u0000";
+	while (html.includes(token)) token += "\u0000";
+	const lt = `${token}l`;
+	const gt = `${token}g`;
+	let marked = false;
+	function mark(node: ChildNode) {
+		if ("attribs" in node) {
+			for (const key of Object.keys(node.attribs)) {
+				const value = node.attribs[key];
+				if (typeof value !== "string" || !/[<>]/.test(value)) continue;
+				node.attribs[key] = value.replaceAll("<", lt).replaceAll(">", gt);
+				marked = true;
+			}
+		}
+		if ("childNodes" in node) {
+			for (const child of node.childNodes) mark(child);
+		}
+	}
+	mark(handler.root);
+
+	const rendered = render(handler.root, {
 		...renderOptions,
 	});
+	return marked ? rendered.replaceAll(lt, "&lt;").replaceAll(gt, "&gt;") : rendered;
 }
 
 // i need to add the attributes in during rewriting
