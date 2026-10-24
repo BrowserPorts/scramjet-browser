@@ -8,13 +8,19 @@ export default function (client: ScramjetClient, _self: Self) {
 		client.box.writeRewriters.delete(document);
 	}
 
+	// The client of the frame a document belongs to, which is another frame's when a page writes into the document of a
+	// frame it holds. Its address, its base and its nonce are what the markup written is rewritten against
+	const ownerOf = (document: Document): ScramjetClient =>
+		client.box.documents.get(document) ?? client;
+
 	function getDocumentWriter(document: Document) {
 		let writer = client.box.writeRewriters.get(document);
 		if (!writer) {
-			writer = new IncrementalHtmlRewriter(client.context, client.meta, {
+			const owner = ownerOf(document);
+			writer = new IncrementalHtmlRewriter(owner.context, owner.meta, {
 				loadScripts: false,
 				inline: true,
-				source: client.url.href,
+				source: owner.url.href,
 				apisource: "Document.prototype.write",
 			});
 			client.box.writeRewriters.set(document, writer);
@@ -26,40 +32,54 @@ export default function (client: ScramjetClient, _self: Self) {
 	client.Proxy("Document.prototype.open", {
 		apply(ctx) {
 			resetDocumentWriter(ctx.this);
-			if (client.realm && ctx.this === client.global.document) {
+			const owner = ownerOf(ctx.this);
+			if (owner.realm) {
 				// Opening a document erases the listeners that reach the realm, so they are
-				// put back as soon as the browser has erased them
+				// put back as soon as the browser has erased them. The document may be another
+				// frame's, whose realm is the one that listens
 				const document = ctx.call();
-				client.realm.reinstall();
+				owner.realm.reinstall();
 				return ctx.return(document);
 			}
 		},
 	});
 
+	// The first write after a document was last opened or closed may open it itself, which erases the listeners that
+	// reach the realm as an open does
+	const written = (document: Document, text: string, first: boolean) => {
+		const owner = ownerOf(document);
+		if (
+			first &&
+			owner.realm &&
+			client.descriptors.get("Document.prototype.readyState", document) !== "loading"
+		) {
+			// A document that is not being parsed is opened by the write, which erases the listeners that reach the realm, and the
+			// stub of a script in the markup runs before the write returns. It is opened here so they are back by then
+			client.natives.call("Document.prototype.open", document);
+			owner.realm.reinstall();
+		}
+		const writer = getDocumentWriter(document);
+		const result = client.natives.call(
+			"Document.prototype.write",
+			document,
+			writer.write(text)
+		);
+		// A frame the markup made is in the document, and its window can be reached
+		owner.realm?.hookFramesUnder(document);
+		return result;
+	};
+
 	client.Proxy("Document.prototype.write", {
 		apply(ctx) {
-			const writer = getDocumentWriter(ctx.this);
-			const result = client.natives.call(
-				"Document.prototype.write",
-				ctx.this,
-				writer.write(ctx.args.join(""))
-			);
-			// A frame the markup made is in the document, and its window can be reached
-			client.realm?.hookFramesUnder(ctx.this);
-			ctx.return(result);
+			const first = !client.box.writeRewriters.has(ctx.this);
+			ctx.return(written(ctx.this, ctx.args.join(""), first));
 		},
 	});
 
 	client.Proxy("Document.prototype.writeln", {
 		apply(ctx) {
-			const writer = getDocumentWriter(ctx.this);
-			const result = client.natives.call(
-				"Document.prototype.write",
-				ctx.this,
-				writer.write(ctx.args.join("") + "\n")
-			);
-			client.realm?.hookFramesUnder(ctx.this);
-			ctx.return(result);
+			const first = !client.box.writeRewriters.has(ctx.this);
+			ctx.return(written(ctx.this, ctx.args.join("") + "\n", first));
 		},
 	});
 
