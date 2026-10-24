@@ -349,6 +349,16 @@ const scenarios = {
   },
   popup_handler(c) { c.sink.ran.push("popup_handler"); },
 
+  // a link to a fragment of the page moves within the document: a load would run the page's scripts again
+  anchors(c) {
+    const { win, doc } = c;
+    c.sink.ran.push("anchors");
+    const log = [];
+    for (const id of ["a1", "a2", "a3"]) { doc.getElementById(id).click(); log.push(id + ":" + win.location.hash); }
+    const link = doc.getElementById("a1");
+    win.__anchors = { log, attr: link.getAttribute("href"), href: link.href.slice(link.href.indexOf("#")), set: (() => { link.setAttribute("href", "#missing"); link.click(); return win.location.hash; })() };
+  },
+
   // a frame that has a window before its document arrives gets the document's scripts too. Its window is kept
   // when the first navigation of a frame is to the same origin, and the client that hooked it earlier is a
   // copy of the runtime the new document cannot reach
@@ -542,7 +552,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__popupMsg", "__srcdocRead", "__childwin", "__refusals", "__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__popupMsg", "__anchors", "__srcdocRead", "__childwin", "__refusals", "__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { frameErrors: sink.frameErrors || [], bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
       // A page is done once its result is read, and a frame left behind is a window the next ones share the thread with

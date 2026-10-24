@@ -15,7 +15,10 @@ export const htmlRules: {
 }[] = [
 	{
 		fn: (value, context, meta) =>
-			rewriteUrl(value, context, meta, { navigateType: "location" }),
+			rewriteUrl(value, context, meta, {
+				navigateType: "location",
+				fragmentRelative: true,
+			}),
 
 		// url rewrites
 		src: ["embed", "img", "frame", "input", "track"],

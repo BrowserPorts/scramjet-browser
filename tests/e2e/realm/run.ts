@@ -48,6 +48,7 @@ const PAGES: Record<string, string> = {
   frames: page("frames", `<script>@@run:frames</script>`),
   uriframes: page("uriframes", `<script>@@run:uriframes</script>`),
   child: page("child", `<script>@@run:child_inline</script>`),
+  anchors: page("anchors", `<p id="x">x</p><a id="a1" href="#x">1</a><a id="a2" href="#">2</a><a id="a3" href="#missing">3</a><script>@@run:anchors</script>`),
   popup: page("popup", `<script>@@run:popup</script>`),
   popuppage: page("popuppage", `<button id="pb" onclick="@@run:popup_handler">b</button><script>@@run:popup_inline</script>`),
   reopen: page("reopen", `<script>@@run:reopen</script>`),
@@ -354,6 +355,13 @@ if (runs.frames) {
   const b = r.extra.__srcdocRead;
   check("frames: a frame's srcdoc reads back as the page gave it, by property, by attribute and from parsed markup", b && b.prop === b.markup && b.attr === b.markup && b.parsed === b.markup, b);
   check("frames: a frame's srcdoc does not read back the nonce", b && b.leak === false, b);
+}
+if (runs.anchors) {
+  const r = runs.anchors;
+  check("anchors: following links to a fragment of the page does not load it again", count(r, "anchors") === 1, [count(r, "anchors"), r.ran]);
+  const a = r.extra.__anchors;
+  check("anchors: each link moves the fragment of the address the page reads", a && JSON.stringify(a.log) === JSON.stringify(["a1:#x", "a2:", "a3:#missing"]), a);
+  check("anchors: a link reads back the fragment the page wrote", a && a.attr === "#x" && a.href === "#x" && a.set === "#missing", a);
 }
 if (runs.popup) {
   const r = runs.popup;

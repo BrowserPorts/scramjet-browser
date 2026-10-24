@@ -38,6 +38,11 @@ export type RewriteUrlOptions = {
 	destination?: ScramjetDestination;
 	workerName?: string;
 	workerCorrelation?: string;
+	/**
+	 * The result may be the bare fragment when the address differs from the document's own in its fragment alone.
+	 * Only a value the browser itself resolves against the document, such as an attribute, can take that form
+	 */
+	fragmentRelative?: boolean;
 };
 
 export type URLMeta = {
@@ -64,6 +69,12 @@ export type URLMeta = {
 	parentFrameName?: string;
 	referrerPolicy?: string;
 };
+
+/** The address without its fragment */
+function stripFragment(href: string): string {
+	const index = href.indexOf("#");
+	return index === -1 ? href : href.slice(0, index);
+}
 
 function tryCanParseURL(url: string, origin?: string | URL): _URL | null {
 	try {
@@ -288,7 +299,23 @@ export function rewriteUrl(
 
 		const encodedHash = context.interface.codecEncode(realUrl.hash.slice(1));
 		const realHash = encodedHash ? "#" + encodedHash : "";
+		const hadFragment = url.includes("#");
 		realUrl.hash = "";
+
+		// An address that differs from the document's own in its fragment alone is a navigation inside the
+		// document. The proxied form of the document carries query parameters of its own, so a full
+		// rewrite of such an address is a different address to the browser, and following the link
+		// loads the page again instead of moving to the fragment. A document that declares a base
+		// resolves against that base, which is not the document, so it is rewritten whole
+		if (
+			options?.fragmentRelative === true &&
+			hadFragment &&
+			!meta.baseIsDeclared &&
+			!meta.baseIsSelected &&
+			realUrl.href === stripFragment(meta.base.href)
+		) {
+			return realHash || "#";
+		}
 
 		const paramsInit = new _URLSearchParams();
 
