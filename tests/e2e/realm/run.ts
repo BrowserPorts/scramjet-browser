@@ -351,6 +351,9 @@ if (report.ordinary) {
 if (runs.frames) {
   const r = runs.frames;
   for (const n of ["child_inline", "blank_inline", "blank_handler", "srcdoc_inline", "blank_dynamic"]) check(`frames: ${n} reached the realm`, count(r, n) === 1, [n, count(r, n), r.ran]);
+  const b = r.extra.__srcdocRead;
+  check("frames: a frame's srcdoc reads back as the page gave it, by property, by attribute and from parsed markup", b && b.prop === b.markup && b.attr === b.markup && b.parsed === b.markup, b);
+  check("frames: a frame's srcdoc does not read back the nonce", b && b.leak === false, b);
 }
 if (runs.popup) {
   const r = runs.popup;

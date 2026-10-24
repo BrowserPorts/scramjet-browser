@@ -159,6 +159,16 @@ export default function (client: ScramjetClient, self: typeof window) {
 						}
 						return unrewriteUrl(value, client.context);
 					}
+					if (attr === "srcdoc") {
+						// The markup a frame holds is the rewritten one, which carries the realm's nonce and its
+						// stubs. The page reads back the markup it gave the frame, as getAttribute answers
+						const original = client.natives.call(
+							"Element.prototype.getAttribute",
+							this,
+							internalAttribute("srcdoc")
+						);
+						if (typeof original === "string") return original;
+					}
 					if (attr === "nonce" && client.realm) {
 						// The nonce an element holds is the document's own while the client has it
 						// on the element, and the page must never read it. It reads back the value
