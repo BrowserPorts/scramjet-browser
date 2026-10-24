@@ -526,6 +526,7 @@ export class RealmSupport {
 			{
 				[messageFields.type]: "window",
 				[messageFields.origin]: this.messageOrigin(),
+				[messageFields.source]: this.client.box.registerSender(this.client.global as unknown as Window),
 				[messageFields.data]: args[0],
 			},
 			...rest,

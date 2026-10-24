@@ -338,9 +338,16 @@ const scenarios = {
   // a window the page opens: its scripts run in the realm of the page that opened it, from the blank window it is
   // given until the document it loads, and none run natively
   popup({ win, sink }) {
-    win.open("/popuppage", "e2epopup");
+    const popup = win.open("/popuppage", "e2epopup");
+    // What the popup posts to its opener names the popup as its source, though the browser would name the opener
+    win.addEventListener("message", (e) => { win.__popupMsg = { data: e.data, sourceIsPopup: e.source === popup, sourceIsOpener: e.source === win }; });
   },
-  popup_inline(c) { c.sink.ran.push("popup_inline"); c.win.document.getElementById("pb").click(); }, popup_handler(c) { c.sink.ran.push("popup_handler"); },
+  popup_inline(c) {
+    c.sink.ran.push("popup_inline");
+    c.win.document.getElementById("pb").click();
+    c.client.realm.postWindowMessage(c.win.opener, c.client.realm.wrapWindowMessage(["from-popup", "*"]));
+  },
+  popup_handler(c) { c.sink.ran.push("popup_handler"); },
 
   // a frame that has a window before its document arrives gets the document's scripts too. Its window is kept
   // when the first navigation of a frame is to the same origin, and the client that hooked it earlier is a
@@ -535,7 +542,7 @@ function makeEmbedder(sink) {
       const pwn = [];
       for (const k of Object.getOwnPropertyNames(win)) if (k.startsWith("__pwn")) pwn.push(k);
       const extra = {};
-      for (const k of ["__srcdocRead", "__childwin", "__refusals", "__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
+      for (const k of ["__popupMsg", "__srcdocRead", "__childwin", "__refusals", "__shadowRead", "__tplRaw", "__tplErr", "__tplCloneErr", "__forged", "__reports", "__batchErr", "__markupRead", "__attrNodeRead", "__leaks", "__messages", "__readback", "__dataBlockText", "__getAttr", "__direct", "__directErr", "__hrefRead", "__hrefAttr", "__attackErr"]) if (k in win) extra[k] = win[k];
       const globals = Object.getOwnPropertyNames(win).filter((k) => /scramjet|sj\$|e2e/i.test(k));
       report.runs[page] = { frameErrors: sink.frameErrors || [], bridge: sink.bridge, ran: sink.ran, violations: sink.violations, errors: sink.errors, pwn, extra, globals, docs: sink.docs, nonceSeen: sink.nonceSeen };
       // A page is done once its result is read, and a frame left behind is a window the next ones share the thread with

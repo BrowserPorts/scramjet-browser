@@ -358,6 +358,8 @@ if (runs.frames) {
 if (runs.popup) {
   const r = runs.popup;
   check("popup: the opener's realm ran the popup's inline script and its handler, once each", count(r, "popup_inline") === 1 && count(r, "popup_handler") === 1, [count(r, "popup_inline"), count(r, "popup_handler"), r.ran]);
+  const m = r.extra.__popupMsg;
+  check("popup: a message the popup posts to its opener arrives unwrapped and names the popup as its source", m && m.data === "from-popup" && m.sourceIsPopup === true && m.sourceIsOpener === false, m);
 }
 if (runs.uriframes) {
   const r = runs.uriframes;

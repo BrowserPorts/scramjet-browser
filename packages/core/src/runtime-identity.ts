@@ -60,6 +60,7 @@ export const messageFields = {
 	type: identityName("$scramjet$messagetype"),
 	origin: identityName("$scramjet$origin"),
 	data: identityName("$scramjet$data"),
+	source: identityName("$scramjet$source"),
 };
 
 export function internalAttribute(name: string): string {

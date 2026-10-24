@@ -17,6 +17,31 @@ export class SingletonBox {
 
 	ctors: Record<string, Function[]> = {};
 
+	/**
+	 * The windows that posted a message and are named by the message, as a message of the realm names its sender.
+	 * The browser takes the realm of the code that made the call as the sender, and a window another opened is
+	 * hooked by a copy of the runtime that is the opener's, so the browser would name the opener as the sender of
+	 * what the opened window posts to it
+	 */
+	senders = new Map<string, Window>();
+	private senderCount = 0;
+
+	/** Names a window that is about to post a message, which the receiving page reads its `source` back from */
+	registerSender(window: Window): string {
+		const id = `${(this.senderCount += 1)}.${Math.random().toString(36).slice(2)}`;
+		this.senders.set(id, window);
+		// A message that is never delivered, as one to a window that went away is, does not stay for good
+		if (this.senders.size > 1024) {
+			const oldest = this.senders.keys().next();
+			if (!oldest.done) this.senders.delete(oldest.value);
+		}
+		return id;
+	}
+
+	senderOf(id: unknown): Window | undefined {
+		return typeof id === "string" ? this.senders.get(id) : undefined;
+	}
+
 	sourcemaps: SourceMaps = {};
 
 	constructor(public ownerclient: ScramjetClient) {}

@@ -29,6 +29,17 @@ export default function (client: ScramjetClient, self: Self) {
 				return this.ports;
 			},
 			source() {
+				// A message of the realm names the window that posted it, as the browser would if the call had
+				// been made by that window's own code
+				if (
+					this.data !== null &&
+					typeof this.data === "object" &&
+					messageFields.source in this.data
+				) {
+					const sender = client.box.senderOf(this.data[messageFields.source]);
+					if (sender) return sender;
+				}
+
 				if (this.source === null) return null;
 
 				// const scram: ScramjetClient = this.source[SCRAMJETCLIENT];
