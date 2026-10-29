@@ -230,19 +230,25 @@ export type WorkerInit = {
 
 /**
  * A bootstrap for a worker that cannot load this bundle by URL, such as one a sandboxed frame
- * starts when the bundle itself came from a blob: the bundle's source arrives in the worker's first
- * message, as `runtime`, and runs from a blob the worker makes, which every kind of worker can
- * load. The message is then handed on to the bundle, which starts the worker as it would have.
+ * starts when the bundle itself came from a blob: the bundle's source arrives in the worker's
+ * initialization message, as `runtime`, and runs from a blob the worker makes, which every kind of
+ * worker can load. That message is then handed on to the bundle, which starts the worker as it
+ * would have, followed by the messages the page posted before it (a page posts to a worker the
+ * moment it constructs it, often transferring a canvas or a port), in their order.
  *
  * @param init The worker's initialization message type, from {@link workerMessageTypes}
  */
 export function workerBootstrap(init: string): string {
 	return `(() => {
 	const type = ${JSON.stringify(init)};
+	const early = [];
 	const listen = (event) => {
 		const data = event.data;
-		if (!data || data.type !== type || typeof data.runtime !== "string") return;
 		event.stopImmediatePropagation();
+		if (!data || data.type !== type || typeof data.runtime !== "string") {
+			early.push(event);
+			return;
+		}
 		removeEventListener("message", listen, true);
 		const url = URL.createObjectURL(new Blob([data.runtime], { type: "text/javascript" }));
 		try {
@@ -251,6 +257,8 @@ export function workerBootstrap(init: string): string {
 			URL.revokeObjectURL(url);
 		}
 		dispatchEvent(new MessageEvent("message", { data, ports: Array.from(event.ports) }));
+		for (const queued of early)
+			dispatchEvent(new MessageEvent("message", { data: queued.data, ports: Array.from(queued.ports), origin: queued.origin }));
 	};
 	addEventListener("message", listen, true);
 })();`;
