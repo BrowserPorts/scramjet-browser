@@ -18,11 +18,13 @@ export {
 	installed,
 	prepare,
 	worker,
+	workerBootstrap,
 	workerLink,
 	WORKER_INIT,
 	SHARED_CONNECT,
 	workerMessageTypes,
 	type InstallOptions,
+	type WorkerInit,
 } from "./install";
 export {
 	requestLink,

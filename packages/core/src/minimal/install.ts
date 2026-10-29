@@ -12,6 +12,7 @@ import {
 	type ScramjetMinimalOptions,
 } from "./client";
 import { NativeMap } from "./natives";
+import { hookAttributes } from "./attributes";
 import type { ProxyTransport } from "./types";
 
 /**
@@ -97,6 +98,8 @@ export async function prepare(
 
 function hook(client: ScramjetMinimalClient) {
 	client.maskToString();
+	// Before the plugins, so their hooks on setAttribute see attributes set through Attr nodes too
+	hookAttributes(client);
 	for (const plugin of active(client)) {
 		plugin.install(client, client.global, {
 			tap: new Plugin(plugin.name),
@@ -221,7 +224,37 @@ export type WorkerInit = {
 	/** Whether the worker stands in for a SharedWorker, whose connections arrive as connect events */
 	shared?: boolean;
 	payload?: unknown;
+	/** This bundle's source, for a worker started by {@link workerBootstrap}, which has no URL for it */
+	runtime?: string;
 };
+
+/**
+ * A bootstrap for a worker that cannot load this bundle by URL, such as one a sandboxed frame
+ * starts when the bundle itself came from a blob: the bundle's source arrives in the worker's first
+ * message, as `runtime`, and runs from a blob the worker makes, which every kind of worker can
+ * load. The message is then handed on to the bundle, which starts the worker as it would have.
+ *
+ * @param init The worker's initialization message type, from {@link workerMessageTypes}
+ */
+export function workerBootstrap(init: string): string {
+	return `(() => {
+	const type = ${JSON.stringify(init)};
+	const listen = (event) => {
+		const data = event.data;
+		if (!data || data.type !== type || typeof data.runtime !== "string") return;
+		event.stopImmediatePropagation();
+		removeEventListener("message", listen, true);
+		const url = URL.createObjectURL(new Blob([data.runtime], { type: "text/javascript" }));
+		try {
+			importScripts(url);
+		} finally {
+			URL.revokeObjectURL(url);
+		}
+		dispatchEvent(new MessageEvent("message", { data, ports: Array.from(event.ports) }));
+	};
+	addEventListener("message", listen, true);
+})();`;
+}
 
 /**
  * Runs in a worker the page's Worker plugin started, as soon as the bundle loads there: the bundle
@@ -327,22 +360,29 @@ export function worker(): Promise<undefined> {
 				resolve(undefined);
 			};
 			// Plugins prepare before the worker's own script, as they do before a page's
-			prepare(client, link, init.payload).then(() => {
-				if (init.module) {
-					import(/* @vite-ignore */ /* webpackIgnore: true */ init.entry).then(
-						started,
-						reject
-					);
-					return;
-				}
-				try {
-					scope.importScripts(init.entry);
-				} catch (error) {
-					reject(error);
-					throw error;
-				}
-				started();
-			}, reject);
+			const module = init.module === true;
+			prepare(client, link, init.payload)
+				.then(async () => {
+					const props = { entry: init.entry };
+					await Tap.dispatchSeries(client.hooks.entry, { module }, props);
+					return props.entry;
+				})
+				.then((entry) => {
+					if (module) {
+						import(/* @vite-ignore */ /* webpackIgnore: true */ entry).then(
+							started,
+							reject
+						);
+						return;
+					}
+					try {
+						scope.importScripts(entry);
+					} catch (error) {
+						reject(error);
+						throw error;
+					}
+					started();
+				}, reject);
 		};
 		scope.addEventListener("message", capture, true);
 	});

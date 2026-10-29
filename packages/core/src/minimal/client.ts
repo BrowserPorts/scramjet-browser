@@ -29,6 +29,11 @@ export type ScramjetMinimalConfig = {
 	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */
 	direct?: string[];
+	/**
+	 * False sends every http(s) and ws(s) request through the transport, the codec's and the
+	 * direct origins' included, for a document whose policy refuses every native load
+	 */
+	nativeRoutes?: boolean;
 	/** Hostnames, with their subdomains, whose requests fail the way blocked ones do */
 	blocked?: string[];
 	/** Where original URLs live, so the browser loads them natively from there */
@@ -89,6 +94,7 @@ export class ScramjetMinimalClient extends HookClient {
 		route: this.#minimal.route,
 		document: this.#minimal.document,
 		written: this.#minimal.written,
+		entry: this.#minimal.entry,
 		fetch: Tap.create<MinimalFetchHooks>(),
 	};
 	/** RPC channels to the page that hosts this frame or worker, when it has one */
@@ -161,7 +167,12 @@ export class ScramjetMinimalClient extends HookClient {
 	/** Where a URL goes, and the URL the browser loads when it loads it itself */
 	decide(url: URL, method = "GET"): { route: ScramjetMinimalRoute; url: string } {
 		const props = { route: this.#route(url), url: url.href };
-		if (props.route === "native") props.url = this.codec.encode(url) ?? url.href;
+		// Without native routes, an original URL the codec owns still travels as its encoded URL
+		if (
+			props.route === "native" ||
+			(props.route === "wisp" && this.config.nativeRoutes === false)
+		)
+			props.url = this.codec.encode(url) ?? url.href;
 		// Route callbacks are synchronous, so their changes to props are in place once dispatch returns
 		Tap.dispatchSync(this.hooks.route, { url, method }, props);
 		return props;
@@ -169,15 +180,17 @@ export class ScramjetMinimalClient extends HookClient {
 
 	#route(url: URL): ScramjetMinimalRoute {
 		if (!WISP_PROTOCOLS.includes(url.protocol)) return "native";
-		if (this.codec.owns(url)) return "native";
-		// A socket to a direct origin's host is direct too
-		const scheme =
-			url.protocol === "ws:"
-				? "http:"
-				: url.protocol === "wss:"
-					? "https:"
-					: url.protocol;
-		if (this.#direct.has(`${scheme}//${url.host}`)) return "native";
+		if (this.config.nativeRoutes !== false) {
+			if (this.codec.owns(url)) return "native";
+			// A socket to a direct origin's host is direct too
+			const scheme =
+				url.protocol === "ws:"
+					? "http:"
+					: url.protocol === "wss:"
+						? "https:"
+						: url.protocol;
+			if (this.#direct.has(`${scheme}//${url.host}`)) return "native";
+		}
 		const host = url.hostname.toLowerCase();
 		if (
 			this.config.blocked?.some(

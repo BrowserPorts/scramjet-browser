@@ -73,6 +73,14 @@ export type MinimalHooks = {
 		context: { window: Window };
 		props: {};
 	};
+	/**
+	 * A worker's own script, once plugins prepared and before it runs; awaited, so a plugin can
+	 * point `entry` at a URL this worker loads itself, such as a blob it made from bytes it fetched
+	 */
+	entry: {
+		context: { module: boolean };
+		props: { entry: string };
+	};
 };
 
 /** Tap hooks around requests the client performs itself */
