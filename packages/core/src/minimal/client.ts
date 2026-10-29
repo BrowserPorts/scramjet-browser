@@ -16,6 +16,7 @@ import { Object_defineProperty, URL_createObjectURL } from "@/shared/snapshot";
 import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
 import { providers } from "@/shared/providers";
+import { isJavascriptMimeType } from "@/shared/mime";
 
 export type { ScramjetMinimalRoute };
 
@@ -63,6 +64,27 @@ const REDIRECTS = [301, 302, 303, 307, 308];
 const EMPTY_BODY = [101, 204, 205, 304];
 const MAX_REDIRECTS = 20;
 const WISP_PROTOCOLS = ["http:", "https:", "ws:", "wss:"];
+
+/** Types the browser never runs as a script nor applies as a stylesheet when it loads them itself */
+const UNSCRIPTABLE =
+	/^(text\/html|text\/plain|text\/xml|application\/xml|text\/json|application\/json|image\/|audio\/|video\/|[a-z]+\/[a-z0-9.+-]*\+(json|xml)$)/i;
+
+/**
+ * Refuses a script or stylesheet the browser would have refused had it loaded the file itself: a
+ * blob carries the type its page gives it, so the checks the browser makes on the response (nosniff,
+ * opaque response blocking, strict module and stylesheet types) are made here. A page that names a
+ * missing script gets its HTML error page, which must fail as it does natively rather than run.
+ */
+function refuseMime(response: Response, url: URL, kind: "script" | "style" | "other", isModule: boolean) {
+	if (kind === "other") return;
+	const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+	const nosniff = /^\s*nosniff\s*$/i.test(response.headers.get("x-content-type-options") ?? "");
+	const refused =
+		kind === "style"
+			? type !== "text/css"
+			: !isJavascriptMimeType(type) && (isModule || nosniff || UNSCRIPTABLE.test(type));
+	if (refused) throw new TypeError(`${url.href} is ${type || "untyped"}, which does not load as a ${kind}`);
+}
 
 function header(headers: RawHeaders, name: string): string | null {
 	for (const [key, value] of headers)
@@ -369,6 +391,7 @@ export class ScramjetMinimalClient extends HookClient {
 				const response = props.response;
 				if (!response.ok)
 					throw new TypeError(`${url.href} answered ${response.status}`);
+				refuseMime(response, url, kind, isModule);
 				let data: Blob;
 				if (kind === "style")
 					data = new Blob([await this.css(await response.text(), url)], {
@@ -415,10 +438,14 @@ export class ScramjetMinimalClient extends HookClient {
 			const url = this.resolve(raw, base.href);
 			if (!url || ["data:", "blob:", "about:"].includes(url.protocol)) return raw;
 			const route = this.route(url);
+			// A reference that fails leaves its URL, which fails to load as it would have, rather than
+			// failing the whole stylesheet
 			if (route === "wisp" || route === "plugin" || this.config.resourceTransforms)
 				swaps.set(
 					raw,
-					this.blob(url, kind === "import" ? "style" : "other")
+					this.blob(url, kind === "import" ? "style" : "other").catch(
+						() => url.href
+					)
 				);
 			else if (absolute || url.href !== new NativeURL(raw, base).href)
 				swaps.set(raw, Promise.resolve(url.href));
