@@ -14,6 +14,7 @@
 	"scripts": {
 		"build": "cd ../.. && rspack build --mode production",
 		"build:minimal": "cd ../.. && rspack build --mode production --config-name scramjet-minimal && rm -rf packages/core/dist/minimal && tsc -p packages/core/tsconfig.minimal.json && tsc-alias -p packages/core/tsconfig.minimal.json",
+		"build:frame": "cd ../.. && rspack build --mode production --config-name scramjet-frame --config-name scramjet-frame-host && rm -rf packages/core/dist/frame && tsc -p packages/core/tsconfig.frame.json && tsc-alias -p packages/core/tsconfig.frame.json",
 		"rewriter:build": "cd rewriter/wasm/ && bash build.sh && cd ../../",
 		"format": "prettier --write .",
 		"lint": "eslint ./src/",
@@ -40,6 +41,14 @@
 		"./minimal": {
 			"types": "./dist/minimal/minimal/index.d.ts",
 			"import": "./dist/scramjet.minimal.mjs"
+		},
+		"./frame": {
+			"types": "./dist/frame/frame/index.d.ts",
+			"import": "./dist/scramjet.frame.mjs"
+		},
+		"./frame/host": {
+			"types": "./dist/frame/frame/host/index.d.ts",
+			"import": "./dist/scramjet.frame-host.mjs"
 		},
 		"./plugins": {
 			"types": "./dist/minimal/plugins/types.d.ts"
@@ -70,6 +79,7 @@
 		"dom-serializer": "^2.0.0",
 		"domhandler": "^5.0.3",
 		"domutils": "^3.2.2",
+		"es-module-lexer": "^2.0.0",
 		"htmlparser2": "catalog:",
 		"idb": "^8.0.3",
 		"parse-domain": "^8.2.2",
