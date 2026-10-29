@@ -5,6 +5,7 @@ import type { ScramjetMinimalClient } from "@/minimal/client";
 import type { MinimalPluginContext, ScramjetMinimalPlugin } from "@/plugins/types";
 import { frameOf } from "../state";
 import { rewriteModule } from "./modules";
+import { inlineStyleBlobs } from "./styles";
 
 /** Images read ahead before the document is written; more load once it runs */
 const MAX_IMAGES = 64;
@@ -67,6 +68,13 @@ function install(client: ScramjetMinimalClient, _self: typeof globalThis, { tap 
 		};
 		walk(document.children, (element) => {
 			const attribs = element.attribs;
+			const style = attribs.style !== undefined ? inlineStyleBlobs(client, attribs.style) : null;
+			if (style)
+				texts.push(
+					style.then((next) => {
+						attribs.style = next;
+					})
+				);
 			switch (element.name) {
 				case "script": {
 					const type = (attribs.type ?? "").trim();
@@ -85,7 +93,8 @@ function install(client: ScramjetMinimalClient, _self: typeof globalThis, { tap 
 				}
 				case "link": {
 					const rel = (attribs.rel ?? "").toLowerCase().split(/\s+/);
-					if (rel.some((value) => DROPPED_LINKS.includes(value))) removed.push(element);
+					// A frame shows no icon, so one would only be a load the policy refuses
+					if (rel.some((value) => DROPPED_LINKS.includes(value) || value.includes("icon"))) removed.push(element);
 					else if (rel.includes("stylesheet")) fetch(element, "href", "style");
 					else if (rel.includes("modulepreload")) fetch(element, "href", "script", true);
 					else if (rel.includes("preload") && attribs.as === "script") fetch(element, "href", "script");
