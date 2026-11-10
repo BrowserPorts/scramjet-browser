@@ -16,6 +16,7 @@ import { Object_defineProperty, URL_createObjectURL } from "@/shared/snapshot";
 import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
 import { providers } from "@/shared/providers";
+import { isJavascriptMimeType } from "@/shared/mime";
 
 export type { ScramjetMinimalRoute };
 
@@ -29,6 +30,11 @@ export type ScramjetMinimalConfig = {
 	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */
 	direct?: string[];
+	/**
+	 * False sends every http(s) and ws(s) request through the transport, the codec's and the
+	 * direct origins' included, for a document whose policy refuses every native load
+	 */
+	nativeRoutes?: boolean;
 	/** Hostnames, with their subdomains, whose requests fail the way blocked ones do */
 	blocked?: string[];
 	/** Where original URLs live, so the browser loads them natively from there */
@@ -58,6 +64,27 @@ const REDIRECTS = [301, 302, 303, 307, 308];
 const EMPTY_BODY = [101, 204, 205, 304];
 const MAX_REDIRECTS = 20;
 const WISP_PROTOCOLS = ["http:", "https:", "ws:", "wss:"];
+
+/** Types the browser never runs as a script nor applies as a stylesheet when it loads them itself */
+const UNSCRIPTABLE =
+	/^(text\/html|text\/plain|text\/xml|application\/xml|text\/json|application\/json|image\/|audio\/|video\/|[a-z]+\/[a-z0-9.+-]*\+(json|xml)$)/i;
+
+/**
+ * Refuses a script or stylesheet the browser would have refused had it loaded the file itself: a
+ * blob carries the type its page gives it, so the checks the browser makes on the response (nosniff,
+ * opaque response blocking, strict module and stylesheet types) are made here. A page that names a
+ * missing script gets its HTML error page, which must fail as it does natively rather than run.
+ */
+function refuseMime(response: Response, url: URL, kind: "script" | "style" | "other", isModule: boolean) {
+	if (kind === "other") return;
+	const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+	const nosniff = /^\s*nosniff\s*$/i.test(response.headers.get("x-content-type-options") ?? "");
+	const refused =
+		kind === "style"
+			? type !== "text/css"
+			: !isJavascriptMimeType(type) && (isModule || nosniff || UNSCRIPTABLE.test(type));
+	if (refused) throw new TypeError(`${url.href} is ${type || "untyped"}, which does not load as a ${kind}`);
+}
 
 function header(headers: RawHeaders, name: string): string | null {
 	for (const [key, value] of headers)
@@ -89,6 +116,7 @@ export class ScramjetMinimalClient extends HookClient {
 		route: this.#minimal.route,
 		document: this.#minimal.document,
 		written: this.#minimal.written,
+		entry: this.#minimal.entry,
 		fetch: Tap.create<MinimalFetchHooks>(),
 	};
 	/** RPC channels to the page that hosts this frame or worker, when it has one */
@@ -161,7 +189,12 @@ export class ScramjetMinimalClient extends HookClient {
 	/** Where a URL goes, and the URL the browser loads when it loads it itself */
 	decide(url: URL, method = "GET"): { route: ScramjetMinimalRoute; url: string } {
 		const props = { route: this.#route(url), url: url.href };
-		if (props.route === "native") props.url = this.codec.encode(url) ?? url.href;
+		// Without native routes, an original URL the codec owns still travels as its encoded URL
+		if (
+			props.route === "native" ||
+			(props.route === "wisp" && this.config.nativeRoutes === false)
+		)
+			props.url = this.codec.encode(url) ?? url.href;
 		// Route callbacks are synchronous, so their changes to props are in place once dispatch returns
 		Tap.dispatchSync(this.hooks.route, { url, method }, props);
 		return props;
@@ -169,15 +202,17 @@ export class ScramjetMinimalClient extends HookClient {
 
 	#route(url: URL): ScramjetMinimalRoute {
 		if (!WISP_PROTOCOLS.includes(url.protocol)) return "native";
-		if (this.codec.owns(url)) return "native";
-		// A socket to a direct origin's host is direct too
-		const scheme =
-			url.protocol === "ws:"
-				? "http:"
-				: url.protocol === "wss:"
-					? "https:"
-					: url.protocol;
-		if (this.#direct.has(`${scheme}//${url.host}`)) return "native";
+		if (this.config.nativeRoutes !== false) {
+			if (this.codec.owns(url)) return "native";
+			// A socket to a direct origin's host is direct too
+			const scheme =
+				url.protocol === "ws:"
+					? "http:"
+					: url.protocol === "wss:"
+						? "https:"
+						: url.protocol;
+			if (this.#direct.has(`${scheme}//${url.host}`)) return "native";
+		}
 		const host = url.hostname.toLowerCase();
 		if (
 			this.config.blocked?.some(
@@ -356,6 +391,7 @@ export class ScramjetMinimalClient extends HookClient {
 				const response = props.response;
 				if (!response.ok)
 					throw new TypeError(`${url.href} answered ${response.status}`);
+				refuseMime(response, url, kind, isModule);
 				let data: Blob;
 				if (kind === "style")
 					data = new Blob([await this.css(await response.text(), url)], {
@@ -402,10 +438,14 @@ export class ScramjetMinimalClient extends HookClient {
 			const url = this.resolve(raw, base.href);
 			if (!url || ["data:", "blob:", "about:"].includes(url.protocol)) return raw;
 			const route = this.route(url);
+			// A reference that fails leaves its URL, which fails to load as it would have, rather than
+			// failing the whole stylesheet
 			if (route === "wisp" || route === "plugin" || this.config.resourceTransforms)
 				swaps.set(
 					raw,
-					this.blob(url, kind === "import" ? "style" : "other")
+					this.blob(url, kind === "import" ? "style" : "other").catch(
+						() => url.href
+					)
 				);
 			else if (absolute || url.href !== new NativeURL(raw, base).href)
 				swaps.set(raw, Promise.resolve(url.href));

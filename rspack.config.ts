@@ -766,6 +766,53 @@ const minimalClientConfig = createScramjetConfig({
   },
 });
 
+// Scramjet's frame mode (src/frame): the minimal client with the plugins for a sandboxed srcdoc
+// frame that loads nothing natively, re-exporting all of minimal so a runtime holds one client
+const frameClientConfig = createScramjetConfig({
+  name: "scramjet-frame",
+  entry: {
+    frame: join(scramjetdir, "src/frame/index.ts"),
+  },
+  output: {
+    filename: "scramjet.frame.mjs",
+    path: join(scramjetdir, "dist"),
+    libraryTarget: "module",
+    iife: false,
+  },
+  rewriterWasm: "undefined",
+  extraConfig: {
+    performance: {
+      hints: false,
+    },
+    experiments: {
+      outputModule: true,
+    },
+  },
+});
+
+// The frame mode's host side (src/frame/host): the fence, stubs and link answers, with no client
+const frameHostConfig = createScramjetConfig({
+  name: "scramjet-frame-host",
+  entry: {
+    "frame-host": join(scramjetdir, "src/frame/host/index.ts"),
+  },
+  output: {
+    filename: "scramjet.frame-host.mjs",
+    path: join(scramjetdir, "dist"),
+    libraryTarget: "module",
+    iife: false,
+  },
+  rewriterWasm: "undefined",
+  extraConfig: {
+    performance: {
+      hints: false,
+    },
+    experiments: {
+      outputModule: true,
+    },
+  },
+});
+
 // Type generation configuration
 //
 // Named, and depended on by every package that compiles against
@@ -1052,6 +1099,8 @@ const configs = [
   moduleConfig,
   moduleBundledConfig,
   minimalClientConfig,
+  frameClientConfig,
+  frameHostConfig,
   typeGenConfig,
   controllerConfig,
   utilsIifeConfig,

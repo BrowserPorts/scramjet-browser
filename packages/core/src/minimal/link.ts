@@ -13,6 +13,8 @@ type Welcome = {
   payload?: unknown;
   /** The document's markup, from a host that framed it with srcdoc, which cannot be fetched again */
   document?: string;
+  /** What a frame boot stub starts from, opaque to the link itself (see the frame export) */
+  frame?: unknown;
 };
 type LinkStatus = { type: "pending" | "rejected"; abi: number };
 
@@ -23,14 +25,24 @@ type LinkStatus = { type: "pending" | "rejected"; abi: number };
  */
 export function requestLink(
   options: { target?: Window; timeout?: number; key?: string } = {},
-): Promise<{ link: RpcLink; payload: unknown; document?: string } | null> {
+): Promise<{
+  link: RpcLink;
+  payload: unknown;
+  document?: string;
+  frame?: unknown;
+} | null> {
   const key = options.key ?? LINK_KEY;
   const target = options.target ?? globalThis.parent;
   if (!target || target === (globalThis as unknown as Window))
     return Promise.resolve(null);
   return new Promise((resolve) => {
     const done = (
-      value: { link: RpcLink; payload: unknown; document?: string } | null,
+      value: {
+        link: RpcLink;
+        payload: unknown;
+        document?: string;
+        frame?: unknown;
+      } | null,
     ) => {
       clearTimeout(timer);
       globalThis.removeEventListener("message", listen, true);
@@ -57,6 +69,7 @@ export function requestLink(
         payload: welcome.payload,
         document:
           typeof welcome.document === "string" ? welcome.document : undefined,
+        frame: welcome.frame,
       });
     };
     const timer = setTimeout(() => done(null), options.timeout ?? 10000);
@@ -72,6 +85,8 @@ export type LinkAnswer = {
   transfer?: Transferable[];
   /** The markup of a document the host framed with srcdoc */
   document?: string;
+  /** What a frame boot stub starts from (see the frame export) */
+  frame?: unknown;
 };
 
 export type LinkRequest = {
@@ -91,9 +106,20 @@ export function acceptLinks(
   accept: (
     request: LinkRequest,
   ) => LinkAnswer | null | Promise<LinkAnswer | null>,
-  options: { key?: string } = {},
+  options: {
+    key?: string;
+    /**
+     * Posts an answer. A document sees the realm that posted a message as its source, so a host
+     * answering for a window between it and the frame (a fence) posts from that window's realm
+     */
+    post?: (target: Window, message: unknown, transfer: Transferable[]) => void;
+  } = {},
 ): () => void {
   const key = options.key ?? LINK_KEY;
+  const post =
+    options.post ??
+    ((target: Window, message: unknown, transfer: Transferable[]) =>
+      target.postMessage(message, "*", transfer));
   const listen = async (event: MessageEvent) => {
     const hello = event.data?.[key] as Hello | undefined;
     if (hello?.type !== "hello" || !event.source) return;
@@ -101,10 +127,7 @@ export function acceptLinks(
     event.stopImmediatePropagation();
     const source = event.source as Window;
     const status = (type: LinkStatus["type"]) =>
-      source.postMessage(
-        { [key]: { type, abi: LINK_ABI } satisfies LinkStatus },
-        "*",
-      );
+      post(source, { [key]: { type, abi: LINK_ABI } satisfies LinkStatus }, []);
     try {
       const pending = accept({ source, url: String(hello.url) });
       if (
@@ -119,11 +142,9 @@ export function acceptLinks(
         abi: LINK_ABI,
         payload: answer.payload,
         document: answer.document,
+        frame: answer.frame,
       };
-      source.postMessage({ [key]: welcome }, "*", [
-        answer.port,
-        ...(answer.transfer ?? []),
-      ]);
+      post(source, { [key]: welcome }, [answer.port, ...(answer.transfer ?? [])]);
     } catch (error) {
       status("rejected");
       console.error("Frame link preparation failed", error);
