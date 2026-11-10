@@ -20,7 +20,7 @@ function reaches(from: string, to: string, seen = new NativeSet<string>()): bool
 
 /** The global the rewritten dynamic imports call, named for the publication */
 function helperName(client: ScramjetMinimalClient): string {
-	return identityName("scramjet-frame-import", client.config.identityKey);
+	return identityName("scramjet-frame-import", client.config.identityNames);
 }
 
 /** Whether a specifier is a URL or a relative path; anything else needs an import map */

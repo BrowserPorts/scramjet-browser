@@ -1,27 +1,45 @@
 import { resolve } from "node:path";
 import { rspack, type RspackOptions } from "@rspack/core";
 import configs from "./rspack.config.ts";
+import {
+	IDENTITY_NAMES,
+	type IdentityName,
+} from "./packages/core/src/runtime-identity-names.ts";
 
-const rawKey = process.env.ST_BUILD_XOR_KEY;
+/**
+ * A hardened build is handed every physical name by its host, which derives them under a secret
+ * this build never sees: `ST_SCRAMJET_IDENTITY_NAMES` holds a JSON object with a name for each of
+ * `IDENTITY_NAMES`, and `ST_SCRAMJET_ATTRIBUTE_KEY` the 32 bytes internal attribute names are encoded
+ * under, as a JSON array. Nothing here derives a name
+ */
+const rawNames = process.env.ST_SCRAMJET_IDENTITY_NAMES;
+const rawAttributeKey = process.env.ST_SCRAMJET_ATTRIBUTE_KEY;
 const destination = process.env.SCRAMJET_BUILD_OUTPUT;
-if (!rawKey || !destination)
+if (!rawNames || !rawAttributeKey || !destination)
 	throw new Error(
-		"Hardened Scramjet builds require a key and output directory"
+		"Hardened Scramjet builds require their names, an attribute key and an output directory"
 	);
-const key: unknown = JSON.parse(rawKey);
+const table: unknown = JSON.parse(rawNames);
+if (typeof table !== "object" || table === null || Array.isArray(table))
+	throw new TypeError("Scramjet's names have to be a JSON object");
+function physicalName(logical: IdentityName): string {
+	const physical: unknown = Reflect.get(table, logical);
+	if (typeof physical !== "string" || !/^[a-z][a-z0-9]*$/.test(physical))
+		throw new TypeError(`Scramjet has no usable name for ${logical}`);
+	return physical;
+}
+const identityNames = Object.fromEntries(
+	IDENTITY_NAMES.map((logical) => [logical, physicalName(logical)])
+);
+const attributeKey: unknown = JSON.parse(rawAttributeKey);
 if (
-	!Array.isArray(key) ||
-	key.length !== 32 ||
-	key.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)
+	!Array.isArray(attributeKey) ||
+	attributeKey.length !== 32 ||
+	attributeKey.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)
 )
-	throw new TypeError("Invalid Scramjet build key");
-const encode = (value: string) =>
-	"_" +
-	Array.from(new TextEncoder().encode(value), (byte, index) =>
-		(byte ^ key[index % key.length]).toString(16).padStart(2, "0")
-	).join("");
-const runtimeName = encode("$scramjet");
-const controllerName = encode("$scramjetController");
+	throw new TypeError("Invalid Scramjet attribute key");
+const runtimeName = physicalName("$scramjet");
+const controllerName = physicalName("$scramjetController");
 const names = new Set([
 	"scramjet-iife",
 	"scramjet-esmodule",
@@ -52,7 +70,8 @@ export default configs
 			});
 		plugins.push(
 			new rspack.DefinePlugin({
-				SCRAMJET_IDENTITY_KEY: JSON.stringify(key),
+				SCRAMJET_IDENTITY_NAMES: JSON.stringify(identityNames),
+				SCRAMJET_ATTRIBUTE_KEY: JSON.stringify(attributeKey),
 				SCRAMJET_RUNTIME_NAMESPACE: JSON.stringify(runtimeName),
 			})
 		);

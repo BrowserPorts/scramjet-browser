@@ -26,13 +26,13 @@ export const WORKER_INIT = identityName("scramjet-minimal-init");
 /** Hands a shared worker stand-in one more connection */
 export const SHARED_CONNECT = identityName("scramjet-minimal-connect");
 
-/** Neutral runtime bundles receive the publication identity through their config */
+/** Neutral runtime bundles receive the host's names through their config */
 export function workerMessageTypes(
-	config: Pick<ScramjetMinimalConfig, "identityKey"> = {}
+	config: Pick<ScramjetMinimalConfig, "identityNames"> = {}
 ) {
 	return {
-		init: identityName("scramjet-minimal-init", config.identityKey),
-		connect: identityName("scramjet-minimal-connect", config.identityKey),
+		init: identityName("scramjet-minimal-init", config.identityNames),
+		connect: identityName("scramjet-minimal-connect", config.identityNames),
 	};
 }
 

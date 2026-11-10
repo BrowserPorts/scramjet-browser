@@ -94,4 +94,5 @@ export type * from "./types";
 export type * from "@/plugins/types";
 
 export { identityName, runtimeIdentity } from "@/runtime-identity";
+export { IDENTITY_NAMES, type IdentityName } from "@/runtime-identity-names";
 export type { CodeRewriterHooks } from "@/shared";
