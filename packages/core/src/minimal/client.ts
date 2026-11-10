@@ -13,6 +13,7 @@ import type {
 } from "@/plugins/types";
 import type { ProxyTransport, RawHeaders, TransportSocket } from "./types";
 import { Object_defineProperty, URL_createObjectURL } from "@/shared/snapshot";
+import type { IdentityName } from "@/runtime-identity-names";
 import { LazyTransport } from "./transport";
 import { NativeURL, NativeMap } from "./natives";
 import { providers } from "@/shared/providers";
@@ -23,8 +24,11 @@ export type { ScramjetMinimalRoute };
 export type ScramjetMinimalConfig = {
 	/** Host-selected message key used before required plugins receive their settings */
 	linkKey?: string;
-	/** Publication identity shared by required plugins and their worker protocol */
-	identityKey?: readonly number[];
+	/**
+	 * The physical names a keyed host gave Scramjet's own names, of which the worker protocol uses its
+	 * message types. Leave it out to keep the logical names
+	 */
+	identityNames?: Readonly<Record<IdentityName, string>>;
 	/** Fetch native element resources through the plugin pipeline before the browser loads them */
 	resourceTransforms?: boolean;
 	/** Origins whose requests keep the browser's network; defaults to the page's own */

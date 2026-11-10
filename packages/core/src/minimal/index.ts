@@ -133,4 +133,5 @@ export {
 	logicalAttribute,
 	runtimeIdentity,
 } from "@/runtime-identity";
+export { IDENTITY_NAMES, type IdentityName } from "@/runtime-identity-names";
 export type { CodeRewriterHooks } from "@/shared";
