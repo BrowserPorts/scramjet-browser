@@ -56,6 +56,29 @@ if (!process.env.CI) {
   } catch {}
 }
 
+/**
+ * When the build says it was made. SOURCE_DATE_EPOCH wins when the caller sets it; otherwise it is the
+ * date of the commit being built, so the same source gives the same bytes on every run. Only a copy
+ * without git history falls back to the current time.
+ */
+function buildDate(): string {
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  if (epoch) {
+    const seconds = Number(epoch);
+    if (!Number.isSafeInteger(seconds) || seconds < 0)
+      throw new Error(`SOURCE_DATE_EPOCH must be whole seconds, not ${epoch}`);
+    return new Date(seconds * 1000).toISOString();
+  }
+  let committed: string;
+  try {
+    committed = execSync("git log -1 --format=%cI", { encoding: "utf-8" }).trim();
+  } catch (error) {
+    console.warn("BUILDDATE: no git history, so the build is stamped with the current time", error);
+    return new Date().toISOString();
+  }
+  return new Date(committed).toISOString();
+}
+
 function nodeExternals(
   { context, request }: ExternalItemFunctionData,
   callback: (
@@ -600,7 +623,7 @@ const createScramjetConfig = (options: ScramjetBuildConfig) => {
         })(),
       }),
       new rspack.DefinePlugin({
-        BUILDDATE: JSON.stringify(new Date().toISOString()),
+        BUILDDATE: JSON.stringify(buildDate()),
       }),
     ],
     target: "webworker",
