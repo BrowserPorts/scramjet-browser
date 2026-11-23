@@ -73,27 +73,43 @@ function handleCss(
 	meta?: URLMeta,
 	kind: CssKind = "stylesheet"
 ) {
-	const provider = providers().rewriteCssUrls;
-	if (provider) {
-		return provider(
-			String(css),
-			(url) => {
-				if (isFragmentOnly(url)) return url;
+	return rewriteCssUrls(
+		String(css),
+		(url) => {
+			// https://drafts.csswg.org/css-values-4/#local-urls - a URL whose
+			// first character is `#` is a reference to an element in the
+			// document that uses the style (an SVG gradient, clip path, mask,
+			// filter or marker). It is never resolved against a base, so a
+			// rewritten one is an external resource that never renders
+			if (isFragmentOnly(url)) return url;
 
-				return type === "rewrite"
-					? rewriteUrl(url, context, meta!)
-					: unrewriteUrl(url, context);
-			},
-			kind
-		);
-	}
+			return type === "rewrite"
+				? rewriteUrl(url, context, meta!)
+				: unrewriteUrl(url, context);
+		},
+		kind
+	);
+}
+
+/**
+ * Every URL in CSS, `url()` values and `@import` targets, replaced with what
+ * `rewrite` returns for it: through the embedder's `rewriteCssUrls` provider
+ * when one is registered, or Scramjet's own
+ */
+export function rewriteCssUrls(
+	source: string,
+	rewrite: (url: string, kind?: "url" | "import") => string,
+	kind: CssKind = "stylesheet"
+): string {
+	const provider = providers().rewriteCssUrls;
+	if (provider) return provider(source, rewrite, kind);
 
 	// regex from vk6 (https://github.com/ading2210)
 	const urlRegex =
 		/(?i:url)\((?:\s*"((?:\\.|[^"])+)"\s*|\s*'((?:\\.|[^'])+)'\s*|((?!\s*['"])(?!\s*\))(?:\\.|[^)])+?))\)/gm;
 	const Atruleregex =
 		/@import\s+((?i:url)\s*?\(.{0,9999}?\)|['"].{0,9999}?['"]|.{0,9999}?)($|\s|;)/gm;
-	css = String(css);
+	let css = String(source);
 	if (!cssMayHoldUrl(css)) return css;
 	css = css.replace(
 		urlRegex,
@@ -104,18 +120,7 @@ function handleCss(
 			unquotedUrl: string | undefined
 		) => {
 			const url = doubleQuotedUrl ?? singleQuotedUrl ?? unquotedUrl;
-
-			// https://drafts.csswg.org/css-values-4/#local-urls - a URL whose
-			// first character is `#` is a reference to an element in the
-			// document that uses the style (an SVG gradient, clip path, mask,
-			// filter or marker). It is never resolved against a base, so a
-			// rewritten one is an external resource that never renders
-			if (isFragmentOnly(url)) return match;
-
-			const encodedUrl =
-				type === "rewrite"
-					? rewriteUrl(url.trim(), context, meta!)
-					: unrewriteUrl(url.trim(), context);
+			const encodedUrl = rewrite(url.trim(), "url");
 
 			// a callback - see the @import rewrite below
 			return match.replace(url, () => encodedUrl);
@@ -128,10 +133,7 @@ function handleCss(
 				if (firstQuote.startsWith("url")) {
 					return match;
 				}
-				const encodedUrl =
-					type === "rewrite"
-						? rewriteUrl(url.trim(), context, meta!)
-						: unrewriteUrl(url.trim(), context);
+				const encodedUrl = rewrite(url.trim(), "import");
 
 				return `${firstQuote}${encodedUrl}${endQuote}`;
 			}

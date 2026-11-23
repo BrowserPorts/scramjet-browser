@@ -235,6 +235,11 @@ export default definePackage(import.meta.dirname, {
 				"dist/scramjet_bundled.mjs",
 				"dist/scramjet-external.mjs",
 				"dist/types/index.d.ts",
+				"dist/scramjet.minimal.mjs",
+				"dist/minimal/minimal/index.d.ts",
+				"dist/scramjet.frame.mjs",
+				"dist/scramjet.frame-host.mjs",
+				"dist/frame/frame/index.d.ts",
 			],
 			run: (ctx) =>
 				runRspack(
@@ -245,6 +250,9 @@ export default definePackage(import.meta.dirname, {
 						"scramjet-esmodule",
 						"scramjet-esmodule-bundled",
 						"scramjet-types",
+						"scramjet-minimal",
+						"scramjet-frame",
+						"scramjet-frame-host",
 					],
 					{ mode: "production", log: ctx.log }
 				),

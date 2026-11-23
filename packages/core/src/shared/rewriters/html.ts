@@ -609,9 +609,8 @@ function traverseParsedHtml(
 				context,
 				meta,
 				false,
-				undefined,
-				eventHandlerPrelude(context, node.name, attr),
-				true
+				true,
+				eventHandlerPrelude(context, node.name, attr)
 			) as string;
 		}
 	}

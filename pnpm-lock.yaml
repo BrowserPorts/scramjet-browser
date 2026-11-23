@@ -289,6 +289,9 @@ importers:
       '@mercuryworkshop/rpc':
         specifier: workspace:*
         version: link:../rpc
+      es-module-lexer:
+        specifier: ^2.0.0
+        version: 2.0.0
       idb:
         specifier: ^8.0.3
         version: 8.0.3

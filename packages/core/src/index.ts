@@ -22,7 +22,19 @@ export { defaultConfig, defaultConfigDev } from "./config";
 
 // the full builds rewrite script text met inside HTML and URLs with the wasm
 // rewriter; a runtime built without it leaves script text as it is
-registerProviders({ rewriteJs });
+registerProviders({
+	rewriteJs: (js, url, context, meta, isModule, functionBody, handlerPrelude) =>
+		rewriteJs(
+			js,
+			url,
+			context,
+			meta,
+			isModule,
+			undefined,
+			handlerPrelude ?? "",
+			functionBody ?? false
+		),
+});
 
 declare const REWRITERWASM: string | undefined;
 // bundled build will have the wasm binary inlined as a base64 string

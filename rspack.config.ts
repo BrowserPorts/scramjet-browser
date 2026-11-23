@@ -504,6 +504,96 @@ const moduleBundledConfig = createScramjetConfig({
 	},
 });
 
+// Scramjet's client without the proxy (src/minimal): its own hooking, a URL
+// codec and a Wisp transport, for hosts that supply their interceptors as
+// plugins. No rewriter wasm, controller or service worker
+const minimalClientConfig = createScramjetConfig({
+	name: "scramjet-minimal",
+	entry: {
+		minimal: join(scramjetdir, "src/minimal/index.ts"),
+	},
+	output: {
+		filename: "scramjet.minimal.mjs",
+		path: join(scramjetdir, "dist"),
+		libraryTarget: "module",
+		iife: false,
+	},
+	rewriterWasm: "undefined",
+	extraConfig: {
+		performance: {
+			hints: false,
+		},
+		experiments: {
+			outputModule: true,
+		},
+	},
+});
+minimalClientConfig.plugins!.push(
+	new TypeScriptDeclarationsPlugin(
+		scramjetdir,
+		"dist/minimal-temp",
+		"tsconfig.minimal.json",
+		true
+	)
+);
+
+// Scramjet's frame mode (src/frame): the minimal client with the plugins for a
+// sandboxed srcdoc frame that loads nothing natively, re-exporting all of
+// minimal so a runtime holds one client
+const frameClientConfig = createScramjetConfig({
+	name: "scramjet-frame",
+	entry: {
+		frame: join(scramjetdir, "src/frame/index.ts"),
+	},
+	output: {
+		filename: "scramjet.frame.mjs",
+		path: join(scramjetdir, "dist"),
+		libraryTarget: "module",
+		iife: false,
+	},
+	rewriterWasm: "undefined",
+	extraConfig: {
+		performance: {
+			hints: false,
+		},
+		experiments: {
+			outputModule: true,
+		},
+	},
+});
+frameClientConfig.plugins!.push(
+	new TypeScriptDeclarationsPlugin(
+		scramjetdir,
+		"dist/frame-temp",
+		"tsconfig.frame.json",
+		true
+	)
+);
+
+// The frame mode's host side (src/frame/host): the fence, stubs and link
+// answers, with no client
+const frameHostConfig = createScramjetConfig({
+	name: "scramjet-frame-host",
+	entry: {
+		"frame-host": join(scramjetdir, "src/frame/host/index.ts"),
+	},
+	output: {
+		filename: "scramjet.frame-host.mjs",
+		path: join(scramjetdir, "dist"),
+		libraryTarget: "module",
+		iife: false,
+	},
+	rewriterWasm: "undefined",
+	extraConfig: {
+		performance: {
+			hints: false,
+		},
+		experiments: {
+			outputModule: true,
+		},
+	},
+});
+
 // Type generation configuration
 const typeGenConfig = defineConfig({
 	name: "scramjet-types",
@@ -745,6 +835,9 @@ export default [
 	moduleConfig,
 	moduleBundledConfig,
 	typeGenConfig,
+	minimalClientConfig,
+	frameClientConfig,
+	frameHostConfig,
 	controllerConfig,
 	utilsIifeConfig,
 	utilsModuleConfig,

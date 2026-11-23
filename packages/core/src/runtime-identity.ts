@@ -31,12 +31,19 @@ export const keyedBuild = names !== undefined;
 
 /**
  * The physical name of one of Scramjet's own names: the logical name itself in
- * a build without a table, the host's name for it in one with.
+ * a build without a table, the host's name for it in one with. A bundle the
+ * host configures at run time, such as a frame's minimal client, is handed the
+ * host's table instead of carrying one
  */
-export function identityName(value: IdentityName): string {
-	if (!names) return value;
+export function identityName(
+	value: IdentityName,
+	table: Readonly<Record<IdentityName, string>> | undefined = names
+): string {
+	if (!table) return value;
+	if (!Object.prototype.hasOwnProperty.call(table, value))
+		throw new TypeError(`The build gave Scramjet no name for ${value}`);
 
-	return names[value];
+	return table[value];
 }
 
 /**

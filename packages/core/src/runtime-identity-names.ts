@@ -56,6 +56,12 @@ export const IDENTITY_NAMES = [
 	"scramjet-injected",
 	"scramjet-frame-",
 	"x-scramjet-",
+	// the minimal client's and the frame mode's links and messages
+	"scramjet-frame",
+	"scramjet-frame-import",
+	"scramjet-link",
+	"scramjet-minimal-connect",
+	"scramjet-minimal-init",
 	// the controller's storage and channel
 	"__scramjet_controller",
 	"__scramjet_controller_channel",

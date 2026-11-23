@@ -27,7 +27,23 @@
 		"./path": {
 			"types": "./lib/index.d.ts",
 			"default": "./lib/index.cjs"
-		}
+		},
+		"./minimal": {
+			"types": "./dist/minimal/minimal/index.d.ts",
+			"import": "./dist/scramjet.minimal.mjs"
+		},
+		"./plugins": {
+			"types": "./dist/minimal/plugins/types.d.ts"
+		},
+		"./frame": {
+			"types": "./dist/frame/frame/index.d.ts",
+			"import": "./dist/scramjet.frame.mjs"
+		},
+		"./frame/host": {
+			"types": "./dist/frame/frame/host/index.d.ts",
+			"import": "./dist/scramjet.frame-host.mjs"
+		},
+		"./package.json": "./package.json"
 	},
 	"files": [
 		"dist",
@@ -52,8 +68,9 @@
 	},
 	"dependencies": {
 		"@mercuryworkshop/proxy-transports": "catalog:",
+		"@mercuryworkshop/rpc": "workspace:*",
+		"es-module-lexer": "^2.0.0",
 		"idb": "^8.0.3",
-		"parse-domain": "^8.2.2",
-		"@mercuryworkshop/rpc": "workspace:*"
+		"parse-domain": "^8.2.2"
 	}
 }

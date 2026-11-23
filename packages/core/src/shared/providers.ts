@@ -1,5 +1,6 @@
 import type { CookieJar } from "@/shared/cookie";
-import type { rewriteJs } from "@rewriters/js";
+import type { ScramjetContext } from "@/shared";
+import type { URLMeta } from "@rewriters/url";
 
 /**
  * Replaceable implementations of behavior Scramjet needs but does not have to
@@ -47,7 +48,17 @@ export interface ScramjetProviders {
 	 * is, which suits a runtime that keeps the page's own URL and only maps
 	 * where its files load from
 	 */
-	rewriteJs?: typeof rewriteJs;
+	rewriteJs?(
+		js: string | Uint8Array,
+		url: string | null,
+		context: ScramjetContext,
+		meta: URLMeta,
+		isModule?: boolean,
+		/** the body of an event handler content attribute, not a whole script */
+		functionBody?: boolean,
+		/** what the handler body runs first, see `eventHandlerPrelude` */
+		handlerPrelude?: string
+	): string | Uint8Array;
 }
 
 let active: ScramjetProviders = {};

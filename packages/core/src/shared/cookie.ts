@@ -148,6 +148,16 @@ export function cookieListFor(
 export class CookieJar implements CookieStore {
 	/** scramjet's own jar is persisted by whoever holds it, through `dump` and `load` */
 	readonly ownsPersistence = true;
+
+	getDocumentCookie(context: DocumentCookieContext): string {
+		return this.getCookies(context.url, true);
+	}
+
+	setDocumentCookie(context: DocumentSetCookieContext): boolean {
+		this.setCookies(context.cookie, context.url);
+
+		return true;
+	}
 	private cookies: Record<string, Cookie> = {};
 	// Index by domain (without leading dot)
 	private byDomain: _Map<string, Cookie[]> = new _Map();
