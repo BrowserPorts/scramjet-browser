@@ -15,6 +15,7 @@ import {
 	type CookieSyncOptions,
 	type ScramjetConfig,
 	type ScramjetContext,
+	wasmNamespace,
 } from "@mercuryworkshop/scramjet";
 
 const sw = navigator.serviceWorker?.controller;
@@ -48,11 +49,14 @@ export function load(init: Init) {
 		});
 		return;
 	}
-	if (!("WASM" in self)) {
+	const slot = self as unknown as Record<string, unknown>;
+	if (!(wasmNamespace in slot)) {
 		throw new Error("WASM not found in global scope!");
 	}
-	const wasm = Uint8Array.from(atob(self.WASM as string), (c) => c.charCodeAt(0));
-	delete (self as any).WASM;
+	const wasm = Uint8Array.from(atob(String(slot[wasmNamespace])), (c) =>
+		c.charCodeAt(0)
+	);
+	delete slot[wasmNamespace];
 	setWasm(wasm);
 
 	new ExecutionContextWrapper(globalThis, init);

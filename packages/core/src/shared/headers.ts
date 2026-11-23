@@ -1,3 +1,4 @@
+import { identityName, keyedBuild } from "@/runtime-identity";
 import { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import {
 	String_startsWith,
@@ -26,7 +27,9 @@ import {
  * case-insensitive - which is exactly the sort of thing that gets missed when
  * the literal is spelled out at each site.
  */
-export const CARRIED_HEADER_PREFIX = "x-scramjet-";
+export const CARRIED_HEADER_PREFIX = keyedBuild
+	? "x-" + identityName("x-scramjet-") + "-"
+	: "x-scramjet-";
 
 /** The carrier name for an original header: `Link` -> `x-scramjet-Link`. */
 export function carriedHeaderName(name: string): string {

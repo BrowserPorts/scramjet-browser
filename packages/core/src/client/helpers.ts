@@ -1,3 +1,4 @@
+import { identityName, keyedBuild } from "@/runtime-identity";
 import {
 	Crypto_getRandomValues,
 	Number_toString,
@@ -12,7 +13,9 @@ import { SCRAMJETCLIENT } from "@/symbols";
 import type { ScramjetClient } from "./client";
 import { dictionaryReader } from "./webidl";
 
-const GENERATED_NAME_PREFIX = "scramjet-frame-";
+const GENERATED_NAME_PREFIX = keyedBuild
+	? identityName("scramjet-frame-") + "-"
+	: "scramjet-frame-";
 
 /**
  * A name for the emulated top-level's frame when it has none, so that targets

@@ -1,3 +1,4 @@
+import { identityName } from "@/runtime-identity";
 import {
 	Object_entries,
 	Object_keys,
@@ -13,20 +14,20 @@ import {
 } from ".";
 
 export const QP = {
-	referrerPolicy: "$rfp",
-	referrerSource: "$rfs",
-	isModule: "$module",
-	topFrame: "$tf",
-	parentFrame: "$pf",
-	isIframe: "$iframe",
-	mode: "$mode",
-	credentials: "$cred",
-	destination: "$dest",
-	initiatorOrigin: "$io",
-	referrerOrigin: "$ro",
-	fetchSite: "$fs",
-	crossSiteRedirect: "$csr",
-	fakeDataURL: "$fakedataurl",
+	referrerPolicy: identityName("$rfp"),
+	referrerSource: identityName("$rfs"),
+	isModule: identityName("$module"),
+	topFrame: identityName("$tf"),
+	parentFrame: identityName("$pf"),
+	isIframe: identityName("$iframe"),
+	mode: identityName("$mode"),
+	credentials: identityName("$cred"),
+	destination: identityName("$dest"),
+	initiatorOrigin: identityName("$io"),
+	referrerOrigin: identityName("$ro"),
+	fetchSite: identityName("$fs"),
+	crossSiteRedirect: identityName("$csr"),
+	fakeDataURL: identityName("$fakedataurl"),
 } as const;
 
 export type QueryParamKey = keyof typeof QP;

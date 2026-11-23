@@ -74,6 +74,18 @@ export interface ScramjetConfig {
 	};
 	flags: ScramjetFlags;
 	maskedfiles: string[];
+	/**
+	 * The names this build gives its globals and injected attribute, so code
+	 * an embedder generates (an inject bootstrap, a worker prelude) reaches the
+	 * same ones a keyed build renamed
+	 */
+	identity: {
+		runtimeNamespace: string;
+		controllerNamespace: string;
+		wasmNamespace: string;
+		injectedAttribute: string;
+		internalAttributePrefix: string;
+	};
 }
 
 /**

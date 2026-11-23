@@ -1,3 +1,4 @@
+import { internalAttributePrefix } from "@/runtime-identity";
 import type { ScramjetClient } from "@client/index";
 import {
 	_Map as Map,
@@ -90,7 +91,7 @@ export function initializeCsp(client: ScramjetClient): CspState {
 			if (equiv === null || equiv.toLowerCase() !== "content-security-policy")
 				continue;
 			const value =
-				element.getAttribute("scramjet-attr-content") ??
+				element.getAttribute(internalAttributePrefix + "-content") ??
 				element.getAttribute("content");
 			if (!value) continue;
 			seen.add(children[i]);

@@ -13,6 +13,7 @@ import { incumbencyMode } from "@/shared/incumbency";
 import type { ScramjetClient } from "@client/index";
 import { registerRewrites } from "@client/shared/sourcemaps";
 import { Tap } from "@/Tap";
+import { QP } from "@/fetch/parse";
 
 // eslint-disable-next-line scramjet-core/no-globals
 Error.stackTraceLimit = 50;
@@ -67,6 +68,10 @@ function rewriteJsWasm(
 		const globals = {
 			...context.config.globals,
 			prefix: context.prefix.pathname,
+			// the names `rewriteUrl` stamps a module's URL with, which a keyed
+			// build renames, so an `import` reaches the same URL either way
+			moduleparam: QP.isModule,
+			originparam: QP.initiatorOrigin,
 		};
 		if (typeof input === "string") {
 			out = rewriter.rewrite_js(

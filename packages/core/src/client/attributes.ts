@@ -28,6 +28,7 @@
  * document never held.
  */
 
+import { internalAttributePrefix } from "@/runtime-identity";
 import type { ScramjetClient } from "@client/index";
 import { htmlRules } from "@/shared/htmlRules";
 import {
@@ -58,8 +59,8 @@ import {
  * it. A trailing dash is required when computing a mirror, and that is the
  * only form we ever write.
  */
-const INTERNAL_PREFIX = "scramjet-attr";
-const MIRROR_PREFIX = "scramjet-attr-";
+const INTERNAL_PREFIX = internalAttributePrefix;
+const MIRROR_PREFIX = internalAttributePrefix + "-";
 
 /**
  * Where a script element's original source is kept, in base64. The name is the

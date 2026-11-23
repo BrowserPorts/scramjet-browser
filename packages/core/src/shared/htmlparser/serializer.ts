@@ -13,6 +13,7 @@
  * - XML (and foreign content inside HTML): `encodeXML`, which also turns
  *   non-ASCII into numeric references; childless elements self-close.
  */
+import { internalAttributePrefix } from "../../runtime-identity";
 import {
 	Number_toString,
 	Object_keys,
@@ -308,7 +309,7 @@ function formatAttributes(
 		// only the original's read-back is lost
 		if (
 			xmlMode === true &&
-			String_startsWith(key, "scramjet-attr-") &&
+			String_startsWith(key, internalAttributePrefix + "-") &&
 			String_indexOf(key, ":") !== -1
 		) {
 			continue;

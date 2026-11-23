@@ -7,8 +7,16 @@ import {
 	Object_getOwnPropertyDescriptor,
 	Reflect_ownKeys,
 	drain,
+	Array_includes,
+	Object_keys,
 	String_startsWith,
 } from "@/shared/snapshot";
+import {
+	controllerNamespace,
+	keyedBuild,
+	runtimeNamespace,
+	wasmNamespace,
+} from "@/runtime-identity";
 
 export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 	let wrappedParent: Window | null = null;
@@ -250,9 +258,27 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 	// `$scramjet` prefixes every one of them, and a page that has its own is
 	// already broken under a proxy that claims the name. The one symbol on the
 	// global, the client's own, goes the same way
+	//
+	// A keyed build's names share no prefix, so there they are matched by name:
+	// the helpers' globals, the bundles', and everything under the property
+	// wrapper's base
+	const globals = client.config.globals;
+	const keyedNames: string[] = [];
+	if (keyedBuild) {
+		for (const key of drain(Object_keys(globals))) {
+			keyedNames[keyedNames.length] = globals[key as keyof typeof globals];
+		}
+		keyedNames[keyedNames.length] = runtimeNamespace;
+		keyedNames[keyedNames.length] = controllerNamespace;
+		keyedNames[keyedNames.length] = wasmNamespace;
+	}
 	const isShimKey = (k: unknown) =>
 		k === SCRAMJETCLIENT ||
-		(typeof k === "string" && String_startsWith(k, "$scramjet"));
+		(typeof k === "string" &&
+			(keyedBuild
+				? Array_includes(keyedNames, k) ||
+					String_startsWith(k, globals.wrappropertybase)
+				: String_startsWith(k, "$scramjet")));
 	// they are only ever defined on the global and on Object.prototype, and
 	// every other object's keys are the page's own, whatever they are called
 	const objectPrototype = self.Object.prototype;

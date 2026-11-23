@@ -3,9 +3,10 @@
  * See `types.ts` for context on these symbols.
  */
 
+import { identityName } from "@/runtime-identity";
 import { Symbol_for } from "@/shared/snapshot";
 
-export const SCRAMJETCLIENTNAME = "scramjet client global";
+export const SCRAMJETCLIENTNAME = identityName("scramjet client global");
 export const SCRAMJETCLIENT = Symbol_for(SCRAMJETCLIENTNAME);
 
 /**
@@ -18,4 +19,4 @@ export const SCRAMJETCLIENT = Symbol_for(SCRAMJETCLIENTNAME);
  * `Symbol_for` rather than a module-private symbol: the reader and the
  * formatter can end up in different bundles across realms.
  */
-export const RAWFRAMES = Symbol_for("scramjet raw frames");
+export const RAWFRAMES = Symbol_for(identityName("scramjet raw frames"));

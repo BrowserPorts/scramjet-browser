@@ -1,3 +1,4 @@
+import { injectedAttribute, internalAttributePrefix } from "@/runtime-identity";
 import {
 	type AnyNode,
 	type CDATA,
@@ -54,10 +55,11 @@ export type ForeignContext = "svg" | "math" | "html";
  * `script-source-src` attribute, and every lookup of that name found the
  * source instead.
  */
-export const SCRIPT_SOURCE_ATTRIBUTE = "scramjet-attr_script-source";
+export const SCRIPT_SOURCE_ATTRIBUTE =
+	internalAttributePrefix + "_script-source";
 
 /** The name the mirror of `attr` is kept under. */
-const mirrorName = (attr: string) => `scramjet-attr-${attr}`;
+const mirrorName = (attr: string) => `${internalAttributePrefix}-${attr}`;
 
 // Initialized on first rewrite because htmlRules imports rewriteHtml from this
 // module. Keep rule order, but avoid enumerating every rule for every element.
@@ -319,7 +321,7 @@ function rewriteHtmlInner(
 
 	if (htmlcontext.loadScripts) {
 		const script = (src: string) =>
-			new Element("script", { src, "scramjet-injected": "true" });
+			new Element("script", { src, [injectedAttribute]: "true" });
 		const injectScripts = context.interface.getInjectScripts(
 			meta,
 			root,
@@ -446,13 +448,14 @@ export function unrewriteHtml(
 				// that name and nothing outside scramjet should read it, but it
 				// survived into the serialised output, where anything
 				// fingerprinting an element by its attribute names can see it.
-				if (lower === "scramjet-injected" && node.name === "script") {
+				if (lower === injectedAttribute && node.name === "script") {
 					delete attribs[key];
 					continue;
 				}
 
-				if (String_startsWith(lower, "scramjet-attr-")) {
-					attribs[String_slice(key, "scramjet-attr-".length)] = attribs[key];
+				if (String_startsWith(lower, internalAttributePrefix + "-")) {
+					attribs[String_slice(key, internalAttributePrefix.length + 1)] =
+						attribs[key];
 					delete attribs[key];
 				}
 			}

@@ -18,6 +18,7 @@
  * https://dom.spec.whatwg.org/#interface-attr
  */
 
+import { internalAttributePrefix } from "@/runtime-identity";
 import { ScramjetClient } from "@client/index";
 import { Arguments, Returns, Type } from "@client/webidl";
 import {
@@ -353,7 +354,7 @@ export default function (client: ScramjetClient, _self: Self) {
 				);
 			if (isInternalAttribute(qualifiedName)) {
 				return new client.native.NamedNodeMap(map).removeNamedItem(
-					"scramjet-attr"
+					internalAttributePrefix
 				);
 			}
 

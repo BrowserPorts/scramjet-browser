@@ -29,6 +29,8 @@ import {
 	type ScramjetInterface,
 	Plugin,
 	unrewriteUrl,
+	identityName,
+	wasmNamespace,
 } from "@mercuryworkshop/scramjet";
 import { CONTROLLERFRAME } from "./symbols";
 import type {
@@ -96,9 +98,9 @@ export class ManagedPlugin extends Plugin {
 	}
 }
 
-const COOKIE_DB_NAME = "__scramjet_controller";
+const COOKIE_DB_NAME = identityName("__scramjet_controller");
 const COOKIE_STORE_NAME = "state";
-const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
+const BROADCASTCHANNEL_NAME = identityName("__scramjet_controller_channel");
 /**
  * The partition a controller keeps its cookies under when it is not given
  * one. Every controller without a partition shares it, as every controller
@@ -326,7 +328,7 @@ export class Controller {
 								.join("")
 						);
 
-						this.wasmPayload = `self.WASM = '${b64}';`;
+						this.wasmPayload = `self[${JSON.stringify(wasmNamespace)}] = ${JSON.stringify(b64)};`;
 					}
 
 					const url = new URL(data.rawUrl) as URLMeta["base"];
@@ -781,8 +783,8 @@ function yieldGetInjectScripts(
 				"data:text/javascript;charset=utf-8;base64," +
 					base64Encode(
 						transform(`
-					document.querySelectorAll("script[scramjet-injected]").forEach(script => script.remove());
-					$scramjetController.load({
+					document.querySelectorAll(${JSON.stringify("script[" + sjconfig.identity.injectedAttribute + "]")}).forEach(script => script.remove());
+					self[${JSON.stringify(sjconfig.identity.controllerNamespace)}].load({
 						config: ${JSON.stringify(config)},
 						sjconfig: ${JSON.stringify(sjconfig)},
 						prefix: new URL("${prefix.href}"),
@@ -846,10 +848,10 @@ export class Frame {
 							base64Encode(
 								transform(`
 					(()=>{
-						const { ScramjetClient, CookieJar, setWasm } = $scramjet;
+						const { ScramjetClient, CookieJar, setWasm } = self[${JSON.stringify(this.scramjetConfig.identity.runtimeNamespace)}];
 
-						setWasm(Uint8Array.from(atob(self.WASM), (c) => c.charCodeAt(0)));
-						delete self.WASM;
+						setWasm(Uint8Array.from(atob(self[${JSON.stringify(this.scramjetConfig.identity.wasmNamespace)}]), (c) => c.charCodeAt(0)));
+						delete self[${JSON.stringify(this.scramjetConfig.identity.wasmNamespace)}];
 
 						const sjconfig = ${JSON.stringify(this.scramjetConfig)};
 						const prefix = new URL("${this.prefix}", location.href);
