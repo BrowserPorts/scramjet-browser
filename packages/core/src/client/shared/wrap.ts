@@ -64,6 +64,29 @@ export function createWrapFn(client: ScramjetClient, self: GlobalThis) {
 
 export const order = 4;
 export default function (client: ScramjetClient, self: GlobalThis) {
+	// the native `location` accessor, so a read or write through another
+	// window-like object whose own accessor throws (a cross-origin window) can
+	// be told apart from one that throws for any other reason
+	const realLocationDescriptor = iswindow
+		? Object_getOwnPropertyDescriptor(self, "location")
+		: undefined;
+	const sameLocationAccessor = (
+		that: any,
+		half: "get" | "set",
+		error: unknown
+	): boolean => {
+		const native = realLocationDescriptor?.[half];
+		if (!native) return false;
+		let own: PropertyDescriptor | undefined;
+		try {
+			own = Object_getOwnPropertyDescriptor(that, "location");
+		} catch {
+			throw error;
+		}
+
+		return own?.[half] === native;
+	};
+
 	// a temporary slot that $call can use to store the receiver
 	Object_defineProperty(self, client.config.globals.tempreceiverid, {
 		value: undefined,
@@ -123,7 +146,13 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 					return client.locationProxy;
 				}
 
-				return this.location;
+				try {
+					return this.location;
+				} catch (error) {
+					if (sameLocationAccessor(this, "get", error))
+						return client.locationProxy;
+					throw error;
+				}
 			},
 			set(value: any) {
 				if (this === self || this === self.document) {
@@ -131,7 +160,16 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 
 					return;
 				}
-				this.location = value;
+				try {
+					this.location = value;
+				} catch (error) {
+					if (sameLocationAccessor(this, "set", error)) {
+						client.url = value;
+
+						return;
+					}
+					throw error;
+				}
 			},
 			configurable: false,
 			enumerable: false,

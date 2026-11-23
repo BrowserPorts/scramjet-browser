@@ -1557,6 +1557,30 @@ return { apply, construct };
 
 		slot.calls[slot.calls.length] = handler;
 		this.render(slot);
+
+		// a constructor proxied this way keeps `X.prototype.constructor === X`,
+		// as `Intercept` does for the constructors it installs: reaching the
+		// prototype's `constructor` puts it in the same slot. Only when that
+		// prototype names this very function, for the reason given there
+		if (handler.construct) {
+			const nativeCtor = slot.native.value;
+			const prototype = Object_getOwnPropertyDescriptor(
+				nativeCtor,
+				"prototype"
+			)?.value;
+			const constructorDescriptor =
+				prototype &&
+				(typeof prototype === "object" || typeof prototype === "function")
+					? Object_getOwnPropertyDescriptor(prototype, "constructor")
+					: undefined;
+			if (
+				constructorDescriptor &&
+				(constructorDescriptor.value === nativeCtor ||
+					constructorDescriptor.value === slot.callable)
+			) {
+				this.slotFor(prototype, "constructor", `${member}.prototype.constructor`);
+			}
+		}
 	}
 
 	/** Wrap an attribute, named from this client's global. See `RawTrap`. */

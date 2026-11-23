@@ -49,6 +49,9 @@ export class SingletonBox {
 	scopedOpfsRoots: _WeakSet<FileSystemHandle> = new _WeakSet();
 	styleDeclarations: _WeakMap<CSSStyleDeclaration, CSSStyleDeclaration> =
 		new _WeakMap();
+	/** The declaration behind each wrapper in `styleDeclarations`. */
+	styleTargets: _WeakMap<CSSStyleDeclaration, CSSStyleDeclaration> =
+		new _WeakMap();
 	eventcallbacks: _WeakMap<
 		EventTarget,
 		_Map<string, _WeakMap<object, (...args: any) => any>>

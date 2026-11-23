@@ -106,13 +106,24 @@ export default function (client: ScramjetClient, self: Self) {
 			touched(this, value);
 		}
 
+		// a plugin can keep these accessors and call them with the wrapper
+		// `style` hands out, which the native accessors refuse as a receiver
 		@Type("[LegacyNullToEmptyString] CSSOMString")
 		get cssText(): string {
+			const target = client.box.styleTargets.get(this);
+			if (target) return target.cssText;
+
 			return unrewrite(super.cssText);
 		}
 
 		@Type("[LegacyNullToEmptyString] CSSOMString")
 		set cssText(value: string) {
+			const target = client.box.styleTargets.get(this);
+			if (target) {
+				target.cssText = value;
+
+				return;
+			}
 			super.cssText = rewrite(value);
 			touched(this, value);
 		}
@@ -348,6 +359,7 @@ export default function (client: ScramjetClient, self: Self) {
 		if (!wrapper) {
 			wrapper = wrapStyleDeclaration(kind, declaration);
 			client.box.styleDeclarations.set(declaration, wrapper);
+			client.box.styleTargets.set(wrapper, declaration);
 		}
 
 		return wrapper;

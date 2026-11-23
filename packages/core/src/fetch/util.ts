@@ -17,8 +17,23 @@ export function normalizeContentType(
 	headers.set("content-type", "text/html; charset=utf-8");
 }
 
+/**
+ * Fetch's redirect status set, not every 3xx: a 304 or 305 carries no
+ * `Location`, so treating one as a redirect read a header that was not there
+ * and skipped rewriting the body.
+ *
+ * https://fetch.spec.whatwg.org/#redirect-status
+ */
 export function isRedirect(response: BareResponse) {
-	return response.status >= 300 && response.status < 400;
+	const status = response.status;
+
+	return (
+		status === 301 ||
+		status === 302 ||
+		status === 303 ||
+		status === 307 ||
+		status === 308
+	);
 }
 
 export function isDocument(parsed: ScramjetFetchParsed) {
