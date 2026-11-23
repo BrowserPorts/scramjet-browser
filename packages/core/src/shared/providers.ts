@@ -1,4 +1,5 @@
 import type { CookieJar } from "@/shared/cookie";
+import type { rewriteJs } from "@rewriters/js";
 
 /**
  * Replaceable implementations of behavior Scramjet needs but does not have to
@@ -38,6 +39,15 @@ export interface ScramjetProviders {
 	 * context gets a fresh `CookieJar`.
 	 */
 	createCookieStore?(): CookieJar;
+
+	/**
+	 * Rewrites script text: inline scripts, event handler attributes and
+	 * `javascript:` URLs met while rewriting HTML and URLs. The full builds
+	 * register Scramjet's wasm rewriter. Without one script text is left as it
+	 * is, which suits a runtime that keeps the page's own URL and only maps
+	 * where its files load from
+	 */
+	rewriteJs?: typeof rewriteJs;
 }
 
 let active: ScramjetProviders = {};

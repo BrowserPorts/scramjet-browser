@@ -1,0 +1,77 @@
+import type { CodecConfig, UrlCodec } from "@/plugins/types";
+
+type PathCodecConfig = Extract<CodecConfig, { type: "path" }>;
+
+const NativeURL = globalThis.URL;
+
+/**
+ * Original URLs laid out under one prefix by host and path:
+ *
+ *   https://cdn.example.net/build/data.unityweb
+ *     -> <prefix>cdn.example.net/build/data.unityweb
+ *
+ * Relative URLs inside a game keep working with no rewriting, since the path below the host is
+ * the original one. The query and hash stay as they are. A host on a non-default port keeps its
+ * port in the segment, and an http host is marked `http~host`.
+ */
+export class PathCodec implements UrlCodec {
+	readonly id: string;
+	readonly prefix: URL;
+	#hosts: Set<string>;
+	#scheme: "https:" | "http:";
+	#passthrough: string[];
+
+	constructor(config: PathCodecConfig) {
+		this.prefix = new NativeURL(config.prefix);
+		if (!this.prefix.pathname.endsWith("/")) this.prefix.pathname += "/";
+		this.#hosts = new Set(config.hosts.map((host) => host.toLowerCase()));
+		this.#scheme = config.defaultScheme === "http" ? "http:" : "https:";
+		this.#passthrough = (config.passthrough ?? []).map((prefix) => new NativeURL(prefix).href);
+		this.id = `path:${this.prefix.href}:${JSON.stringify([
+			this.#scheme, Array.from(this.#hosts).sort(), [...this.#passthrough].sort(),
+		])}`;
+	}
+
+	#segment(url: URL): string {
+		const host = url.host.toLowerCase();
+		return url.protocol === this.#scheme ? host : `${url.protocol.slice(0, -1)}~${host}`;
+	}
+
+	owns(url: URL): boolean {
+		if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+		if (this.#passthrough.some((prefix) => url.href.startsWith(prefix))) return false;
+		return this.#hosts.has(this.#segment(url)) || this.#hosts.has(url.host.toLowerCase());
+	}
+
+	encode(url: URL): string | null {
+		// A relative URL resolved against the served page is already in this codec's space
+		const original = this.decode(url);
+		if (original !== null)
+			return this.#passthrough.some((prefix) => original.startsWith(prefix)) ? original : url.href;
+		if (!this.owns(url)) return null;
+		return `${this.prefix.href}${this.#segment(url)}${url.pathname}${url.search}${url.hash}`;
+	}
+
+	decode(input: string | URL): string | null {
+		let url: URL;
+		try {
+			url = new NativeURL(String(input));
+		} catch {
+			return null;
+		}
+		if (url.origin !== this.prefix.origin || !url.pathname.startsWith(this.prefix.pathname))
+			return null;
+		const rest = url.pathname.slice(this.prefix.pathname.length);
+		const slash = rest.indexOf("/");
+		const segment = slash === -1 ? rest : rest.slice(0, slash);
+		if (!segment) return null;
+		const allowed = this.#hosts.has(segment.toLowerCase());
+		const marker = segment.indexOf("~");
+		const host = marker === -1 ? segment : segment.slice(marker + 1);
+		if (!allowed && !this.#hosts.has(host.toLowerCase())) return null;
+		const path = slash === -1 ? "/" : rest.slice(slash);
+		const scheme = marker === -1 ? this.#scheme : `${segment.slice(0, marker)}:`;
+		if (scheme !== "http:" && scheme !== "https:") return null;
+		return `${scheme}//${host}${path}${url.search}${url.hash}`;
+	}
+}

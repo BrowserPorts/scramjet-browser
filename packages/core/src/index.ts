@@ -5,9 +5,9 @@
 import "./global.d";
 import { atob, _Uint8Array } from "@/shared/snapshot";
 import { setWasm } from "@rewriters/wasm";
-import { identityName, runtimeIdentity } from "./runtime-identity";
-import { pstAvailable } from "@/shared/incumbency";
-import { ScramjetVersionInfo, ScramjetConfig } from "./types";
+import { rewriteJs } from "@rewriters/js";
+import { registerProviders } from "@/shared/providers";
+import { ScramjetVersionInfo } from "./types";
 
 declare const VERSION: string;
 declare const COMMITHASH: string;
@@ -18,55 +18,11 @@ export const versionInfo: ScramjetVersionInfo = {
 	date: BUILDDATE,
 };
 
-export const defaultConfig: ScramjetConfig = {
-	globals: {
-		wrapfn: identityName("$scramjet$wrap"),
-		wrappropertybase: identityName("$scramjet__"),
-		wrappropertyfn: identityName("$scramjet$prop"),
-		callfn: identityName("$scramjet$call"),
-		cleanrestfn: identityName("$scramjet$clean"),
-		importfn: identityName("$scramjet$import"),
-		rewritefn: identityName("$scramjet$rewrite"),
-		metafn: identityName("$scramjet$meta"),
-		pushsourcemapfn: identityName("$scramjet$pushsourcemap"),
-		registerrealmfn: identityName("$scramjet$registerrealm"),
-		standinfn: identityName("$scramjet$standin"),
-		trysetfn: identityName("$scramjet$tryset"),
-		templocid: identityName("$scramjet$temploc"),
-		tempreceiverid: identityName("$scramjet$tempreceiver"),
-		tempcalleeid: identityName("$scramjet$tempcallee"),
-		tempunusedid: identityName("$scramjet$tempunused"),
-	},
-	flags: {
-		syncxhr: false,
-		disableComputedWrap: false,
-		rewriterLogs: false,
-		captureErrors: false,
-		cleanErrors: true,
-		sourcemaps: true,
-		destructureRewrites: true,
-		allowInvalidJs: true,
-		debugTrampolines: false,
-		encapsulateWorkers: true,
-		debugSourceURL: false,
-		incumbency: pstAvailable ? "pst" : "lazystamp",
-	},
-	maskedfiles: [],
-	identity: runtimeIdentity,
-};
+export { defaultConfig, defaultConfigDev } from "./config";
 
-export const defaultConfigDev: ScramjetConfig = {
-	...defaultConfig,
-	flags: {
-		...defaultConfig.flags,
-		rewriterLogs: false,
-		captureErrors: true,
-		cleanErrors: false,
-		debugTrampolines: true,
-		debugSourceURL: true,
-		allowInvalidJs: false,
-	},
-};
+// the full builds rewrite script text met inside HTML and URLs with the wasm
+// rewriter; a runtime built without it leaves script text as it is
+registerProviders({ rewriteJs });
 
 declare const REWRITERWASM: string | undefined;
 // bundled build will have the wasm binary inlined as a base64 string

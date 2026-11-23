@@ -14,7 +14,6 @@ import {
 import { type NullArray, nullArray } from "@/shared/htmlparser/safe";
 import { URLMeta, frozenBaseUrl, rewriteUrl } from "@rewriters/url";
 import { rewriteCss, unrewriteCss } from "@rewriters/css";
-import { rewriteJs } from "@rewriters/js";
 import { rewriteInjectedJs } from "@rewriters/injected";
 import { rewriteImportMap } from "@rewriters/importmap";
 import { ScramjetContext } from "@/shared";
@@ -105,6 +104,12 @@ function replaceAttribute(
 }
 
 export type HtmlContext = {
+	/**
+	 * Whether rewritten attributes keep their source in a mirror, and scripts
+	 * theirs, for the full client's views of the page's own values. A runtime
+	 * that leaves the page its real DOM turns it off. Default true
+	 */
+	originalAttributes?: boolean;
 	// should we inject scramjet scripts at the top of the document?
 	loadScripts: boolean;
 	// did the document come from the service worker, or from document.write/innerHTML?
@@ -260,7 +265,7 @@ function rewriteHtmlInner(
 		},
 		undefined
 	);
-	traverseParsedHtml(root, context, meta);
+	traverseParsedHtml(root, context, meta, htmlcontext.originalAttributes !== false);
 
 	let htmlRoot: Element | undefined;
 	let headElement: Element | undefined;
@@ -521,7 +526,8 @@ function adoptBaseElement(href: string, meta: URLMeta) {
 function traverseParsedHtml(
 	node: AnyNode,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
+	mirrors = true
 ): AnyNode {
 	const htmlHooks = context.hooks?.rewriter.html;
 	if (node.type !== ElementType.Tag) {
@@ -541,7 +547,7 @@ function traverseParsedHtml(
 			);
 			node.data = props.text;
 		}
-		if ("children" in node) traverseChildren(node, context, meta);
+		if ("children" in node) traverseChildren(node, context, meta, mirrors);
 
 		return node;
 	}
@@ -573,15 +579,18 @@ function traverseParsedHtml(
 				);
 
 				if (v === null) {
-					replaceAttribute(attribs, attr, mirrorName(attr), value);
+					if (mirrors) replaceAttribute(attribs, attr, mirrorName(attr), value);
+					else delete attribs[attr];
 				} else {
 					attribs[attr] = v;
-					attribs[mirrorName(attr)] = value;
+					if (mirrors) attribs[mirrorName(attr)] = value;
 				}
 			}
 		}
 	}
-	const attrKeys = Object_keys(attribs);
+	// without the script rewriter, script text stays as the page wrote it
+	const rewriteJs = providers().rewriteJs;
+	const attrKeys = rewriteJs ? Object_keys(attribs) : [];
 	for (let index = 0; index < attrKeys.length; index++) {
 		const attr = attrKeys[index];
 		const isHandler = providers().isEventHandlerAttribute;
@@ -593,8 +602,8 @@ function traverseParsedHtml(
 					Array_indexOf(eventAttributes, attr) !== -1
 		) {
 			const value = attribs[attr];
-			attribs[mirrorName(attr)] = value;
-			attribs[attr] = rewriteJs(
+			if (mirrors) attribs[mirrorName(attr)] = value;
+			attribs[attr] = rewriteJs!(
 				value,
 				`(inline ${attr} on element)`,
 				context,
@@ -621,16 +630,17 @@ function traverseParsedHtml(
 	) {
 		// the page reads its own map back, and the client resolves `import()`
 		// against it - both from the source, not the rewritten map
-		attribs[SCRIPT_SOURCE_ATTRIBUTE] = bytesToBase64(
-			TextEncoder_encode(text.data)
-		);
+		if (mirrors)
+			attribs[SCRIPT_SOURCE_ATTRIBUTE] = bytesToBase64(
+				TextEncoder_encode(text.data)
+			);
 		try {
 			text.data = rewriteImportMap(text.data, context, meta);
 		} catch (e) {
 			dbg.error("Failed to parse importmap JSON:", e);
 		}
 	}
-	if (node.name === "script" && hasText) {
+	if (rewriteJs && node.name === "script" && hasText) {
 		const scriptBlockType = getScriptBlockTypeString(
 			"type" in attribs ? attribs.type : undefined,
 			"language" in attribs ? attribs.language : undefined,
@@ -640,7 +650,8 @@ function traverseParsedHtml(
 		if (isScriptType(scriptBlockType)) {
 			let js = text.data;
 			const module = isModuleScriptType(scriptBlockType);
-			attribs[SCRIPT_SOURCE_ATTRIBUTE] = bytesToBase64(TextEncoder_encode(js));
+			if (mirrors)
+				attribs[SCRIPT_SOURCE_ATTRIBUTE] = bytesToBase64(TextEncoder_encode(js));
 			const htmlcomment = /<!--[\s\S]*?-->/g;
 			js = js.replace(htmlcomment, "");
 			text.data = rewriteJs(
@@ -656,7 +667,7 @@ function traverseParsedHtml(
 	// plugins see an element once scramjet has rewritten it, before its children
 	if (htmlHooks) Tap.dispatchSync(htmlHooks.element, { element: node, meta }, {});
 
-	traverseChildren(node, context, meta);
+	traverseChildren(node, context, meta, mirrors);
 
 	return node;
 }
@@ -664,11 +675,12 @@ function traverseParsedHtml(
 function traverseChildren(
 	node: Document | Element | CDATA,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
+	mirrors: boolean
 ) {
 	for (let index = 0; index < node.children.length; index++) {
 		const child = node.children[index];
-		const rewritten = traverseParsedHtml(child, context, meta);
+		const rewritten = traverseParsedHtml(child, context, meta, mirrors);
 		if (rewritten !== child) node.replaceChild(index, rewritten as ChildNode);
 	}
 }

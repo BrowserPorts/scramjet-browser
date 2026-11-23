@@ -2,6 +2,7 @@ import { ScramjetConfig, ScramjetFlags } from "@/types";
 import type { Document, Element } from "./htmlparser";
 import { URLMeta } from "@rewriters/url";
 import type { CookieStore } from "./cookie";
+import type { UrlCodec } from "@/plugins/types";
 import { TapInstance } from "@/Tap";
 import { HtmlContext } from "@/shared/rewriters/html";
 
@@ -66,6 +67,12 @@ export type ScramjetContext = {
 	config: ScramjetConfig;
 	prefix: URL;
 	interface: ScramjetInterface;
+	/**
+	 * Where original URLs load from, for a runtime without the proxy's wire
+	 * format. With a codec, rewriteUrl maps each URL the codec owns and leaves
+	 * the rest as written, unrewriteUrl maps back, and the prefix is unused
+	 */
+	codec?: UrlCodec;
 	cookieJar: CookieStore;
 	hooks?: {
 		rewriter: {

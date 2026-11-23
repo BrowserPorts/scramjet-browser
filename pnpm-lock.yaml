@@ -286,6 +286,9 @@ importers:
       '@mercuryworkshop/proxy-transports':
         specifier: 'catalog:'
         version: 1.0.2
+      '@mercuryworkshop/rpc':
+        specifier: workspace:*
+        version: link:../rpc
       idb:
         specifier: ^8.0.3
         version: 8.0.3

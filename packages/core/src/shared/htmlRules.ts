@@ -188,7 +188,8 @@ export const htmlRules: {
 		fn: (value, context, meta) => {
 			if (value.startsWith("blob:")) {
 				// for media elements specifically they must take the original blob
-				// because they can't be fetch'd
+				// because they can't be fetch'd. A codec leaves blobs as written
+				if (context.codec) return value;
 				return unrewriteBlob(value, context, meta);
 			}
 
