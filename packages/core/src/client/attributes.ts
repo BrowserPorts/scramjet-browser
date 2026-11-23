@@ -321,7 +321,8 @@ export class AttributeLayer {
 					client.meta,
 					false,
 					client,
-					prelude
+					prelude,
+					true
 				) as string;
 		}
 

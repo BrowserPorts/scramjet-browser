@@ -5,18 +5,53 @@ import {
 	unrewriteUrl,
 } from "@rewriters/url";
 import { ScramjetContext } from "@/shared";
+import { providers } from "@/shared/providers";
+import { Tap } from "@/Tap";
 import { RegExp_exec, String } from "@/shared/snapshot";
+
+/**
+ * The production a piece of CSS is: a whole stylesheet, a declaration list (a
+ * style attribute, `cssText`) or one value (`setProperty`, a font face
+ * descriptor). Scramjet's own rewriter treats them alike; a provider or a code
+ * plugin that parses CSS needs to know which grammar to use.
+ */
+export type CssKind = "stylesheet" | "declarations" | "value";
 
 export function rewriteCss(
 	css: string,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
+	kind: CssKind = "stylesheet"
 ) {
-	return handleCss("rewrite", css, context, meta);
+	const result = { source: handleCss("rewrite", css, context, meta, kind) };
+	const hooks = context.hooks?.rewriter.code;
+	if (hooks)
+		Tap.dispatchSync(hooks.css, { meta, direction: "rewrite", kind }, result);
+
+	return result.source;
 }
 
-export function unrewriteCss(css: string, context: ScramjetContext) {
-	return handleCss("unrewrite", css, context);
+export function unrewriteCss(
+	css: string,
+	context: ScramjetContext,
+	kind: CssKind = "stylesheet"
+) {
+	const result = {
+		source: handleCss("unrewrite", css, context, undefined, kind),
+	};
+	const hooks = context.hooks?.rewriter.code;
+	if (hooks)
+		Tap.dispatchSync(
+			hooks.css,
+			{
+				meta: { base: context.prefix, origin: context.prefix } as URLMeta,
+				direction: "unrewrite",
+				kind,
+			},
+			result
+		);
+
+	return result.source;
 }
 
 /**
@@ -35,8 +70,24 @@ function handleCss(
 	type: "rewrite" | "unrewrite",
 	css: string,
 	context: ScramjetContext,
-	meta?: URLMeta
+	meta?: URLMeta,
+	kind: CssKind = "stylesheet"
 ) {
+	const provider = providers().rewriteCssUrls;
+	if (provider) {
+		return provider(
+			String(css),
+			(url) => {
+				if (isFragmentOnly(url)) return url;
+
+				return type === "rewrite"
+					? rewriteUrl(url, context, meta!)
+					: unrewriteUrl(url, context);
+			},
+			kind
+		);
+	}
+
 	// regex from vk6 (https://github.com/ading2210)
 	const urlRegex =
 		/(?i:url)\((?:\s*"((?:\\.|[^"])+)"\s*|\s*'((?:\\.|[^'])+)'\s*|((?!\s*['"])(?!\s*\))(?:\\.|[^)])+?))\)/gm;

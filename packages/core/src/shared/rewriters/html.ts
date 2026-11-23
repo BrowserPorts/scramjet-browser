@@ -14,11 +14,13 @@ import { type NullArray, nullArray } from "@/shared/htmlparser/safe";
 import { URLMeta, frozenBaseUrl, rewriteUrl } from "@rewriters/url";
 import { rewriteCss, unrewriteCss } from "@rewriters/css";
 import { rewriteJs } from "@rewriters/js";
+import { rewriteInjectedJs } from "@rewriters/injected";
 import { rewriteImportMap } from "@rewriters/importmap";
 import { ScramjetContext } from "@/shared";
 import { htmlRules } from "@/shared/htmlRules";
 import { base64Decode, bytesToBase64 } from "@/shared/util";
 import { Tap } from "@/Tap";
+import { providers } from "@/shared/providers";
 import { RawHeaders } from "@mercuryworkshop/proxy-transports";
 import {
 	Error,
@@ -249,6 +251,7 @@ function rewriteHtmlInner(
 		context.hooks!.rewriter.html.pre,
 		{
 			root,
+			handler: { root },
 			meta,
 			htmlcontext,
 			origHtml: html,
@@ -321,7 +324,8 @@ function rewriteHtmlInner(
 			meta,
 			root,
 			htmlcontext,
-			script
+			script,
+			(source) => rewriteInjectedJs(source, "document", context, meta)
 		);
 
 		if (isQuirky) {
@@ -376,6 +380,7 @@ function rewriteHtmlInner(
 		context.hooks!.rewriter.html.post,
 		{
 			root,
+			handler: { root },
 			meta,
 			htmlcontext,
 			origHtml: html,
@@ -515,7 +520,24 @@ function traverseParsedHtml(
 	context: ScramjetContext,
 	meta: URLMeta
 ): AnyNode {
+	const htmlHooks = context.hooks?.rewriter.html;
 	if (node.type !== ElementType.Tag) {
+		if (htmlHooks && node.type === ElementType.Text) {
+			const parent = node.parent;
+			const props = { text: node.data };
+			Tap.dispatchSync(
+				htmlHooks.text,
+				{
+					parent:
+						parent && parent.type === ElementType.Tag
+							? (parent as Element)
+							: null,
+					meta,
+				},
+				props
+			);
+			node.data = props.text;
+		}
 		if ("children" in node) traverseChildren(node, context, meta);
 
 		return node;
@@ -559,10 +581,13 @@ function traverseParsedHtml(
 	const attrKeys = Object_keys(attribs);
 	for (let index = 0; index < attrKeys.length; index++) {
 		const attr = attrKeys[index];
+		const isHandler = providers().isEventHandlerAttribute;
 		if (
-			attr[0] === "o" &&
-			attr[1] === "n" &&
-			Array_indexOf(eventAttributes, attr) !== -1
+			isHandler
+				? isHandler(attr)
+				: attr[0] === "o" &&
+					attr[1] === "n" &&
+					Array_indexOf(eventAttributes, attr) !== -1
 		) {
 			const value = attribs[attr];
 			attribs[mirrorName(attr)] = value;
@@ -573,7 +598,8 @@ function traverseParsedHtml(
 				meta,
 				false,
 				undefined,
-				eventHandlerPrelude(context, node.name, attr)
+				eventHandlerPrelude(context, node.name, attr),
+				true
 			) as string;
 		}
 	}
@@ -623,6 +649,9 @@ function traverseParsedHtml(
 			) as string;
 		}
 	}
+
+	// plugins see an element once scramjet has rewritten it, before its children
+	if (htmlHooks) Tap.dispatchSync(htmlHooks.element, { element: node, meta }, {});
 
 	traverseChildren(node, context, meta);
 

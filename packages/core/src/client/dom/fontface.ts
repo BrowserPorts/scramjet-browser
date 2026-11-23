@@ -19,7 +19,12 @@ export default function (client: ScramjetClient, _self: Self) {
 				family,
 				idlIsBufferSource(source)
 					? (source as BufferSource)
-					: rewriteCss(idlDOMString(source), client.context, client.meta),
+					: rewriteCss(
+							idlDOMString(source),
+							client.context,
+							client.meta,
+							"value"
+						),
 				descriptors
 			);
 		}

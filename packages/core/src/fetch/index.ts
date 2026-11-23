@@ -7,7 +7,11 @@ import {
 
 import { type URLMeta } from "@rewriters/url";
 import { ScramjetHeaders } from "@/shared/headers";
-import { HtmlRewriterHooks, ScramjetContext } from "@/shared";
+import {
+	CodeRewriterHooks,
+	HtmlRewriterHooks,
+	ScramjetContext,
+} from "@/shared";
 import { Tap, TapInstance } from "@/Tap";
 import { doHandleFetch } from "./fetch";
 import { _URL } from "@/shared/snapshot";
@@ -121,6 +125,7 @@ export class ScramjetFetchHandler extends EventTarget {
 	public hooks: {
 		rewriter: {
 			html: TapInstance<HtmlRewriterHooks>;
+			code: TapInstance<CodeRewriterHooks>;
 		};
 		fetch: TapInstance<FetchHooks>;
 	};
@@ -143,6 +148,7 @@ export class ScramjetFetchHandler extends EventTarget {
 		this.hooks = {
 			rewriter: {
 				html: Tap.create<HtmlRewriterHooks>(),
+				code: Tap.create<CodeRewriterHooks>(),
 			},
 			fetch: Tap.create<FetchHooks>(),
 		};

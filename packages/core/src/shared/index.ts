@@ -9,6 +9,7 @@ export * from "./cookie";
 export * from "./headers";
 export * from "./htmlRules";
 export * from "./mime";
+export * from "./providers";
 export * from "./rewriters";
 
 /** the flags whose value is a boolean, which is all but `incumbency` */
@@ -42,16 +43,22 @@ export type ScramjetInterface = {
 	codecEncode: (input: string) => string;
 	codecDecode: (input: string) => string;
 
+	/**
+	 * `transform` is handed the source of each script the embedder injects
+	 * inline, for the `injectedJavascript` code hook
+	 */
 	getInjectScripts(
 		meta: URLMeta,
 		root: Document,
 		htmlcontext: HtmlContext,
-		script: (src: string) => Element
+		script: (src: string) => Element,
+		transform?: (source: string) => string
 	): Element[];
 	getWorkerInjectScripts?(
 		meta: URLMeta,
 		isModule: boolean,
-		script: (src: string) => string
+		script: (src: string) => string,
+		transform?: (source: string) => string
 	): string;
 };
 
@@ -63,14 +70,27 @@ export type ScramjetContext = {
 	hooks?: {
 		rewriter: {
 			html: TapInstance<HtmlRewriterHooks>;
+			code?: TapInstance<CodeRewriterHooks>;
 		};
 	};
 };
 
 export type HtmlRewriterHooks = {
+	/** an element, once scramjet has rewritten its attributes and before its children */
+	element: {
+		context: { element: Element; meta: URLMeta };
+		props: {};
+	};
+	/** a text node's data, which a plugin may replace */
+	text: {
+		context: { parent: Element | null; meta: URLMeta };
+		props: { text: string };
+	};
 	pre: {
 		context: {
 			root: Document;
+			/** the same root, under the name the fork's plugins read it by */
+			handler: { root: Document };
 			meta: URLMeta;
 			origHtml: string;
 			htmlcontext: HtmlContext;
@@ -79,6 +99,7 @@ export type HtmlRewriterHooks = {
 	post: {
 		context: {
 			root: Document;
+			handler: { root: Document };
 			meta: URLMeta;
 			origHtml: string;
 			htmlcontext: HtmlContext;
@@ -86,5 +107,39 @@ export type HtmlRewriterHooks = {
 		props: {
 			setRawHtml?: string;
 		};
+	};
+};
+
+/**
+ * Transforms that run inside scramjet's rewriters, synchronously, on what
+ * they produce and before anything uses it.
+ */
+export type CodeRewriterHooks = {
+	/** code scramjet injects itself, which is not guest javascript and is not rewritten as such */
+	injectedJavascript: {
+		context: {
+			kind: "document" | "workerPrelude" | "worker" | "wasm";
+			meta: URLMeta;
+			isModule: boolean;
+		};
+		props: { source: string };
+	};
+	/** guest javascript, after scramjet's rewrite */
+	javascript: {
+		context: {
+			url: string | null;
+			meta: URLMeta;
+			isModule: boolean;
+			functionBody?: boolean;
+		};
+		props: { source: string };
+	};
+	css: {
+		context: {
+			meta: URLMeta;
+			direction: "rewrite" | "unrewrite";
+			kind: "stylesheet" | "declarations" | "value";
+		};
+		props: { source: string };
 	};
 };

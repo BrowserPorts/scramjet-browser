@@ -12,6 +12,7 @@ import {
 import { incumbencyMode } from "@/shared/incumbency";
 import type { ScramjetClient } from "@client/index";
 import { registerRewrites } from "@client/shared/sourcemaps";
+import { Tap } from "@/Tap";
 
 // eslint-disable-next-line scramjet-core/no-globals
 Error.stackTraceLimit = 50;
@@ -129,8 +130,11 @@ export function rewriteJs(
 	 */
 	client?: ScramjetClient,
 	/** see {@link eventHandlerPrelude} */
-	handlerPrelude = ""
+	handlerPrelude = "",
+	/** the body of an event handler content attribute, not a whole script */
+	functionBody = false
 ): string | Uint8Array {
+	let rewritten = false;
 	try {
 		const res = rewriteJsWasm(
 			js,
@@ -152,8 +156,30 @@ export function rewriteJs(
 			}
 		}
 
+		rewritten = true;
+		// code plugins see the rewritten script, as text, before anything runs it
+		const hooks = context.hooks?.rewriter.code;
+		if (hooks) {
+			const result = {
+				source:
+					typeof res.js === "string"
+						? res.js
+						: (TextDecoder_decode(res.js) as string),
+			};
+			Tap.dispatchSync(
+				hooks.javascript,
+				{ url, meta, isModule, functionBody },
+				result
+			);
+
+			return result.source;
+		}
+
 		return res.js;
 	} catch (err) {
+		// a plugin that failed is not a script that failed to parse, and
+		// falling back to the page's own text would run it unrewritten
+		if (rewritten) throw err;
 		dbg.warn(
 			"failed rewriting js for",
 			url || "(unknown)",

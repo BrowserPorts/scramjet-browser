@@ -1,4 +1,9 @@
-import { cssMayHoldUrl, rewriteCss, unrewriteCss } from "@rewriters/css";
+import {
+	type CssKind,
+	cssMayHoldUrl,
+	rewriteCss,
+	unrewriteCss,
+} from "@rewriters/css";
 import { ScramjetClient } from "@client/index";
 import {
 	Object_getOwnPropertyDescriptor,
@@ -17,8 +22,10 @@ import { Arguments, Returns, Type, idlDOMString } from "@client/webidl";
 import { mirrorAttributeName } from "@client/attributes";
 
 export default function (client: ScramjetClient, self: Self) {
-	const rewrite = (css: string) => rewriteCss(css, client.context, client.meta);
-	const unrewrite = (css: string) => unrewriteCss(css, client.context);
+	const rewrite = (css: string, kind: CssKind = "stylesheet") =>
+		rewriteCss(css, client.context, client.meta, kind);
+	const unrewrite = (css: string, kind: CssKind = "stylesheet") =>
+		unrewriteCss(css, client.context, kind);
 	const attrs = client.attributes;
 	const STYLE_MIRROR = mirrorAttributeName("style");
 
@@ -60,7 +67,7 @@ export default function (client: ScramjetClient, self: Self) {
 			if (mirror !== null) attrs.raw.remove(owner, STYLE_MIRROR);
 			return;
 		}
-		const next = unrewrite(current);
+		const next = unrewrite(current, "declarations");
 		// nothing of ours in it, so the attribute already reads as the page's.
 		// A mirror kept in step with it would be a second attribute write -
 		// and a second MutationRecord - on every style write an animation makes
@@ -78,7 +85,7 @@ export default function (client: ScramjetClient, self: Self) {
 		getPropertyValue(property: string): string {
 			const value = super.getPropertyValue(property);
 
-			return value ? unrewrite(value) : value;
+			return value ? unrewrite(value, "value") : value;
 		}
 
 		// needs the unrewrite - it returns the value it removed
@@ -88,7 +95,7 @@ export default function (client: ScramjetClient, self: Self) {
 			const removed = super.removeProperty(property);
 			touched(this, "");
 
-			return removed ? unrewrite(removed) : removed;
+			return removed ? unrewrite(removed, "value") : removed;
 		}
 
 		// the empty string is not a value to rewrite, it is the spec's signal
@@ -102,7 +109,11 @@ export default function (client: ScramjetClient, self: Self) {
 		)
 		@Returns("undefined")
 		setProperty(property: string, value: string, priority?: string): void {
-			super.setProperty(property, value ? rewrite(value) : value, priority);
+			super.setProperty(
+				property,
+				value ? rewrite(value, "value") : value,
+				priority
+			);
 			touched(this, value);
 		}
 
@@ -113,7 +124,7 @@ export default function (client: ScramjetClient, self: Self) {
 			const target = client.box.styleTargets.get(this);
 			if (target) return target.cssText;
 
-			return unrewrite(super.cssText);
+			return unrewrite(super.cssText, "declarations");
 		}
 
 		@Type("[LegacyNullToEmptyString] CSSOMString")
@@ -124,7 +135,7 @@ export default function (client: ScramjetClient, self: Self) {
 
 				return;
 			}
-			super.cssText = rewrite(value);
+			super.cssText = rewrite(value, "declarations");
 			touched(this, value);
 		}
 	});
@@ -151,7 +162,7 @@ export default function (client: ScramjetClient, self: Self) {
 		)
 		@Returns("long")
 		addRule(selector?: string, style?: string, index?: number): number {
-			return super.addRule(selector, style ? rewrite(style) : style, index);
+			return super.addRule(selector, style ? rewrite(style, "declarations") : style, index);
 		}
 
 		@Arguments("USVString")
@@ -180,13 +191,16 @@ export default function (client: ScramjetClient, self: Self) {
 			@Arguments("USVString", "USVString")
 			@Returns("CSSStyleValue")
 			static parse(property: string, cssText: string): CSSStyleValue {
-				return super.parse(property, cssText ? rewrite(cssText) : cssText);
+				return super.parse(property, cssText ? rewrite(cssText, "value") : cssText);
 			}
 
 			@Arguments("USVString", "USVString")
 			@Returns("sequence<CSSStyleValue>")
 			static parseAll(property: string, cssText: string): CSSStyleValue[] {
-				return super.parseAll(property, cssText ? rewrite(cssText) : cssText);
+				return super.parseAll(
+					property,
+					cssText ? rewrite(cssText, "value") : cssText
+				);
 			}
 		});
 	}
@@ -273,7 +287,7 @@ export default function (client: ScramjetClient, self: Self) {
 			get(target, prop) {
 				const value = Reflect_get(target, prop);
 
-				if (isAttribute(prop)) return value ? unrewrite(value) : value;
+				if (isAttribute(prop)) return value ? unrewrite(value, "value") : value;
 
 				if (typeof value === "function") {
 					const cached = methods.get(value);
@@ -297,7 +311,11 @@ export default function (client: ScramjetClient, self: Self) {
 
 				// the empty string is the spec's signal to remove the property,
 				// not something to rewrite
-				const result = Reflect_set(target, prop, css ? rewrite(css) : css);
+				const result = Reflect_set(
+					target,
+					prop,
+					css ? rewrite(css, "value") : css
+				);
 				touched(target, css);
 
 				return result;
@@ -307,7 +325,7 @@ export default function (client: ScramjetClient, self: Self) {
 				const desc = Object_getOwnPropertyDescriptor(target, prop);
 				if (!desc || !isAttribute(prop)) return desc;
 
-				if (desc.value) desc.value = unrewrite(desc.value);
+				if (desc.value) desc.value = unrewrite(desc.value, "value");
 
 				return desc;
 			},
@@ -321,7 +339,7 @@ export default function (client: ScramjetClient, self: Self) {
 
 				const result = Reflect_defineProperty(target, prop, {
 					...desc,
-					value: css ? rewrite(css) : css,
+					value: css ? rewrite(css, "value") : css,
 				});
 				touched(target, css);
 
@@ -436,7 +454,7 @@ export default function (client: ScramjetClient, self: Self) {
 			for (let i = 0; i < values.length; i++) {
 				const value = values[i];
 				out[i + 1] =
-					typeof value === "string" && value ? rewrite(value) : value;
+					typeof value === "string" && value ? rewrite(value, "value") : value;
 			}
 
 			return out;

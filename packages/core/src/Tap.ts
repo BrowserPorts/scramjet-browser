@@ -117,6 +117,58 @@ function sortCallbacks<T extends Description>(
 	}
 }
 
+/**
+ * The order a transform hook runs in: each plugin's callbacks together, after
+ * every plugin it names in `after` and before every plugin that names it in
+ * `before`. Unlike `sortCallbacks` a cycle is an error, not a fallback to
+ * append order: a transform that runs on the wrong side of the one it depends
+ * on produces wrong output rather than a late notification.
+ */
+function orderTransforms<T extends Description>(
+	callbacks: CallbackInfo<T>[]
+): CallbackInfo<T>[] {
+	const names: string[] = [];
+	const groups: Record<string, CallbackInfo<T>[]> = Object_create(null);
+	const dependencies: Record<string, string[]> = Object_create(null);
+	const depend = (name: string, on: string) => {
+		const list = (dependencies[name] ??= []);
+		if (!Array_includes(list, on)) list[list.length] = on;
+	};
+	for (const callback of drain(callbacks)) {
+		const name = callback.plugin.name;
+		let group = groups[name];
+		if (!group) {
+			group = groups[name] = [];
+			names[names.length] = name;
+		}
+		group[group.length] = callback;
+		dependencies[name] ??= [];
+		if (callback.order.after) {
+			for (const after of drain(callback.order.after)) depend(name, after);
+		}
+		if (callback.order.before) {
+			for (const before of drain(callback.order.before)) depend(before, name);
+		}
+	}
+
+	const completed: string[] = [];
+	const visiting: string[] = [];
+	const result: CallbackInfo<T>[] = [];
+	const visit = (name: string) => {
+		if (Array_includes(completed, name) || !groups[name]) return;
+		if (Array_includes(visiting, name))
+			throw new Error(`Circular transform dependency at plugin ${name}`);
+		visiting[visiting.length] = name;
+		for (const dependency of drain(dependencies[name] ?? [])) visit(dependency);
+		visiting.length--;
+		completed[completed.length] = name;
+		for (const callback of drain(groups[name])) result[result.length] = callback;
+	};
+	for (const name of drain(names)) visit(name);
+
+	return result;
+}
+
 export class Plugin {
 	constructor(
 		public name: string,
@@ -133,6 +185,56 @@ export class Plugin {
 }
 
 export class Tap {
+	/**
+	 * Runs a transform hook's callbacks one after another, each seeing the
+	 * result the one before it left in `props`.
+	 */
+	static async dispatchSeries<T extends Description>(
+		hook: T,
+		context: T["context"],
+		props: T["props"]
+	): Promise<void> {
+		const internal = hook as unknown as InternalHookDescription;
+		const callbacks = internal.tap.callbacks[internal.key];
+		if (!callbacks || callbacks.length === 0) return;
+
+		for (const callback of drain(
+			orderTransforms(callbacks as CallbackInfo<T>[])
+		)) {
+			await callback.callback(context, props);
+		}
+	}
+
+	/**
+	 * Runs a transform hook's callbacks in order, for the rewriters that have
+	 * to return their result synchronously. A callback that returns a promise
+	 * would finish after the result was used, so that is an error.
+	 */
+	static dispatchSync<T extends Description>(
+		hook: T,
+		context: T["context"],
+		props: T["props"]
+	): void {
+		const internal = hook as unknown as InternalHookDescription;
+		const callbacks = internal.tap.callbacks[internal.key];
+		if (!callbacks || callbacks.length === 0) return;
+
+		for (const callback of drain(
+			orderTransforms(callbacks as CallbackInfo<T>[])
+		)) {
+			const result = callback.callback(context, props) as unknown;
+			if (
+				result &&
+				typeof (result as Promise<void>).then === "function"
+			) {
+				(result as Promise<void>).then(undefined, () => undefined);
+				throw new TypeError(
+					`Plugin ${callback.plugin.name} returned asynchronous work to ${internal.key}`
+				);
+			}
+		}
+	}
+
 	static dispatch<T extends Description>(
 		hook: T,
 		context: T["context"],

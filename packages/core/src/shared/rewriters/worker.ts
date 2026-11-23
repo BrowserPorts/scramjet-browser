@@ -3,6 +3,7 @@ import { rewriteJs } from "@rewriters/js";
 import { URLMeta } from "@rewriters/url";
 import { TextDecoder_decode } from "@/shared/snapshot";
 import { base64Encode } from "@/shared/util";
+import { rewriteInjectedJs } from "./injected";
 
 export function rewriteWorkers(
 	js: string | Uint8Array,
@@ -19,7 +20,13 @@ export function rewriteWorkers(
 	};
 	const b64 = (script: string) =>
 		`data:text/javascript;charset=utf-8;base64,${base64Encode(script)}`;
-	let str = context.interface.getWorkerInjectScripts(meta, isModule, script);
+	// a plugin's worker prelude runs before any of scramjet's worker runtime
+	// does, so what it installs is in place before the runtime's imports
+	const prelude = rewriteInjectedJs("", "workerPrelude", context, meta, isModule);
+	let str = prelude ? script(b64(prelude)) : "";
+	str += context.interface.getWorkerInjectScripts(meta, isModule, script, (source) =>
+		rewriteInjectedJs(source, "worker", context, meta, isModule)
+	);
 
 	let rewritten = rewriteJs(js, url, context, meta, isModule);
 	if (typeof rewritten !== "string") {

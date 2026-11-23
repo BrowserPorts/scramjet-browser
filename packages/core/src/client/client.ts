@@ -22,6 +22,7 @@ import {
 import {
 	flagEnabled,
 	BooleanFlag,
+	CodeRewriterHooks,
 	HtmlRewriterHooks,
 	ScramjetContext,
 	ScramjetHeaders,
@@ -431,6 +432,7 @@ export class ScramjetClient {
 	hooks = {
 		rewriter: {
 			html: Tap.create<HtmlRewriterHooks>(),
+			code: Tap.create<CodeRewriterHooks>(),
 		},
 		lifecycle: Tap.create<LifecycleHooks>(),
 	};
@@ -446,6 +448,19 @@ export class ScramjetClient {
 				if (!descriptors) {
 					throw new Error(`No native descriptors found for ${prototype}`);
 				}
+				// a plugin that hands the page facades over DOM objects unwraps
+				// them here, before the native sees a receiver it would refuse
+				const nativeCall = this.hooks.lifecycle.nativeCall;
+				const prepare = (method: string, receiver: unknown, args: unknown[]) => {
+					const props = { receiver, args };
+					Tap.dispatchSync(
+						nativeCall,
+						{ target: `${prototype}.prototype.${method}` },
+						props
+					);
+
+					return props;
+				};
 				const nativeClass = class {
 					constructor(object: any) {
 						return new Proxy(
@@ -462,13 +477,17 @@ export class ScramjetClient {
 										const fn = desc.value;
 
 										return new Proxy(fn, {
-											apply: (_t, _thisArg, args) =>
-												Reflect_apply(fn, object, args),
+											apply: (_t, _thisArg, args) => {
+												const props = prepare(method, object, args);
+
+												return Reflect_apply(fn, props.receiver, props.args);
+											},
 										});
 									} else if (desc.get) {
+										const props = prepare(method, object, []);
 										// not `desc.get.call`: that looks `call` up on
 										// Function.prototype, which the page can replace
-										return Reflect_apply(desc.get, object, []);
+										return Reflect_apply(desc.get, props.receiver, props.args);
 									}
 								},
 								set(_target, method: string, value: any) {
@@ -478,7 +497,8 @@ export class ScramjetClient {
 											`No native setter ${method.toString()} found for ${prototype}`
 										);
 									}
-									Reflect_apply(desc.set, object, [value]);
+									const props = prepare(method, object, [value]);
+									Reflect_apply(desc.set, props.receiver, props.args);
 									return true;
 								},
 							}
