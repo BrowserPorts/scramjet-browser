@@ -5,7 +5,7 @@ use oxc::{
 	allocator::{Allocator, StringBuilder},
 	ast::ast::{
 		AssignmentExpression, AssignmentTarget, AssignmentTargetMaybeDefault,
-		AssignmentTargetProperty, AssignmentTargetPropertyIdentifier, BindingPattern,
+		AssignmentTargetProperty, AssignmentTargetPropertyIdentifier, BinaryExpression, BinaryOperator, BindingPattern,
 		BindingPatternKind, BindingProperty, CallExpression, ChainElement, ComputedMemberExpression,
 		WithStatement,
 		DebuggerStatement, ExportAllDeclaration, ExportNamedDeclaration, Expression, ForStatement,
@@ -146,8 +146,12 @@ where
 	}
 
 	fn handle_computed_member_expression(&mut self, it: &ComputedMemberExpression<'data>) {
+		self.handle_computed_property(&it.expression, false);
+	}
+
+	fn handle_computed_property(&mut self, expression: &Expression<'data>, enclose: bool) {
 		if self.flags.disable_computed_wrap { return };
-		match &it.expression {
+		match expression {
 			Expression::NullLiteral(_)
 			| Expression::BigIntLiteral(_)
 			| Expression::NumericLiteral(_)
@@ -156,12 +160,12 @@ where
 			Expression::StringLiteral(lit) => {
 				if UNSAFE_GLOBALS.contains(&lit.value.as_str()) {
 					self.jschanges
-						.add(rewrite!(it.expression.span(), WrapProperty,));
+						.add(rewrite!(expression.span(), WrapProperty { enclose }));
 				}
 			}
 			_ => {
 				self.jschanges
-					.add(rewrite!(it.expression.span(), WrapProperty,));
+					.add(rewrite!(expression.span(), WrapProperty { enclose }));
 			}
 		}
 	}
@@ -243,7 +247,7 @@ where
 
 						_ => {
 							// { ["location"]: x } = self;
-							self.jschanges.add(rewrite!(p.name.span(), WrapProperty));
+							self.jschanges.add(rewrite!(p.name.span(), WrapProperty { enclose: false }));
 						}
 					}
 
@@ -399,7 +403,7 @@ where
 
 						_ => {
 							// const { ["location"]: x } = self;
-							self.jschanges.add(rewrite!(prop.key.span(), WrapProperty));
+							self.jschanges.add(rewrite!(prop.key.span(), WrapProperty { enclose: false }));
 						}
 					}
 					self.recurse_binding_pattern(&prop.value, restids, no_shadow, location_assigned);
@@ -641,6 +645,17 @@ where
 		self.with_depth += 1;
 		self.visit_statement(&it.body);
 		self.with_depth -= 1;
+	}
+
+	#[coverage_checked(BinaryExpression)]
+	fn visit_binary_expression(&mut self, it: &BinaryExpression<'data>) {
+		if matches!(it.operator, BinaryOperator::In) {
+			// a membership test has to look the key up in the same namespace as a computed read or write
+			// of it, or a remapped key such as `"location" in window` is found under two names
+			self.handle_computed_property(&it.left, true);
+		}
+
+		walk::walk_binary_expression(self, it);
 	}
 
 	#[coverage_checked(DebuggerStatement)]
