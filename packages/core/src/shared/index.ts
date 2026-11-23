@@ -1,7 +1,7 @@
 import { ScramjetConfig, ScramjetFlags } from "@/types";
 import type { Document, Element } from "./htmlparser";
 import { URLMeta } from "@rewriters/url";
-import { CookieJar } from "./cookie";
+import type { CookieStore } from "./cookie";
 import { TapInstance } from "@/Tap";
 import { HtmlContext } from "@/shared/rewriters/html";
 
@@ -66,7 +66,7 @@ export type ScramjetContext = {
 	config: ScramjetConfig;
 	prefix: URL;
 	interface: ScramjetInterface;
-	cookieJar: CookieJar;
+	cookieJar: CookieStore;
 	hooks?: {
 		rewriter: {
 			html: TapInstance<HtmlRewriterHooks>;

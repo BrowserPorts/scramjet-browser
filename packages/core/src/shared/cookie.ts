@@ -4,6 +4,9 @@ import {
 	JSON_stringify,
 	Number_isFinite,
 	Object_keys,
+	String_indexOf,
+	String_split,
+	String_substring,
 	_Date,
 	_Map,
 } from "@/shared/snapshot";
@@ -23,7 +26,128 @@ export type Cookie = {
 	partitioned?: boolean;
 };
 
-export class CookieJar {
+export type SameSiteContext = "strict" | "lax" | "cross-site";
+
+/** What a store is told about a request it is asked for a `Cookie` header for */
+export type CookieRequestContext = {
+	url: URL;
+	fromJs: boolean;
+	sameSiteContext: SameSiteContext;
+	method?: string;
+	destination?: string;
+	mode?: RequestMode;
+	credentials?: RequestCredentials;
+	cache?: RequestCache;
+	rawReferrer?: string | null;
+	referrer?: string;
+	rawClientUrl?: URL;
+	clientId?: string;
+	crossSiteRedirect?: boolean;
+};
+
+/** What a store is told about a response whose `Set-Cookie` headers it is handed */
+export type CookieResponseContext = {
+	url: URL;
+	cookies: string[];
+	status: number;
+	method?: string;
+	destination?: string;
+	mode?: RequestMode;
+	credentials?: RequestCredentials;
+	cache?: RequestCache;
+	rawReferrer?: string | null;
+	referrer?: string;
+	rawClientUrl?: URL;
+	clientId?: string;
+	crossSiteRedirect?: boolean;
+};
+
+export type DocumentCookieContext = { url: URL };
+export type DocumentSetCookieContext = { url: URL; cookie: string };
+
+/**
+ * The cookie storage scramjet depends on. `CookieJar` is the built-in one; an
+ * embedder hands in its own, through the controller's `cookieJar` or
+ * `registerProviders({ createCookieStore })`, for partitioned, persistent or
+ * otherwise differently-scoped storage.
+ *
+ * `getCookies` and `dump` are synchronous because `document.cookie` is a
+ * synchronous accessor. A store whose authority lives elsewhere (a worker, a
+ * database) keeps a local projection to read from, and may return a promise
+ * from the methods that change it.
+ */
+export interface CookieStore {
+	/**
+	 * Whether scramjet persists this store, through `dump` and `load`. False
+	 * for a store that keeps its own backing: the controller then never
+	 * snapshots it into its own database.
+	 */
+	readonly ownsPersistence: boolean;
+	getCookies(
+		url: URL,
+		fromJs: boolean,
+		sameSiteContext?: SameSiteContext
+	): string;
+	/**
+	 * The matching cookies as records, for the Cookie Store API. A store
+	 * without it is read through `getCookies`, which carries no attributes.
+	 */
+	getCookieList?(
+		url: URL,
+		fromJs: boolean,
+		sameSiteContext?: SameSiteContext
+	): Cookie[];
+	setCookies(
+		cookieString: string,
+		url: URL,
+		fromJs?: boolean
+	): unknown | Promise<unknown>;
+	load(cookies: string | Record<string, Cookie>): unknown;
+	clear(): unknown | Promise<unknown>;
+	dump(): string;
+	getRequestCookieHeader?(
+		context: CookieRequestContext
+	): string | Promise<string>;
+	setResponseCookies?(context: CookieResponseContext): unknown | Promise<unknown>;
+	getDocumentCookie?(context: DocumentCookieContext): string;
+	setDocumentCookie?(
+		context: DocumentSetCookieContext
+	): unknown | Promise<unknown>;
+}
+
+/**
+ * The cookies a store holds for `url`, as records. A store without
+ * `getCookieList` answers through `getCookies`, so the records carry a name
+ * and a value and nothing else.
+ */
+export function cookieListFor(
+	store: CookieStore,
+	url: URL,
+	fromJs: boolean
+): Cookie[] {
+	if (store.getCookieList) return store.getCookieList(url, fromJs);
+	const list: Cookie[] = [];
+	const header = store.getCookies(url, fromJs);
+	if (!header) return list;
+	const pairs = String_split(header, "; ");
+	for (let i = 0; i < pairs.length; i++) {
+		const pair = pairs[i];
+		const eq = String_indexOf(pair, "=");
+		list[list.length] =
+			eq === -1
+				? { name: "", value: pair }
+				: {
+						name: String_substring(pair, 0, eq),
+						value: String_substring(pair, eq + 1),
+					};
+	}
+
+	return list;
+}
+
+export class CookieJar implements CookieStore {
+	/** scramjet's own jar is persisted by whoever holds it, through `dump` and `load` */
+	readonly ownsPersistence = true;
 	private cookies: Record<string, Cookie> = {};
 	// Index by domain (without leading dot)
 	private byDomain: _Map<string, Cookie[]> = new _Map();

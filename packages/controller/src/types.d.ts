@@ -30,11 +30,6 @@ export type TransferResponse = {
 	statusText: string;
 };
 
-export type SerializedCookieSyncEntry = {
-	url: string;
-	cookie: string;
-};
-
 export type Controllerbound = {
 	ready: [];
 	request: [TransferRequest, TransferResponse];
@@ -50,58 +45,17 @@ export type SWbound = {
 	];
 };
 
-export type TransportToController = {
-	request: [
-		{
-			remote: string;
-			method: string;
-			body: BodyInit | null;
-			headers: RawHeaders;
-			// signal: AbortSignal | undefined
-		},
-		TransferrableResponse,
-	];
-	sendSetCookie: [
-		{
-			cookies: SerializedCookieSyncEntry[];
-			options?: CookieSyncOptions;
-		},
-	];
-	connect: [
-		{
-			url: string;
-			protocols: string[];
-			requestHeaders: RawHeaders;
-			port: MessagePort;
-		},
-		(
-			| {
-					result: "success";
-					protocol: string;
-					extensions: string;
-			  }
-			| {
-					result: "failure";
-					error: string;
-			  }
-		),
-	];
-};
+// the messages a page's transport port carries are the rpc package's, which
+// the controller, the injected client and the runtimes share
+export type {
+	ControllerToTransport,
+	SerializedCookieSyncEntry,
+	TransportToController,
+	WebSocketData,
+	WebSocketMessage,
+} from "@mercuryworkshop/rpc";
+import type { SerializedCookieSyncEntry } from "@mercuryworkshop/rpc";
 
-export type ControllerToTransport = {
-	ready: [];
-};
-export type WebSocketData = string | ArrayBuffer | Blob;
-export type WebSocketMessage =
-	| {
-			type: "data";
-			data: WebSocketData;
-	  }
-	| {
-			type: "close";
-			code: number;
-			reason: string;
-	  };
 export type FrameInitHooks = {
 	pre: {
 		context: {
@@ -121,6 +75,14 @@ export type FrameInitHooks = {
 	};
 };
 
+export type FrameLifecycleHooks = {
+	/** Release a plugin's resources before the controller drops its frame and ports */
+	close: {
+		context: { frame: Frame };
+		props: {};
+	};
+};
+
 export type FrameErrorHooks = {
 	request: {
 		context: {
@@ -136,6 +98,6 @@ export type FrameErrorHooks = {
 
 declare global {
 	interface HTMLIFrameElement {
-		[CONTROLLERFRAME]: Frame;
+		[CONTROLLERFRAME]?: Frame;
 	}
 }

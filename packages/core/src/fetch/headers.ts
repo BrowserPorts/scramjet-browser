@@ -361,11 +361,11 @@ export function documentReferrer(parsed: ScramjetFetchParsed): string {
 	);
 }
 
-export function rewriteRequestHeaders(
+export async function rewriteRequestHeaders(
 	request: ScramjetFetchRequest,
 	handler: ScramjetFetchHandler,
 	parsed: ScramjetFetchParsed
-): ScramjetHeaders {
+): Promise<ScramjetHeaders> {
 	const headers = request.initialHeaders.clone();
 
 	// avoid leaking the scramjet referer
@@ -396,11 +396,25 @@ export function rewriteRequestHeaders(
 	if (parsed.referrer) headers.set("Referer", parsed.referrer);
 
 	const sameSiteContext = computeSameSiteContext(request, parsed, initiator);
-	const cookies = handler.context.cookieJar.getCookies(
-		parsed.url,
-		false,
-		sameSiteContext
-	);
+	const jar = handler.context.cookieJar;
+	// a store that decides for itself which cookies a request carries is told
+	// everything about the request, rather than only its URL and context
+	const cookies = jar.getRequestCookieHeader
+		? await jar.getRequestCookieHeader({
+				url: parsed.url,
+				fromJs: false,
+				sameSiteContext,
+				method: request.method,
+				destination: parsed.destination,
+				mode: request.mode,
+				cache: request.cache,
+				rawReferrer: request.rawReferrer,
+				referrer: request.referrer,
+				rawClientUrl: request.rawClientUrl,
+				clientId: request.clientId,
+				crossSiteRedirect: parsed.crossSiteRedirect,
+			})
+		: jar.getCookies(parsed.url, false, sameSiteContext);
 
 	if (cookies.length) {
 		headers.set("Cookie", cookies);

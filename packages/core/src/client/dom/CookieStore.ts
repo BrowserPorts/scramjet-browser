@@ -1,4 +1,4 @@
-import type { Cookie } from "@/shared";
+import { type Cookie, cookieListFor } from "@/shared/cookie";
 import { Arguments, Returns, idlUSVString } from "@client/webidl";
 import { parse as parseSetCookie } from "@/shared/set-cookie-parser";
 
@@ -75,7 +75,7 @@ export default function (client: ScramjetClient, _self: Self) {
 			}
 		}
 
-		const cookies = client.context.cookieJar.getCookieList(client.url, true);
+		const cookies = cookieListFor(client.context.cookieJar, client.url, true);
 		const items: CookieListItem[] = [];
 
 		for (const cookie of drain(cookies)) {
@@ -239,7 +239,7 @@ export default function (client: ScramjetClient, _self: Self) {
 	};
 
 	const commit = async (cookie: string): Promise<void> => {
-		client.context.cookieJar.setCookies(cookie, client.url);
+		await client.context.cookieJar.setCookies(cookie, client.url, true);
 		// unlike the `document.cookie` setter this awaits the sync: the returned
 		// promise is what a caller sequences a following fetch() behind, so it
 		// has to mean the cookie will actually be on that request

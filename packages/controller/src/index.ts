@@ -1,4 +1,8 @@
-import { type MethodsDefinition, RpcHelper } from "@mercuryworkshop/rpc";
+import {
+	type MethodsDefinition,
+	RpcHelper,
+	serveRemoteTransport,
+} from "@mercuryworkshop/rpc";
 import {
 	BareResponse,
 	type ProxyTransport,
@@ -6,7 +10,11 @@ import {
 import { deepmerge } from "@fastify/deepmerge";
 import {
 	CookieJar,
+	type CookieStore,
 	defaultConfig as scramjetDefaultConfig,
+	providers,
+	rewriteInjectedJs,
+	type URLMeta,
 	rewriteUrl,
 	ScramjetFetchHandler,
 	ScramjetHeaders,
@@ -25,12 +33,10 @@ import {
 import { CONTROLLERFRAME } from "./symbols";
 import type {
 	FrameInitHooks,
+	FrameLifecycleHooks,
 	SerializedCookieSyncEntry,
-	TransportToController,
 	Controllerbound,
-	ControllerToTransport,
 	SWbound,
-	WebSocketMessage,
 	FrameErrorHooks,
 } from "./types";
 import { assertRuntimeScramjetVersion } from "./version";
@@ -92,8 +98,13 @@ export class ManagedPlugin extends Plugin {
 
 const COOKIE_DB_NAME = "__scramjet_controller";
 const COOKIE_STORE_NAME = "state";
-const COOKIE_STATE_KEY = "cookies";
 const BROADCASTCHANNEL_NAME = "__scramjet_controller_channel";
+/**
+ * The partition a controller keeps its cookies under when it is not given
+ * one. Every controller without a partition shares it, as every controller
+ * did before there were partitions.
+ */
+const DEFAULT_STORAGE_PARTITION = "cookies";
 
 let cookieDbPromise: Promise<IDBDatabase> | null = null;
 
@@ -152,12 +163,14 @@ function openCookieDatabase(): Promise<IDBDatabase> {
 	return cookieDbPromise;
 }
 
-async function readCookieState(): Promise<PersistedCookieState | null> {
+async function readCookieState(
+	storagePartitionKey: string
+): Promise<PersistedCookieState | null> {
 	try {
 		const db = await openCookieDatabase();
 		const transaction = db.transaction(COOKIE_STORE_NAME, "readonly");
 		const store = transaction.objectStore(COOKIE_STORE_NAME);
-		const value = await requestToPromise(store.get(COOKIE_STATE_KEY));
+		const value = await requestToPromise(store.get(storagePartitionKey));
 		await transactionToPromise(transaction);
 		return parsePersistedCookieState(value);
 	} catch (error) {
@@ -167,6 +180,7 @@ async function readCookieState(): Promise<PersistedCookieState | null> {
 }
 
 async function writeCookieState(
+	storagePartitionKey: string,
 	cookies: string,
 	currentUpdatedAt: number
 ): Promise<number> {
@@ -175,7 +189,7 @@ async function writeCookieState(
 		const transaction = db.transaction(COOKIE_STORE_NAME, "readwrite");
 		const store = transaction.objectStore(COOKIE_STORE_NAME);
 		const existing = parsePersistedCookieState(
-			await requestToPromise(store.get(COOKIE_STATE_KEY))
+			await requestToPromise(store.get(storagePartitionKey))
 		);
 		const updatedAt = Math.max(
 			Date.now(),
@@ -186,7 +200,7 @@ async function writeCookieState(
 			updatedAt,
 			cookies,
 		};
-		store.put(state, COOKIE_STATE_KEY);
+		store.put(state, storagePartitionKey);
 		await transactionToPromise(transaction);
 		return updatedAt;
 	} catch (error) {
@@ -201,9 +215,25 @@ function makeId(): string {
 
 const deepMerge = deepmerge();
 
-type ControllerInit = {
+export type ControllerInit = {
 	serviceworker: ServiceWorker;
 	transport: ProxyTransport;
+	/**
+	 * Which storage partition this controller's cookies belong to: the key
+	 * they are persisted under, and the channel controllers of the same
+	 * partition keep each other in step over. Controllers of different
+	 * partitions on one origin never share a cookie
+	 */
+	storagePartitionKey?: string;
+	/**
+	 * The cookie store every frame of this controller reads and writes. A store
+	 * whose `ownsPersistence` is false keeps its own backing, and the
+	 * controller never persists it. Unset, the providers' `createCookieStore`
+	 * makes one, or a `CookieJar` the controller persists
+	 */
+	cookieJar?: CookieStore;
+	/** The upstream proxy a request or socket goes through, if any */
+	resolveProxy?: (url: URL) => Promise<string | null> | string | null;
 	config?: Partial<Config>;
 	scramjetConfig?: Partial<ScramjetConfig>;
 };
@@ -222,9 +252,14 @@ export class Controller {
 	config: Config;
 	scramjetConfig: ScramjetConfig;
 	prefix: string;
-	cookieJar = new CookieJar();
 	frames: Frame[] = [];
 	serviceWorkerController: ServiceWorker;
+	readonly storagePartitionKey: string;
+	private resolvedCookieStore: CookieStore | undefined;
+	private closed = false;
+	private closing: Promise<void> | null = null;
+	/** the ports pages and workers reach the transport through */
+	private transportPorts = new Set<MessagePort>();
 
 	private ready: Promise<void>;
 	private readyResolve!: () => void;
@@ -236,7 +271,7 @@ export class Controller {
 	private cookieUpdatedAt = 0;
 	private cookieSyncPromise: Promise<void> | null = null;
 	private cookieSyncDirty = true;
-	private cookieSyncChannel = new BroadcastChannel(BROADCASTCHANNEL_NAME);
+	private cookieSyncChannel: BroadcastChannel;
 
 	private wasmAlreadyFetched = false;
 	private wasmPayload: string | null = null;
@@ -294,9 +329,17 @@ export class Controller {
 						this.wasmPayload = `self.WASM = '${b64}';`;
 					}
 
+					const url = new URL(data.rawUrl) as URLMeta["base"];
+					const body = rewriteInjectedJs(
+						this.wasmPayload,
+						"wasm",
+						frame.fetchHandler.context,
+						{ origin: url, base: url } as URLMeta
+					);
+
 					return [
 						{
-							body: this.wasmPayload,
+							body,
 							status: 200,
 							statusText: "OK",
 							headers: [["Content-Type", "application/javascript"]],
@@ -356,96 +399,26 @@ export class Controller {
 			}
 		},
 		initRemoteTransport: async (port) => {
-			const rpc = new RpcHelper<TransportToController, ControllerToTransport>(
-				{
-					request: async ({ remote, method, body, headers }) => {
-						const response = await this.transport.request(
-							new URL(remote),
-							method,
-							body,
-							headers,
-							undefined
-						);
-						return [response, [response.body]];
-					},
-					sendSetCookie: async ({ cookies, options }) => {
-						await this.loadSavedCookies(true);
-						if (options?.clear) {
-							this.cookieJar.clear();
-						}
-						this.applyCookieSyncEntries(cookies);
-						await this.persistCookies();
-						await this.propagateCookieSync(cookies, options);
-					},
-					connect: async ({ url, protocols, requestHeaders, port }) => {
-						let resolve: (arg: TransportToController["connect"][1]) => void;
-						const promise = new Promise<TransportToController["connect"][1]>(
-							(res) => (resolve = res)
-						);
-						const [send, close] = this.transport.connect(
-							new URL(url),
-							protocols,
-							requestHeaders,
-							(protocol, extensions) => {
-								resolve({
-									result: "success",
-									protocol: protocol,
-									extensions: extensions,
-								});
-							},
-							(data) => {
-								port.postMessage(
-									{
-										type: "data",
-										data: data,
-									} as WebSocketMessage,
-									data instanceof ArrayBuffer ? [data] : []
-								);
-							},
-							(close, reason) => {
-								port.postMessage({
-									type: "close",
-									code: close,
-									reason: reason,
-								} as WebSocketMessage);
-							},
-							(error) => {
-								resolve({
-									result: "failure",
-									error: error,
-								});
-							}
-						);
-						port.onmessageerror = (ev) => {
-							console.error(
-								"Transport port messageerror (this should never happen!)",
-								ev
-							);
-						};
-						port.onmessage = ({ data }: { data: WebSocketMessage }) => {
-							if (data.type === "data") {
-								send(data.data);
-							} else if (data.type === "close") {
-								close(data.code, data.reason);
-							}
-						};
-
-						return [await promise, []];
-					},
+			if (this.closed || this.closing) {
+				port.close();
+				return;
+			}
+			this.transportPorts.add(port);
+			// the transport is read on every request and socket, so a transport
+			// swapped with `setTransport` reaches the pages already connected
+			serveRemoteTransport(port, {
+				transport: () => this.transport,
+				resolveProxy: (url) => this.init.resolveProxy?.(url),
+				sendSetCookie: async ({ cookies, options }) => {
+					await this.loadSavedCookies(true);
+					if (options?.clear) {
+						await this.cookieJar.clear();
+					}
+					await this.applyCookieSyncEntries(cookies);
+					await this.persistCookies();
+					await this.propagateCookieSync(cookies, options);
 				},
-				"transport",
-				(data, transfer) => port.postMessage(data, transfer)
-			);
-			port.onmessageerror = (ev) => {
-				console.error(
-					"Transport port messageerror (this should never happen!)",
-					ev
-				);
-			};
-			port.onmessage = (e) => {
-				rpc.recieve(e.data);
-			};
-			rpc.call("ready", undefined, []);
+			});
 		},
 	};
 
@@ -460,6 +433,23 @@ export class Controller {
 		) as ScramjetConfig;
 		this.prefix = this.config.prefix + this.id + "/";
 		this.serviceWorkerController = init.serviceworker;
+		if (
+			init.storagePartitionKey !== undefined &&
+			(typeof init.storagePartitionKey !== "string" ||
+				init.storagePartitionKey.length === 0)
+		) {
+			throw new Error(
+				"Scramjet Controller's storage partition key has to be a non-empty string"
+			);
+		}
+		this.storagePartitionKey =
+			init.storagePartitionKey ?? DEFAULT_STORAGE_PARTITION;
+		this.resolvedCookieStore = init.cookieJar;
+		this.cookieSyncChannel = new BroadcastChannel(
+			init.storagePartitionKey === undefined
+				? BROADCASTCHANNEL_NAME
+				: `${BROADCASTCHANNEL_NAME}:${encodeURIComponent(init.storagePartitionKey)}`
+		);
 
 		this.ready = Promise.all([
 			new Promise<void>((resolve) => {
@@ -487,42 +477,127 @@ export class Controller {
 		);
 		this.setupMessagePort();
 
-		navigator.serviceWorker.addEventListener("message", (e) => {
-			if (
-				e.data?.$controller$setCookie &&
-				typeof e.data.$controller$setCookie === "object"
-			) {
-				const payload = e.data.$controller$setCookie as {
-					cookies?: SerializedCookieSyncEntry[];
-					options?: CookieSyncOptions;
-					id?: string;
-				};
+		navigator.serviceWorker.addEventListener(
+			"message",
+			this.onServiceWorkerMessage
+		);
+	}
 
+	private onServiceWorkerMessage = (e: MessageEvent) => {
+		if (this.closed || this.closing) return;
+		if (
+			e.data?.$controller$setCookie &&
+			typeof e.data.$controller$setCookie === "object"
+		) {
+			const payload = e.data.$controller$setCookie as {
+				cookies?: SerializedCookieSyncEntry[];
+				options?: CookieSyncOptions;
+				id?: string;
+			};
+
+			// a store may settle a write later, and the worker is told the
+			// cookies are in only once they are
+			(async () => {
 				if (payload.options?.clear) {
-					this.cookieJar.clear();
+					await this.cookieJar.clear();
 				}
-				this.applyCookieSyncEntries(payload.cookies);
+				await this.applyCookieSyncEntries(payload.cookies);
+			})()
+				.catch((error) => {
+					console.error("Scramjet cookie synchronization failed:", error);
+				})
+				.finally(() => {
+					if (typeof payload.id === "string") {
+						this.serviceWorkerController.postMessage({
+							$sw$setCookieDone: {
+								id: payload.id,
+							},
+						});
+					}
+				});
 
-				if (typeof payload.id === "string") {
-					this.serviceWorkerController.postMessage({
-						$sw$setCookieDone: {
-							id: payload.id,
-						},
-					});
-				}
+			return;
+		}
 
-				return;
+		const revive = e.data?.$controller$swrevive;
+		if (revive && typeof revive === "object") {
+			if (revive.id !== undefined && revive.id !== this.id) return;
+			if (e.source instanceof ServiceWorker) {
+				this.serviceWorkerController = e.source;
 			}
+			this.setupMessagePort();
+		}
+	};
 
-			const revive = e.data?.$controller$swrevive;
-			if (revive && typeof revive === "object") {
-				if (revive.id !== undefined && revive.id !== this.id) return;
-				if (e.source instanceof ServiceWorker) {
-					this.serviceWorkerController = e.source;
+	/**
+	 * Reconnects to the service worker, for a host that knows it restarted
+	 * before the worker asks for a revival itself
+	 */
+	async refreshServiceWorkerConnection(): Promise<void> {
+		if (this.closed || this.closing) {
+			throw new Error("Scramjet Controller is closed");
+		}
+		const registration = await navigator.serviceWorker.getRegistration(
+			new URL("/", location.href).href
+		);
+		const worker = registration?.active ?? navigator.serviceWorker.controller;
+		if (worker) this.serviceWorkerController = worker;
+		this.setupMessagePort();
+	}
+
+	/**
+	 * Closes every frame - its plugins release what they hold through
+	 * `hooks.lifecycle.close` first - then the ports, channels and listeners
+	 * the controller opened. A closed controller makes no frames.
+	 */
+	close(): Promise<void> {
+		this.closing ??= (async () => {
+			for (const frame of this.frames) {
+				try {
+					await Tap.dispatch(frame.hooks.lifecycle.close, { frame }, {});
+				} catch (error) {
+					console.error("Scramjet frame cleanup failed:", error);
 				}
-				this.setupMessagePort();
+				delete frame.element[CONTROLLERFRAME];
 			}
-		});
+			this.frames = [];
+			for (const port of this.transportPorts) {
+				try {
+					port.close();
+				} catch {
+					// a port the page already closed
+				}
+			}
+			this.transportPorts.clear();
+			navigator.serviceWorker.removeEventListener(
+				"message",
+				this.onServiceWorkerMessage
+			);
+			this.cookieSyncChannel.removeEventListener(
+				"message",
+				this.onCookieSyncMessage
+			);
+			this.cookieSyncChannel.close();
+			if (this.port) {
+				this.port.removeEventListener("message", this.onTabChannelMessage);
+				this.port.close();
+				this.port = null;
+			}
+			this.closed = true;
+		})();
+
+		return this.closing;
+	}
+
+	/**
+	 * The store every frame reads and writes: the one the controller was
+	 * given, or else the providers' or a `CookieJar`, made once
+	 */
+	get cookieJar(): CookieStore {
+		this.resolvedCookieStore ??=
+			providers().createCookieStore?.() ?? new CookieJar();
+
+		return this.resolvedCookieStore;
 	}
 
 	private setupMessagePort() {
@@ -554,7 +629,7 @@ export class Controller {
 	}
 
 	// TODO: should this be a method on the cookie jar?
-	private applyCookieSyncEntries(
+	private async applyCookieSyncEntries(
 		cookies: SerializedCookieSyncEntry[] | undefined
 	) {
 		if (!Array.isArray(cookies)) {
@@ -566,7 +641,8 @@ export class Controller {
 				continue;
 			}
 
-			this.cookieJar.setCookies(entry.cookie, new URL(entry.url));
+			// a page's write is `document.cookie`'s, which cannot set HttpOnly
+			await this.cookieJar.setCookies(entry.cookie, new URL(entry.url), true);
 		}
 	}
 
@@ -593,8 +669,14 @@ export class Controller {
 			return this.cookieSyncPromise;
 		}
 
+		// a store with its own backing is never snapshotted into ours
+		if (!this.cookieJar.ownsPersistence) {
+			this.cookieSyncDirty = false;
+			return;
+		}
+
 		this.cookieSyncPromise = (async () => {
-			const persisted = await readCookieState();
+			const persisted = await readCookieState(this.storagePartitionKey);
 			if (persisted && persisted.updatedAt > this.cookieUpdatedAt) {
 				this.cookieJar.load(persisted.cookies);
 				this.cookieUpdatedAt = persisted.updatedAt;
@@ -608,7 +690,9 @@ export class Controller {
 	}
 
 	async persistCookies(): Promise<void> {
+		if (!this.cookieJar.ownsPersistence) return;
 		const updatedAt = await writeCookieState(
+			this.storagePartitionKey,
 			this.cookieJar.dump(),
 			this.cookieUpdatedAt
 		);
@@ -632,6 +716,9 @@ export class Controller {
 	}
 
 	createFrame(element?: HTMLIFrameElement, options: FrameOptions = {}): Frame {
+		if (this.closed || this.closing) {
+			throw new Error("Scramjet Controller is closed");
+		}
 		if (!this.ready) {
 			throw new Error(
 				"Controller is not ready! Try awaiting controller.wait()"
@@ -664,7 +751,7 @@ function yieldGetInjectScripts(
 	config: Config,
 	sjconfig: ScramjetConfig,
 	prefix: URL,
-	cookieJar: CookieJar,
+	cookieJar: CookieStore,
 	codecEncode: (input: string) => string,
 	codecDecode: (input: string) => string
 ) {
@@ -672,7 +759,8 @@ function yieldGetInjectScripts(
 		meta,
 		_root,
 		htmlcontext,
-		script
+		script,
+		transform = (source: string) => source
 	) => {
 		function base64Encode(text: string) {
 			return btoa(
@@ -691,7 +779,8 @@ function yieldGetInjectScripts(
 			script(config.injectPath),
 			script(
 				"data:text/javascript;charset=utf-8;base64," +
-					base64Encode(`
+					base64Encode(
+						transform(`
 					document.querySelectorAll("script[scramjet-injected]").forEach(script => script.remove());
 					$scramjetController.load({
 						config: ${JSON.stringify(config)},
@@ -705,6 +794,7 @@ function yieldGetInjectScripts(
 						referrer: ${JSON.stringify(htmlcontext.referrer)},
 					})
 				`)
+					)
 			),
 		];
 	};
@@ -724,6 +814,7 @@ export class Frame {
 		fetch: FetchHooks;
 		init: FrameInitHooks;
 		error: FrameErrorHooks;
+		lifecycle: FrameLifecycleHooks;
 	};
 
 	get context(): ScramjetContext {
@@ -740,14 +831,20 @@ export class Frame {
 					this.controller.config.codec.encode,
 					this.controller.config.codec.decode
 				),
-				getWorkerInjectScripts: (meta, type, script) => {
+				getWorkerInjectScripts: (
+					meta,
+					type,
+					script,
+					transform = (source: string) => source
+				) => {
 					let str = "";
 
 					str += script(this.controller.config.scramjetPath);
 					str += script(this.prefix + this.controller.config.virtualWasmPath);
 					str += script(
 						"data:text/javascript;charset=utf-8;base64," +
-							base64Encode(`
+							base64Encode(
+								transform(`
 					(()=>{
 						const { ScramjetClient, CookieJar, setWasm } = $scramjet;
 
@@ -774,6 +871,7 @@ export class Frame {
 						client.hook();
 					})();
 					`)
+							)
 					);
 
 					return str;
@@ -827,6 +925,7 @@ export class Frame {
 			fetch: this.fetchHandler.hooks.fetch,
 			init: Tap.create<FrameInitHooks>(),
 			error: Tap.create<FrameErrorHooks>(),
+			lifecycle: Tap.create<FrameLifecycleHooks>(),
 		};
 
 		element[CONTROLLERFRAME] = this;

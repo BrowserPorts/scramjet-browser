@@ -99,7 +99,7 @@ export async function doHandleFetch(
 	// happens to be first -- which on a challenge page is the one that decides
 	// what the rest of the journey looks like.
 	await readyClientHints();
-	let newheaders = rewriteRequestHeaders(request, handler, parsed);
+	let newheaders = await rewriteRequestHeaders(request, handler, parsed);
 
 	let responseBody: BodyType;
 	let response = await doNetworkFetch(handler, request, parsed, newheaders);
@@ -119,8 +119,14 @@ export async function doHandleFetch(
 			needsCriticalRestart(first, newheaders)
 		) {
 			// what the dropped response set is sent with its retry
-			await handleCookies(handler, request, parsed, response.rawHeaders);
-			newheaders = rewriteRequestHeaders(request, handler, parsed);
+			await handleCookies(
+				handler,
+				request,
+				parsed,
+				response.rawHeaders,
+				response.status
+			);
+			newheaders = await rewriteRequestHeaders(request, handler, parsed);
 			response = await doNetworkFetch(handler, request, parsed, newheaders);
 			acceptClientHints(
 				parsed.url,
@@ -130,7 +136,13 @@ export async function doHandleFetch(
 	}
 
 	// set-cookie needs to take the raw headers. after this, we can flatten the headers into a ScramjetHeaders object
-	await handleCookies(handler, request, parsed, response.rawHeaders);
+	await handleCookies(
+		handler,
+		request,
+		parsed,
+		response.rawHeaders,
+		response.status
+	);
 
 	const responseHeaders = await rewriteResponseHeaders(
 		handler,
@@ -340,14 +352,16 @@ async function handleCookies(
 	handler: ScramjetFetchHandler,
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed,
-	rawHeaders: RawHeaders
+	rawHeaders: RawHeaders,
+	status: number
 ) {
+	const values: string[] = [];
 	const cookies = [];
 
 	for (const [key, value] of rawHeaders) {
 		if (key.toLowerCase() !== "set-cookie") continue;
 
-		handler.context.cookieJar.setCookies(value, parsed.url);
+		values.push(value);
 		cookies.push({
 			url: parsed.url,
 			cookie: value,
@@ -356,6 +370,30 @@ async function handleCookies(
 
 	if (cookies.length === 0) {
 		return;
+	}
+
+	const jar = handler.context.cookieJar;
+	if (jar.setResponseCookies) {
+		// a store that decides for itself what a response may set is told
+		// about the whole response, not one header at a time
+		await jar.setResponseCookies({
+			url: parsed.url,
+			cookies: values,
+			status,
+			method: request.method,
+			destination: parsed.destination,
+			mode: request.mode,
+			cache: request.cache,
+			rawReferrer: request.rawReferrer,
+			referrer: request.referrer,
+			rawClientUrl: request.rawClientUrl,
+			clientId: request.clientId,
+			crossSiteRedirect: parsed.crossSiteRedirect,
+		});
+	} else {
+		for (const value of values) {
+			await jar.setCookies(value, parsed.url, false);
+		}
 	}
 
 	await handler.sendSetCookie(cookies, {

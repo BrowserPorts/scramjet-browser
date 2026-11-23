@@ -397,8 +397,21 @@ export async function route(event: FetchEvent): Promise<Response> {
 	}
 }
 
+let activateUpdates = true;
+
+/**
+ * A host worker that coordinates its own updates keeps a new version waiting,
+ * so the documents open now stay paired with the runtime they loaded
+ */
+export function configureLifecycle(options: {
+	activateUpdates?: boolean;
+}): undefined {
+	activateUpdates = options.activateUpdates !== false;
+	return undefined;
+}
+
 addEventListener("install", () => {
-	self.skipWaiting();
+	if (activateUpdates) self.skipWaiting();
 });
 
 addEventListener("activate", (event: ExtendableEvent) => {

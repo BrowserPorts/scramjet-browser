@@ -77,4 +77,6 @@ export * from "./types";
 export * from "./Tap";
 export * from "./shared";
 export * from "./fetch";
+// embedders that answer a fetch hook with a response of their own build it with this
+export { BareResponse } from "@mercuryworkshop/proxy-transports";
 export * from "./client";
