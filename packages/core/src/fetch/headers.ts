@@ -40,6 +40,13 @@ const SEC_HEADERS = new _Set([
 	"cross-origin-embedder-policy",
 	"cross-origin-opener-policy",
 	"cross-origin-resource-policy",
+	// a document under this policy is put in an agent cluster of its own, and
+	// every proxied document shares one real origin, so the browser would cut
+	// it off from its parent: the client reaches the windows above it as it
+	// starts, and that read throws before any page script can run
+	// https://wicg.github.io/document-isolation-policy/
+	"document-isolation-policy",
+	"document-isolation-policy-report-only",
 	"content-security-policy",
 	"content-security-policy-report-only",
 	"expect-ct",
