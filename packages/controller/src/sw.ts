@@ -4,24 +4,9 @@ import { RpcHelper } from "@mercuryworkshop/rpc";
 import type { Controllerbound, SWbound } from "./types";
 import type { RawHeaders } from "@mercuryworkshop/proxy-transports";
 
-function makeId(): string {
-	return Math.random().toString(36).substring(2, 10);
-}
-
-const cookieResolvers: Record<string, (value: void) => void> = {};
 addEventListener("message", (e) => {
 	if (!e.data) return;
 	if (typeof e.data != "object") return;
-	if (e.data.$sw$setCookieDone && typeof e.data.$sw$setCookieDone == "object") {
-		const done = e.data.$sw$setCookieDone;
-
-		const resolver = cookieResolvers[done.id];
-		if (resolver) {
-			resolver();
-			delete cookieResolvers[done.id];
-		}
-	}
-
 	if (
 		e.data.$sw$initRemoteTransport &&
 		typeof e.data.$sw$initRemoteTransport == "object"
@@ -45,86 +30,16 @@ class ControllerReference {
 	constructor(
 		public prefix: string,
 		public id: string,
-		port: MessagePort
+		port: MessagePort,
+		/** the window client that opened this port, which alone may replace it */
+		public owner: string | null
 	) {
-		this.rpc = new RpcHelper(
+		this.rpc = new RpcHelper<SWbound, Controllerbound>(
 			{
-				sendSetCookie: async ({ cookies, options }) => {
-					const clients = await self.clients.matchAll();
-					const ids: string[] = [];
-					const promises: Promise<string>[] = [];
-
-					// Navigation fetches (document/iframe) deliver cookies via the inject
-					// script's embedded cookieJar dump — the destination page doesn't have
-					// inject.ts loaded yet to ack, so awaiting would deadlock. Broadcast
-					// so any already-loaded clients can update their jars, but don't wait.
-					const isNavigation =
-						options?.destination === "document" ||
-						options?.destination === "iframe";
-
-					for (const client of clients) {
-						const id = makeId();
-						ids.push(id);
-						client.postMessage({
-							$controller$setCookie: {
-								cookies,
-								options,
-								id,
-							},
-						});
-						if (!isNavigation) {
-							promises.push(
-								new Promise<string>((resolve) => {
-									// Resolve with the id so we know which client replied.
-									cookieResolvers[id] = () => resolve(id);
-								})
-							);
-						}
-					}
-					// Wait for the first client to acknowledge the cookie sync.
-					// Using Promise.any (not Promise.all) so that extra SW clients created by
-					// window.open (e.g. test popup windows) don't cause timeouts — only the
-					// main controller client needs to respond.
-					if (promises.length > 0) {
-						let timeoutId: ReturnType<typeof setTimeout> | undefined;
-						let responded = false;
-						const timeoutPromise = new Promise<void>((resolve) => {
-							timeoutId = setTimeout(() => {
-								if (!responded) {
-									const pending = ids.filter(
-										(id) => cookieResolvers[id] !== undefined
-									);
-									console.error(
-										"timed out waiting for set cookie response (deadlock?): " +
-											`cookies=${cookies.length} clients=${clients.length} ` +
-											`pending=${pending.length}/${ids.length} ` +
-											`clientUrls=${clients.map((c) => c.url).join(",")}`
-									);
-								}
-								resolve();
-							}, 1000);
-						});
-
-						try {
-							await Promise.race([
-								timeoutPromise,
-								Promise.any(promises)
-									.then(() => {
-										responded = true;
-									})
-									.catch(() => {}),
-							]);
-						} finally {
-							// Clear the timeout so it doesn't fire spuriously after the
-							// race has already been won by Promise.any.
-							if (timeoutId !== undefined) clearTimeout(timeoutId);
-							// Clean up any pending resolvers so clients that never
-							// responded don't leak entries in cookieResolvers.
-							for (const id of ids) {
-								delete cookieResolvers[id];
-							}
-						}
-					}
+				sendSetCookie: async () => {
+					// cookies reach each page over its own transport port now, so
+					// nothing is broadcast to the worker's clients. This only keeps a
+					// tab still running an older controller from waiting on an answer
 				},
 			},
 			"tabchannel-" + id,
@@ -212,6 +127,37 @@ addEventListener("message", (e) => {
 	if (typeof e.data.$controller$init != "object") return;
 	const init = e.data.$controller$init;
 
+	// any window on the origin can post here, so an init is checked before it
+	// can take a controller's place: a controller id, a prefix on this
+	// origin that ends in that id, and, for an id already held, the same
+	// window that opened it. A worker restarted since holds no ports, so a
+	// controller reconnecting then is let in
+	const source = (e as ExtendableMessageEvent).source;
+	const owner = source && "id" in source ? (source as Client).id : null;
+	if (
+		typeof init.id !== "string" ||
+		// 32 hex digits; the 8 characters of v3's earlier ids are accepted
+		// for one release
+		!/^(?:[0-9a-f]{32}|[0-9a-z]{8})$/.test(init.id) ||
+		typeof init.prefix !== "string"
+	) {
+		return;
+	}
+	let prefixUrl: URL;
+	try {
+		prefixUrl = new URL(init.prefix, location.origin);
+	} catch {
+		return;
+	}
+	if (
+		prefixUrl.origin !== location.origin ||
+		!prefixUrl.pathname.endsWith("/" + init.id + "/")
+	) {
+		return;
+	}
+	const held = tabs.find((t) => t.id === init.id);
+	if (held && held.owner !== null && held.owner !== owner) return;
+
 	// older controllers don't send basePrefix; their tab prefix is always
 	// `${basePrefix}${id}/`, so it can be recovered from that
 	let basePrefix: string | undefined = init.basePrefix;
@@ -226,7 +172,7 @@ addEventListener("message", (e) => {
 	if (existing !== -1) {
 		tabs.splice(existing, 1);
 	}
-	const tab = new ControllerReference(init.prefix, init.id, e.ports[0]);
+	const tab = new ControllerReference(init.prefix, init.id, e.ports[0], owner);
 	tabs.push(tab);
 
 	const waiters = tabWaiters.get(init.id);

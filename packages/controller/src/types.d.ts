@@ -49,6 +49,7 @@ export type SWbound = {
 // the controller, the injected client and the runtimes share
 export type {
 	ControllerToTransport,
+	CookieSyncUpdate,
 	SerializedCookieSyncEntry,
 	TransportToController,
 	WebSocketData,
