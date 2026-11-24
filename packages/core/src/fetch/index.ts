@@ -113,8 +113,19 @@ export type FetchHandlerInit = {
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions
 	) => Promise<void>;
-	fetchDataUrl(dataUrl: string): Promise<BareResponse>;
-	fetchBlobUrl(blobUrl: string): Promise<BareResponse>;
+	fetchDataUrl(dataUrl: string, init: SchemeFetchInit): Promise<BareResponse>;
+	fetchBlobUrl(blobUrl: string, init: SchemeFetchInit): Promise<BareResponse>;
+};
+
+/**
+ * What of the page's request a data: or blob: fetch carries. These are
+ * served by the platform's own fetch, which decides what each method means
+ * for its scheme: a HEAD of a data: URL has an empty body, and anything but a
+ * GET of a blob: URL is a network error. Just the method: no signal crosses
+ * the structured-clone boundary, and neither scheme reads a request body
+ */
+export type SchemeFetchInit = {
+	method: string;
 };
 
 export class ScramjetFetchHandler extends EventTarget {
@@ -130,8 +141,14 @@ export class ScramjetFetchHandler extends EventTarget {
 		fetch: TapInstance<FetchHooks>;
 	};
 
-	public fetchDataUrl: (dataUrl: string) => Promise<Response>;
-	public fetchBlobUrl: (blobUrl: string) => Promise<Response>;
+	public fetchDataUrl: (
+		dataUrl: string,
+		init: SchemeFetchInit
+	) => Promise<Response>;
+	public fetchBlobUrl: (
+		blobUrl: string,
+		init: SchemeFetchInit
+	) => Promise<Response>;
 	public sendSetCookie: (
 		cookies: CookieSyncEntry[],
 		options?: CookieSyncOptions

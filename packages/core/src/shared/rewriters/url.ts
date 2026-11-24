@@ -180,55 +180,6 @@ export function unrewriteBlob(
 	return "blob:" + context.prefix.origin + blobTail(blob);
 }
 
-function dataToBlob(url: string) {
-	const commaIndex = url.indexOf(",");
-	if (commaIndex === -1) return null;
-
-	const meta = url.slice("data:".length, commaIndex);
-	const data = url.slice(commaIndex + 1);
-
-	const metaParts = meta.split(";");
-	const mediaType = metaParts.shift() || "";
-	const isBase64 = metaParts.some((part) => part.toLowerCase() === "base64");
-	const params = metaParts.filter(
-		(part) => part && part.toLowerCase() !== "base64"
-	);
-
-	let type = mediaType || "text/plain";
-	if (!mediaType) {
-		const hasCharset = params.some((part) =>
-			String_startsWith(part.toLowerCase(), "charset=")
-		);
-		if (!hasCharset) {
-			params.push("charset=US-ASCII");
-		}
-	}
-	if (params.length) type += ";" + params.join(";");
-
-	let bytes: Uint8Array<ArrayBuffer>;
-	if (isBase64) {
-		let base64 = data.replace(/\s/g, "");
-		base64 = base64.replace(/-/g, "+").replace(/_/g, "/");
-		const binString = atob(base64);
-		bytes = new _Uint8Array(binString.length) as Uint8Array<ArrayBuffer>;
-		for (let i = 0; i < binString.length; i++) {
-			bytes[i] = binString.charCodeAt(i);
-		}
-	} else {
-		let decoded = data;
-		try {
-			decoded = decodeURIComponent(data);
-		} catch {
-			// If decode fails, fall back to raw data.
-		}
-		bytes = TextEncoder_encode(decoded);
-	}
-
-	const blob = new _Blob([bytes], { type });
-	const objectUrl = URL_createObjectURL(blob);
-	return { blob, objectUrl };
-}
-
 /**
  * A URL through the context's codec, for a runtime without the proxy's wire
  * format: a URL the codec owns maps to where the codec put it, and everything
@@ -254,6 +205,58 @@ function rewriteUrlWithCodec(
 	if (!realUrl) return url;
 
 	return codec.encode(realUrl, { base: meta.base }) ?? url;
+}
+
+/**
+ * A data: URL on the proxy's wire, through the same codec as every other URL.
+ *
+ * Appended raw, the URL sat in a path, where the browser owns the bytes:
+ * `data:/../` lost its `..`, and the payload was read back from a normalized
+ * path that carries neither query nor fragment. The URL parser canonicalizes
+ * it first, which also turns a lone surrogate into U+FFFD where the codec
+ * would throw on it. One that does not parse is left as written.
+ *
+ * Its fragment stays outside the encoded part, raw, as every URL's does, so a
+ * later `location.hash` replaces it rather than adding to it.
+ */
+function rewriteDataUrl(
+	url: string,
+	context: ScramjetContext,
+	meta: URLMeta
+): string {
+	// chrome refuses a request to a service worker with a URL over 2MB
+	const URL_MAX_LENGTH = 1024 * 1024 * 2;
+	const BUFFER = 1024;
+
+	const normalized = tryCanParseURL(url);
+	if (!normalized) return url;
+	const [payload, fragment] = splitFragment(normalized.href);
+	const encoded = context.interface.codecEncode(payload);
+
+	// measured on the wire, which the codec makes longer than the input
+	if (
+		context.prefix.href.length +
+			encoded.length +
+			(fragment?.length ?? 0) +
+			BUFFER <=
+		URL_MAX_LENGTH
+	) {
+		return context.prefix.href + encoded + (fragment ?? "");
+	}
+
+	// Too long to travel: parked in a control blob holding the data: URL's
+	// text, not its decoded bytes, so the platform's own data: fetch still
+	// decides its type and its base64, and the request stays a data: request
+	const objectUrl = URL_createObjectURL(new _Blob([payload]));
+
+	return (
+		context.prefix.href +
+		rewriteBlob(objectUrl, context, meta) +
+		"?" +
+		QP.fakeDataURL +
+		"=1" +
+		(fragment ?? "")
+	);
 }
 
 export function rewriteUrl(
@@ -283,22 +286,7 @@ export function rewriteUrl(
 	} else if (String_startsWith(url, "blob:")) {
 		return context.prefix.href + url;
 	} else if (String_startsWith(url, "data:")) {
-		const URL_MAX_LENGTH = 1024 * 1024 * 2;
-		const BUFFER = 1024;
-		// chrome will explode if you make a request to a service worker with a 2MB+ URL
-		// there's an okayish workaround which is just Pretending It's a Blob
-		if (url.length + context.prefix.href.length + BUFFER > URL_MAX_LENGTH) {
-			const { objectUrl } = dataToBlob(url);
-			return (
-				context.prefix.href +
-				rewriteBlob(objectUrl, context, meta) +
-				"?" +
-				QP.fakeDataURL +
-				"=1"
-			);
-		}
-
-		return context.prefix.href + url;
+		return rewriteDataUrl(url, context, meta);
 	} else if (
 		String_startsWith(url, "mailto:") ||
 		String_startsWith(url, "about:")

@@ -68,7 +68,13 @@ export const config: Config = {
 		decode: (url: string) => {
 			if (!url) return url;
 
-			return decodeURIComponent(url);
+			const decoded = decodeURIComponent(url);
+			// The fork's v2 builds encoded twice. A page still running one across
+			// a deploy can hand over a URL it made, so one that does not yet
+			// start with a scheme is decoded again. There for one release
+			return /^[a-z][a-z0-9+.-]*:/i.test(decoded)
+				? decoded
+				: decodeURIComponent(decoded);
 		},
 	},
 };
@@ -915,11 +921,11 @@ export class Frame {
 					options
 				);
 			},
-			async fetchBlobUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchBlobUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
-			async fetchDataUrl(url) {
-				return BareResponse.fromNativeResponse(await fetch(url));
+			async fetchDataUrl(url, init) {
+				return BareResponse.fromNativeResponse(await fetch(url, init));
 			},
 		});
 

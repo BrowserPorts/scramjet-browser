@@ -31,7 +31,7 @@ import {
 	worstFetchSite,
 	registrableDomain,
 } from "./headers";
-import { Object_keys, _URL, URL_revokeObjectURL } from "@/shared/snapshot";
+import { Object_keys, _URL } from "@/shared/snapshot";
 import {
 	acceptClientHints,
 	hintsReachable,
@@ -300,20 +300,56 @@ async function handleBlobOrDataUrlFetch(
 	request: ScramjetFetchRequest,
 	parsed: ScramjetFetchParsed
 ): Promise<ScramjetFetchResponse> {
-	let dataUrl = request.rawUrl.pathname.substring(
-		handler.context.prefix.pathname.length
-	);
 	let response: BareResponse;
+	// the method travels with the URL, since the platform decides what each
+	// method means for its scheme
+	const init = { method: request.method };
 
-	if (dataUrl.startsWith("blob:")) {
-		dataUrl = unrewriteBlob(dataUrl, handler.context, parsed.meta);
+	if (parsed.url.protocol === "data:") {
+		// recovered once, by the codec that wrote it, when the request was
+		// parsed, rather than read again from a normalized path that carries
+		// neither query nor fragment
 		response = BareResponse.fromNativeResponse(
-			await handler.fetchBlobUrl(dataUrl)
+			await handler.fetchDataUrl(parsed.url.href, init)
 		);
 	} else {
-		response = BareResponse.fromNativeResponse(
-			await handler.fetchDataUrl(dataUrl)
+		const blobUrl = unrewriteBlob(
+			request.rawUrl.pathname.substring(handler.context.prefix.pathname.length),
+			handler.context,
+			parsed.meta
 		);
+		if (parsed.isFakeDataURL) {
+			/*
+			 * A data: URL too long for the wire, parked in a control blob that
+			 * holds its text. Reading that blob is ours, so it is a GET whatever
+			 * the page asked for; the page's method belongs to the data: fetch.
+			 *
+			 * The marker is a query parameter a page can write, naming a blob
+			 * the page may own, so the text is untrusted: anything but a data:
+			 * URL is refused, and the parsed URL is what is fetched. Nothing
+			 * revokes the blob, since a request is no authority to destroy what
+			 * a forged marker names. Whoever made it releases it
+			 */
+			const control = await handler.fetchBlobUrl(blobUrl, { method: "GET" });
+			let recovered: _URL | null = null;
+			try {
+				recovered = new _URL(await control.text());
+			} catch {
+				recovered = null;
+			}
+			if (!recovered || recovered.protocol !== "data:") {
+				throw new TypeError(
+					"a fake data URL did not hold a data: URL, so it is not fetched"
+				);
+			}
+			response = BareResponse.fromNativeResponse(
+				await handler.fetchDataUrl(recovered.href, init)
+			);
+		} else {
+			response = BareResponse.fromNativeResponse(
+				await handler.fetchBlobUrl(blobUrl, init)
+			);
+		}
 	}
 
 	let body: BodyType;
@@ -337,8 +373,6 @@ async function handleBlobOrDataUrlFetch(
 		headers.set("Cross-Origin-Opener-Policy", "same-origin");
 		headers.set("Cross-Origin-Embedder-Policy", "require-corp");
 	}
-
-	if (parsed.isFakeDataURL) URL_revokeObjectURL(dataUrl);
 
 	return {
 		body,
