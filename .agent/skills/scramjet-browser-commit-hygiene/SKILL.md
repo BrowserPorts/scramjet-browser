@@ -55,7 +55,7 @@ Inspect every untracked path. Never stage:
 - anything else under `.agent/`, which holds local diagnostic runs; only this skill and its two discovery links are tracked there, and only with `git add -f -- <exact path>`
 - `AGENTS.md`, `CLAUDE.md`, `FERROCHROME_MERGE.md`, which `.git/info/exclude` keeps local
 
-The pre-commit hook runs `pnpm format` and re-adds what it changed; reinspect the staged diff after it. `pnpm-lock.yaml` changes only with a dependency change.
+The local pre-commit hook runs `pnpm format`, which the root `package.json` does not define, so it prints `Command "format" not found` and the commit still goes through. Format touched files with Prettier yourself before staging. `pnpm-lock.yaml` changes only with a dependency change.
 
 Stage exact paths, then rerun status and inspect the complete staged diff. Unstage a prohibited path with `git restore --staged -- <path>`; do not discard its working copy.
 
