@@ -71,6 +71,21 @@ export function isFetchPreload(getAttr: (name: string) => string | null) {
 	);
 }
 
+/**
+ * The origin a srcdoc document gets from the page that sets it, as a URL.
+ *
+ * An about:blank or srcdoc page has no origin in its own URL, whose `origin`
+ * is the string "null" and parses as nothing. It inherits its creator's, which
+ * its base URL carries. A page with no tuple origin at all, such as a `data:`
+ * document, hands on its own URL.
+ */
+function srcdocOrigin(meta: URLMeta): _URL {
+	if (meta.origin.origin !== "null") return new _URL(meta.origin.origin);
+	if (meta.base.origin !== "null") return new _URL(meta.base.origin);
+
+	return meta.origin;
+}
+
 export const htmlRules: {
 	[key: string]: "*" | string[] | ((...any: any[]) => string | null);
 	fn: (
@@ -236,8 +251,8 @@ export const htmlRules: {
 				context,
 				{
 					// for srcdoc origin is the origin of the page that the iframe is on. base and path get dropped
-					origin: new _URL(meta.origin.origin),
-					base: new _URL(meta.origin.origin),
+					origin: srcdocOrigin(meta),
+					base: srcdocOrigin(meta),
 					topFrameName: meta.topFrameName,
 					parentFrameName: meta.parentFrameName,
 					initiatorOrigin: meta.initiatorOrigin,
