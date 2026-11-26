@@ -10,6 +10,7 @@ import {
 	Array_includes,
 	Object_keys,
 	String_startsWith,
+	_WeakSet,
 } from "@/shared/snapshot";
 import {
 	controllerNamespace,
@@ -279,11 +280,76 @@ export default function (client: ScramjetClient, self: GlobalThis) {
 				? Array_includes(keyedNames, k) ||
 					String_startsWith(k, globals.wrappropertybase)
 				: String_startsWith(k, "$scramjet")));
-	// they are only ever defined on the global and on Object.prototype, and
-	// every other object's keys are the page's own, whatever they are called
+	// they are only ever defined on the global, on Object.prototype and on
+	// the null-prototype objects below, and every other object's keys are the
+	// page's own, whatever they are called
 	const objectPrototype = self.Object.prototype;
+	const nullPrototyped = new _WeakSet<object>();
 	const carriesShimKeys = (target: unknown) =>
-		target === self || target === objectPrototype;
+		target === self ||
+		target === objectPrototype ||
+		(typeof target === "object" &&
+			target !== null &&
+			nullPrototyped.has(target));
+
+	// The rewriter turns `o.parent` into `o.<base>parent`, which finds the
+	// accessor above on Object.prototype and so reads and writes `o.parent`.
+	// An object with no prototype never finds it: a write made a data property
+	// called `<base>parent`, which `Object.keys` and `JSON.stringify` then
+	// showed the page under that name, and a `parent` put there any other way,
+	// by `Object.assign` or a descriptor, read back as undefined. A dictionary
+	// with a key called `top` is ordinary, and it went out mangled.
+	//
+	// Such an object is given the same accessors as its own. They are not
+	// enumerable, and the listings below leave them out, so the page sees the
+	// object as it made it.
+	//
+	// An object literal with `__proto__: null` is not reached from here
+	const wrappedNames = ["location", "parent", "top", "eval"];
+	const adoptNullPrototype = (target: unknown) => {
+		if (
+			(typeof target !== "object" && typeof target !== "function") ||
+			target === null ||
+			nullPrototyped.has(target)
+		)
+			return;
+		try {
+			for (let i = 0; i < wrappedNames.length; i++) {
+				const key = globals.wrappropertybase + wrappedNames[i];
+				const accessor = Object_getOwnPropertyDescriptor(objectPrototype, key);
+				if (!accessor) continue;
+				Object_defineProperty(target, key, {
+					get: accessor.get,
+					set: accessor.set,
+					configurable: true,
+					enumerable: false,
+				});
+			}
+			nullPrototyped.add(target);
+		} catch {
+			// not extensible, or a proxy that refuses: left as it was
+		}
+	};
+	client.Proxy("Object.create", {
+		apply(ctx) {
+			if (ctx.args[0] !== null) return;
+			const made = ctx.call();
+			adoptNullPrototype(made);
+
+			return ctx.return(made);
+		},
+	});
+	client.Proxy(["Object.setPrototypeOf", "Reflect.setPrototypeOf"], {
+		apply(ctx) {
+			if (ctx.args[1] !== null) return;
+			const target = ctx.args[0];
+			const result = ctx.call();
+			// Reflect's says whether it took; Object's throws when it did not
+			if (result !== false) adoptNullPrototype(target);
+
+			return ctx.return(result);
+		},
+	});
 	const filtered = {
 		apply(ctx) {
 			if (!carriesShimKeys(ctx.args[0])) return;
