@@ -108,6 +108,12 @@ export function load(init: Init) {
 	}
 	const slot = self as unknown as Record<string, unknown>;
 	if (!(wasmNamespace in slot)) {
+		// the script that carries the wasm is served by the service worker, and
+		// Chromium gives a frame's first, empty document no worker, nor any
+		// document made inside one: a srcdoc frame in an about:blank frame asks
+		// the origin server for it and gets nothing. A page with a client made
+		// that document, and hooks it the way it hooks a frame it reaches into
+		if (borrowClient(init)) return;
 		throw new Error("WASM not found in global scope!");
 	}
 	const wasm = Uint8Array.from(atob(String(slot[wasmNamespace])), (c) =>
@@ -117,6 +123,40 @@ export function load(init: Init) {
 	setWasm(wasm);
 
 	new ExecutionContextWrapper(globalThis, init);
+}
+
+/**
+ * Has the nearest ancestor that has a client install one here, and reports
+ * whether one did. An ancestor of another origin cannot be read, and ends the
+ * search.
+ */
+function borrowClient(init: Init): boolean {
+	try {
+		let ancestor: Window = window;
+		while (ancestor.parent !== ancestor) {
+			ancestor = ancestor.parent;
+			const lender = (ancestor as any)[SCRAMJETCLIENT] as
+				| ScramjetClient
+				| undefined;
+			if (!lender) continue;
+			lender.init.hookSubcontext(
+				globalThis as any,
+				(window.frameElement as HTMLIFrameElement | null) ?? undefined
+			);
+			const client = (globalThis as any)[SCRAMJETCLIENT] as
+				| ScramjetClient
+				| undefined;
+			if (!client) return false;
+			client.syncDocumentInit({
+				initHeaders: init.initHeaders,
+				referrer: init.referrer,
+			});
+			return true;
+		}
+	} catch {
+		// no ancestor this document may read has a client to lend
+	}
+	return false;
 }
 
 class ExecutionContextWrapper {
