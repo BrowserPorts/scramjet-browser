@@ -42,7 +42,7 @@ Commit only your own changes. Authorization to commit never authorizes pushing, 
 - `hardened-mode`, `names` and the other Forgejo branches are topic branches. Push one only when asked.
 - Never push to `origin`, and never open a pull request against `MercuryWorkshop/scramjet` from here. The `Merge remote-tracking branch 'cursor/main'` commit came from the retired Cursor remote; if a `cursor` remote or any `origin.cursor.com` URL reappears, never push to it.
 - Bring upstream in with a merge of `origin/main` into the fork branch, as its own commit with nothing else in it. Do not rebase `main`: Stellite releases pin its commits.
-- Forgejo keeps a pull mirror of `MercuryWorkshop/scramjet`, so upstream's own commits pass the attribution hook even where their messages carry such lines. That exemption covers upstream commits only, never a fork commit.
+- Upstream's own commits come in through the merge exactly as they are, whatever their messages carry. Never rewrite them and never strip lines from them.
 - This repository is public. Forgejo pushes it to the read-only mirror at `github.com/BrowserPorts/scramjet-browser`. Reach GitHub only through that mirror: never push to GitHub directly.
 
 ## Staging
@@ -70,7 +70,7 @@ Use Conventional Commits. Upstream writes its subjects as `[area] summary`, so a
 - Keep the subject at or below 72 characters.
 - Describe product behavior and technical rationale only.
 - Use the configured human author and committer.
-- No AI or model attribution of any kind: no `Co-Authored-By` naming Claude or Anthropic, no `noreply@anthropic.com`, no `Claude-Session` line, no generated-by line. Forgejo's pre-receive hook refuses a push that brings in such a fork commit.
+- No AI or model attribution of any kind: no `Co-Authored-By` naming Claude or Anthropic, no `noreply@anthropic.com`, no `Claude-Session` line, no generated-by line. The rule covers the fork's own commits. Nothing on the server checks it, so the agent making the commit is responsible for keeping it out.
 - No sessions, prompts, task or rule numbers, agents, waves, worktrees, workflows, checkpoints, plans, transcripts, or process narration.
 
 Scan the exact proposed message before committing:
@@ -85,13 +85,14 @@ No matches are permitted.
 
 - Push only to `forgejo`, and only when authorized. `git remote get-url --push forgejo` must print the Forgejo URL. Never push to `origin`, to Cursor's origin (`origin.cursor.com`), or to GitHub.
 - Push one branch with an explicit refspec: `git push forgejo main:main`. Never `--force`, `--all`, `--mirror`, or a bare `git push`.
-- Scan the fork's outgoing commits first, including commits already ahead of the remote. Upstream commits a merge brings are excluded, since the mirror lets them through:
+- Before every push, scan the whole outgoing range, including commits already ahead of the remote and those an upstream merge brings, and stop if anything matches:
 
 ```sh
-git log --format='%H%n%B' forgejo/main..HEAD --not origin/main | rg -ni 'co-authored-by:.*(claude|anthropic)|noreply@anthropic\.com|claude-session|generated(-by| with)'
+git log --format='%H%n%B' forgejo/main..HEAD | rg -ni 'co-authored-by:.*(claude|anthropic)|noreply@anthropic\.com|claude-session|generated(-by| with)'
 ```
 
-- If Forgejo refuses a push, report why. Do not rewrite history or work around the hook.
+- Stop on any match and look at it. A match in a fork commit is fixed before the push. A match in upstream's own commit, one an upstream merge brought in (`git merge-base --is-ancestor <hash> origin/main` succeeds), goes out exactly as it is: never rewrite it and never strip lines from it.
+- If Forgejo refuses a push, report why. Do not rewrite history to get around it.
 
 ## Safeguards
 
