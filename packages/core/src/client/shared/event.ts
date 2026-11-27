@@ -1,3 +1,4 @@
+import { messageFields } from "@/runtime-identity";
 import { iswindow } from "@client/entry";
 import { Arguments, Returns } from "@client/webidl";
 import { ScramjetClient, type Trap } from "@client/index";
@@ -40,9 +41,9 @@ export default function (client: ScramjetClient, self: Self) {
 					if (
 						typeof data === "object" &&
 						data !== null &&
-						Object_hasOwn(data, "$scramjet$messagetype")
+						Object_hasOwn(data, messageFields.type)
 					) {
-						const cl = client.box.clientIds.get(data.$scramjet$clientid);
+						const cl = client.box.clientIds.get(data[messageFields.clientId]);
 						// a sender whose client has since gone - its document
 						// navigated away - leaves nothing better than the native
 						if (cl) return cl.global;
@@ -54,7 +55,7 @@ export default function (client: ScramjetClient, self: Self) {
 				 * The *sender's* origin, fixed when the message was posted.
 				 *
 				 * `postmessage.ts` stamps every message it sends with a
-				 * `$scramjet$messagetype` saying which shape it is, so that is
+				 * type field saying which shape it is, so that is
 				 * what gets read here rather than guessing from whether an
 				 * origin happens to be present.
 				 */
@@ -64,15 +65,15 @@ export default function (client: ScramjetClient, self: Self) {
 					if (
 						typeof data === "object" &&
 						data !== null &&
-						Object_hasOwn(data, "$scramjet$messagetype")
+						Object_hasOwn(data, messageFields.type)
 					) {
 						// ports, workers and a worker's own `postMessage` carry no
 						// origin, and neither does the event a browser fires for
 						// them - it is the empty string
-						if (data.$scramjet$messagetype === "worker") return "";
+						if (data[messageFields.type] === "worker") return "";
 
-						if (Object_hasOwn(data, "$scramjet$origin"))
-							return data.$scramjet$origin;
+						if (Object_hasOwn(data, messageFields.origin))
+							return data[messageFields.origin];
 					}
 
 					// not one of ours: a control message from the service worker or
@@ -86,9 +87,9 @@ export default function (client: ScramjetClient, self: Self) {
 					if (
 						typeof data === "object" &&
 						data !== null &&
-						Object_hasOwn(data, "$scramjet$data")
+						Object_hasOwn(data, messageFields.data)
 					)
-						return data.$scramjet$data;
+						return data[messageFields.data];
 
 					return data;
 				},
@@ -225,7 +226,7 @@ export default function (client: ScramjetClient, self: Self) {
 			// one scramjet dispatched standing in for the platform. It is
 			// deliberately *not* run through `handlers`: a fake WebSocket's
 			// `message` is not a postMessage envelope, and unwrapping it as one
-			// would hand the page `$scramjet$data`
+			// would hand the page the envelope
 			return wrapEvent(event, trustedProps);
 		}
 
@@ -606,7 +607,7 @@ export default function (client: ScramjetClient, self: Self) {
 	 *
 	 * `window.event` is the event currently being dispatched, and for a type we
 	 * wrap the page has to be handed the same stand-in its listeners were given
-	 * - otherwise it reads `$scramjet$data` off the raw event and the proxy's
+	 * - otherwise it reads the message payload off the raw event and the proxy's
 	 * origin off `origin`.
 	 *
 	 * Answered from the native rather than remembered: the browser already

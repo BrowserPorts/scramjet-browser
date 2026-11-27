@@ -1,3 +1,4 @@
+import { messageFields } from "@/runtime-identity";
 import { iswindow, isworker } from "@client/entry";
 import { GlobalScope, ScramjetClient } from "@client/index";
 import {
@@ -76,27 +77,15 @@ function resolveWindowPostMessage(args: any[]): {
  * page payload that happens to carry the same property names is still only
  * data.
  */
-export type WindowMessageEnvelope = {
-	$scramjet$messagetype: "window";
-	/** the sender's origin, serialized - what `MessageEvent.origin` says */
-	$scramjet$origin: string;
-	$scramjet$data: any;
-	$scramjet$clientid: string;
-	/**
-	 * The {@link ScramjetClient.originKey} the recipient's document has to have
-	 * for the message to be delivered, or null for `"*"`.
-	 */
-	$scramjet$target: string | null;
-};
+type WindowMessageEnvelope = Record<string, unknown>;
 
-/** whether `data` is an envelope {@link WindowMessageEnvelope} describes */
-export function isWindowEnvelope(data: unknown): data is WindowMessageEnvelope {
+function isWindowEnvelope(data: unknown): data is WindowMessageEnvelope {
+	if (typeof data !== "object" || data === null) return false;
+	const envelope = data as WindowMessageEnvelope;
 	return (
-		typeof data === "object" &&
-		data !== null &&
-		Object_hasOwn(data, "$scramjet$messagetype") &&
-		(data as WindowMessageEnvelope).$scramjet$messagetype === "window" &&
-		Object_hasOwn(data, "$scramjet$target")
+		Object_hasOwn(envelope, messageFields.type) &&
+		envelope[messageFields.type] === "window" &&
+		Object_hasOwn(envelope, messageFields.target)
 	);
 }
 
@@ -180,11 +169,11 @@ export default function (client: ScramjetClient, self: Self) {
 				}
 
 				const envelope: WindowMessageEnvelope = {
-					$scramjet$messagetype: "window",
-					$scramjet$origin: serializeOriginKey(sender.originKey),
-					$scramjet$data: message,
-					$scramjet$clientid: sender.id,
-					$scramjet$target: target,
+					[messageFields.type]: "window",
+					[messageFields.origin]: serializeOriginKey(sender.originKey),
+					[messageFields.data]: message,
+					[messageFields.clientId]: sender.id,
+					[messageFields.target]: target,
 				};
 
 				// serialization, transfer and its errors, and the queued task
@@ -219,7 +208,7 @@ export default function (client: ScramjetClient, self: Self) {
 			const data = new client.native.MessageEvent(event).data;
 			if (!isWindowEnvelope(data)) return;
 
-			const target = data.$scramjet$target;
+			const target = data[messageFields.target];
 			if (target === null || target === client.originKey) return;
 
 			new client.native.Event(event).stopImmediatePropagation();
@@ -230,18 +219,18 @@ export default function (client: ScramjetClient, self: Self) {
 	client.Proxy("BroadcastChannel.prototype.postMessage", {
 		apply(ctx) {
 			ctx.args[0] = {
-				$scramjet$messagetype: "window",
+				[messageFields.type]: "window",
 				// TODO: need to actually look up the broadcastchannel itself in box i think
-				$scramjet$origin: client.url.origin,
-				$scramjet$data: ctx.args[0],
+				[messageFields.origin]: client.url.origin,
+				[messageFields.data]: ctx.args[0],
 			};
 		},
 	});
 
 	const makeWorkerPostMessageBody = (message: any) => {
 		return {
-			$scramjet$messagetype: "worker",
-			$scramjet$data: message,
+			[messageFields.type]: "worker",
+			[messageFields.data]: message,
 		};
 	};
 

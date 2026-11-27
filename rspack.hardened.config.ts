@@ -12,9 +12,8 @@ import {
  * a JSON object with a name for each of `IDENTITY_NAMES`. Nothing here derives
  * a name.
  *
- * `ST_SCRAMJET_ATTRIBUTE_KEY` is read and checked for the host's sake, since
- * hosts built for the fork's v2 line send it, but this line keys its internal
- * attributes by their prefix alone and does not use it.
+ * `ST_SCRAMJET_ATTRIBUTE_KEY` holds the bytes shared by the HTML rewriter
+ * and the client hooks that read mirrored attribute names.
  *
  * The runtime is built into `SCRAMJET_BUILD_OUTPUT`: `core/scramjet.js`,
  * `core/scramjet.mjs` with its `scramjet-external.mjs`, and
@@ -41,17 +40,22 @@ function physicalName(logical: IdentityName): string {
 const identityNames = Object.fromEntries(
 	IDENTITY_NAMES.map((logical) => [logical, physicalName(logical)])
 );
-if (rawAttributeKey !== undefined) {
-	const attributeKey: unknown = JSON.parse(rawAttributeKey);
+function readKey(
+	raw: string | undefined,
+	label: string
+): readonly number[] | undefined {
+	if (!raw) return undefined;
+	const key: unknown = JSON.parse(raw);
 	if (
-		!Array.isArray(attributeKey) ||
-		attributeKey.length !== 32 ||
-		attributeKey.some(
-			(byte) => !Number.isInteger(byte) || byte < 0 || byte > 255
-		)
+		!Array.isArray(key) ||
+		key.length !== 32 ||
+		key.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)
 	)
-		throw new TypeError("Invalid Scramjet attribute key");
+		throw new TypeError(`Invalid Scramjet ${label} key`);
+	return key;
 }
+const attributeKey = readKey(rawAttributeKey, "attribute");
+const scriptKey = readKey(process.env.ST_SCRAMJET_SCRIPT_XOR_KEY, "script XOR");
 const runtimeName = physicalName("$scramjet");
 const controllerName = physicalName("$scramjetController");
 const names = new Set(["scramjet-iife", "scramjet-esmodule", "scramjet-controller"]);
@@ -80,6 +84,8 @@ export default (configs as RspackOptions[])
 		plugins.push(
 			new rspack.DefinePlugin({
 				SCRAMJET_IDENTITY_NAMES: JSON.stringify(identityNames),
+				SCRAMJET_ATTRIBUTE_KEY: JSON.stringify(attributeKey) ?? "undefined",
+				SCRAMJET_SCRIPT_XOR_KEY: JSON.stringify(scriptKey) ?? "undefined",
 			})
 		);
 		const library = original.output?.library;

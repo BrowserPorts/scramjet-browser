@@ -28,7 +28,11 @@
  * document never held.
  */
 
-import { internalAttributePrefix } from "@/runtime-identity";
+import {
+	internalAttributePrefix,
+	internalMirrorAttribute,
+	logicalMirrorAttribute,
+} from "@/runtime-identity";
 import type { ScramjetClient } from "@client/index";
 import { htmlRules } from "@/shared/htmlRules";
 import {
@@ -60,7 +64,6 @@ import {
  * only form we ever write.
  */
 const INTERNAL_PREFIX = internalAttributePrefix;
-const MIRROR_PREFIX = internalAttributePrefix + "-";
 
 /**
  * Where a script element's original source is kept, in base64. The name is the
@@ -124,7 +127,7 @@ export function isInternalAttribute(qualifiedName: string): boolean {
 
 /** The internal name mirroring `qualifiedName`. */
 export function mirrorAttributeName(qualifiedName: string): string {
-	return MIRROR_PREFIX + qualifiedName;
+	return internalMirrorAttribute(qualifiedName);
 }
 
 /**
@@ -138,9 +141,7 @@ export function mirrorAttributeName(qualifiedName: string): string {
 export function mirroredAttributeName(internalName: string): string | null {
 	if (!isInternalAttribute(internalName)) return null;
 	if (internalName === SCRIPT_SOURCE_ATTRIBUTE) return "";
-	if (!String_startsWith(internalName, MIRROR_PREFIX)) return "";
-
-	return String_substring(internalName, MIRROR_PREFIX.length);
+	return logicalMirrorAttribute(internalName) ?? "";
 }
 
 /**

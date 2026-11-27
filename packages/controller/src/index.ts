@@ -46,6 +46,33 @@ import type {
 } from "./types";
 import { assertRuntimeScramjetVersion } from "./version";
 
+declare const SCRAMJET_SCRIPT_XOR_KEY: readonly number[] | undefined;
+
+function virtualWasmScript(bytes: Uint8Array): string {
+	const key =
+		typeof SCRAMJET_SCRIPT_XOR_KEY === "undefined"
+			? undefined
+			: SCRAMJET_SCRIPT_XOR_KEY;
+	const parts: string[] = [];
+	for (let start = 0; start < bytes.length; start += 0x8000) {
+		const block = bytes.subarray(start, start + 0x8000);
+		const encoded = key
+			? block.map((byte, index) => byte ^ key[(start + index) % key.length])
+			: block;
+		parts.push(String.fromCharCode(...encoded));
+	}
+	const payload = JSON.stringify(btoa(parts.join("")));
+	const target = `self[${JSON.stringify(wasmNamespace)}]`;
+	if (!key) return `${target} = ${payload};`;
+	return `${target} = ((data, key) => {
+		const bytes = atob(data);
+		let original = "";
+		for (let index = 0; index < bytes.length; index++)
+			original += String.fromCharCode(bytes.charCodeAt(index) ^ key[index % key.length]);
+		return btoa(original);
+	})(${payload},${JSON.stringify(key)});`;
+}
+
 export { versionInfo } from "./version";
 export type Config = {
 	prefix: string;
@@ -357,16 +384,7 @@ export class Controller {
 					if (!this.wasmPayload) {
 						const resp = await fetch(this.config.wasmPath);
 						const buf = await resp.arrayBuffer();
-						const b64 = btoa(
-							new Uint8Array(buf)
-								.reduce(
-									(data, byte) => (data.push(String.fromCharCode(byte)), data),
-									[] as any
-								)
-								.join("")
-						);
-
-						this.wasmPayload = `self[${JSON.stringify(wasmNamespace)}] = ${JSON.stringify(b64)};`;
+						this.wasmPayload = virtualWasmScript(new Uint8Array(buf));
 					}
 
 					const url = new URL(data.rawUrl) as URLMeta["base"];

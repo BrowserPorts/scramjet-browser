@@ -1,4 +1,9 @@
-import { injectedAttribute, internalAttributePrefix } from "@/runtime-identity";
+import {
+	injectedAttribute,
+	internalMirrorAttribute,
+	logicalMirrorAttribute,
+	scriptSourceAttribute
+} from "@/runtime-identity";
 import {
 	type AnyNode,
 	type CDATA,
@@ -30,7 +35,6 @@ import {
 	TextEncoder_encode,
 	Array_indexOf,
 	String_slice,
-	String_startsWith,
 	String_toLowerCase,
 	String_trim,
 	_URL,
@@ -54,11 +58,7 @@ export type ForeignContext = "svg" | "math" | "html";
  * `script-source-src` attribute, and every lookup of that name found the
  * source instead.
  */
-export const SCRIPT_SOURCE_ATTRIBUTE =
-	internalAttributePrefix + "_script-source";
-
-/** The name the mirror of `attr` is kept under. */
-const mirrorName = (attr: string) => `${internalAttributePrefix}-${attr}`;
+export const SCRIPT_SOURCE_ATTRIBUTE = scriptSourceAttribute;
 
 // Initialized on first rewrite because htmlRules imports rewriteHtml from this
 // module. Keep rule order, but avoid enumerating every rule for every element.
@@ -458,9 +458,9 @@ export function unrewriteHtml(
 					continue;
 				}
 
-				if (String_startsWith(lower, internalAttributePrefix + "-")) {
-					attribs[String_slice(key, internalAttributePrefix.length + 1)] =
-						attribs[key];
+				const originalName = logicalMirrorAttribute(key);
+				if (originalName !== null) {
+					attribs[originalName] = attribs[key];
 					delete attribs[key];
 				}
 			}
@@ -579,11 +579,12 @@ function traverseParsedHtml(
 				);
 
 				if (v === null) {
-					if (mirrors) replaceAttribute(attribs, attr, mirrorName(attr), value);
+					if (mirrors)
+					replaceAttribute(attribs, attr, internalMirrorAttribute(attr), value);
 					else delete attribs[attr];
 				} else {
 					attribs[attr] = v;
-					if (mirrors) attribs[mirrorName(attr)] = value;
+					if (mirrors) attribs[internalMirrorAttribute(attr)] = value;
 				}
 			}
 		}
@@ -602,7 +603,7 @@ function traverseParsedHtml(
 					Array_indexOf(eventAttributes, attr) !== -1
 		) {
 			const value = attribs[attr];
-			if (mirrors) attribs[mirrorName(attr)] = value;
+			if (mirrors) attribs[internalMirrorAttribute(attr)] = value;
 			attribs[attr] = rewriteJs!(
 				value,
 				`(inline ${attr} on element)`,

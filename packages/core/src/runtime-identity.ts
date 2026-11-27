@@ -1,8 +1,17 @@
+import {
+	Number_parseInt,
+	Number_toString,
+	String_charCodeAt,
+	String_fromCharCode,
+	String_slice,
+	String_startsWith
+} from "./shared/snapshot";
 import { IDENTITY_NAMES, type IdentityName } from "./runtime-identity-names";
 
 declare const SCRAMJET_IDENTITY_NAMES:
 	| Readonly<Record<IdentityName, string>>
 	| undefined;
+declare const SCRAMJET_ATTRIBUTE_KEY: readonly number[] | undefined;
 
 /**
  * A keyed build gives every name in `IDENTITY_NAMES` a physical name, which
@@ -28,6 +37,10 @@ if (names) {
 
 /** Whether this bundle was built with a host's name table. */
 export const keyedBuild = names !== undefined;
+const attributeKey =
+	typeof SCRAMJET_ATTRIBUTE_KEY === "undefined"
+		? undefined
+		: SCRAMJET_ATTRIBUTE_KEY;
 
 /**
  * The physical name of one of Scramjet's own names: the logical name itself in
@@ -66,7 +79,54 @@ export const messageFields = {
 	origin: identityName("$scramjet$origin"),
 	data: identityName("$scramjet$data"),
 	target: identityName("$scramjet$target"),
+	clientId: keyedBuild
+		? identityName("$scramjet$data") + "i"
+		: "$scramjet$clientid"
 };
+
+const mirrorPrefix = internalAttributePrefix + "-";
+
+/** XOR each UTF-16 unit so even custom attribute names round-trip exactly. */
+function attributeSuffix(name: string): string {
+	if (!attributeKey) return name;
+	let result = "";
+	for (let index = 0; index < name.length; index++) {
+		const code =
+			String_charCodeAt(name, index) ^
+			(attributeKey[(index * 2) % attributeKey.length] << 8) ^
+			attributeKey[(index * 2 + 1) % attributeKey.length];
+		result += String_slice("000" + Number_toString(code, 16), -4);
+	}
+	return result;
+}
+
+export function internalMirrorAttribute(name: string): string {
+	return mirrorPrefix + attributeSuffix(name);
+}
+
+export function logicalMirrorAttribute(name: string): string | null {
+	if (!String_startsWith(name, mirrorPrefix)) return null;
+	const suffix = String_slice(name, mirrorPrefix.length);
+	if (!attributeKey) return suffix;
+	if (suffix.length % 4 !== 0) return null;
+	let result = "";
+	for (let offset = 0; offset < suffix.length; offset += 4) {
+		const hex = String_slice(suffix, offset, offset + 4);
+		const code = Number_parseInt(hex, 16);
+		if (String_slice("000" + Number_toString(code, 16), -4) !== hex)
+			return null;
+		const index = offset / 2;
+		result += String_fromCharCode(
+			code ^
+				(attributeKey[index % attributeKey.length] << 8) ^
+				attributeKey[(index + 1) % attributeKey.length]
+		);
+	}
+	return result;
+}
+
+export const scriptSourceAttribute =
+	internalAttributePrefix + "_" + attributeSuffix("script-source");
 
 export const runtimeIdentity = {
 	runtimeNamespace,
