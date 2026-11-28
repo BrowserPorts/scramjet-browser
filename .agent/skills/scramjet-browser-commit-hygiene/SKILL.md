@@ -37,8 +37,9 @@ Commit only your own changes. Authorization to commit never authorizes pushing, 
 | `forgejo` | `https://browserports.dev/BrowserPorts/scramjet-browser.git` | Forgejo, the fork. The only push target. |
 | `origin` | `https://github.com/mercuryworkshop/scramjet` | Scramjet itself, the upstream. Fetch only. |
 
-- `main` is the fork's branch and carries Stellite's work on top of upstream `main`. Stellite builds its Scramjet from it.
-- `v3-port` carries the fork's work ported onto upstream's v3, based on current `origin/main`. Port a `main` fix there as its own commit when asked.
+- `main` is the fork's branch: upstream's v3 (`origin/main`) with the fork's work ported onto it. Stellite and Ferrochrome build their Scramjet from it. Its history also reaches the 2.x line through the merge that made v3 the main line.
+- `2.x` is the fork's earlier line on upstream 2.0.67, tagged `v2.1.0-stellite.26`. Work that exists only there, such as realm execution, is ported onto `main` as its own commit when something needs it. Commit to `2.x` only when asked.
+- `v3-port` is where the port to v3 was done before it became `main`. Do not commit to it.
 - `hardened-mode`, `names` and the other Forgejo branches are topic branches. Push one only when asked.
 - Never push to `origin`, and never open a pull request against `MercuryWorkshop/scramjet` from here. The `Merge remote-tracking branch 'cursor/main'` commit came from the retired Cursor remote; if a `cursor` remote or any `origin.cursor.com` URL reappears, never push to it.
 - Bring upstream in with a merge of `origin/main` into the fork branch, as its own commit with nothing else in it. Do not rebase `main`: Stellite releases pin its commits.
